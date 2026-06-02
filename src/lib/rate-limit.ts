@@ -96,14 +96,23 @@ async function resetRateLimitRedis(identifier: string): Promise<void> {
 interface Attempt { count: number; firstAttempt: number; blockedUntil?: number; }
 const store = new Map<string, Attempt>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of store.entries()) {
-    if (now - entry.firstAttempt > WINDOW_MS * 2) store.delete(key);
-  }
-}, 10 * 60 * 1000);
+// Lazy cleanup — started on first request, never during build phase
+let _cleanupStarted = false;
+function ensureCleanup() {
+  if (_cleanupStarted) return;
+  _cleanupStarted = true;
+  const iv = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of store.entries()) {
+      if (now - entry.firstAttempt > WINDOW_MS * 2) store.delete(key);
+    }
+  }, 10 * 60 * 1000);
+  // Don't block process exit
+  if (typeof iv.unref === 'function') iv.unref();
+}
 
 function checkRateLimitMemory(identifier: string): RateLimitResult {
+  ensureCleanup(); // lazy-start the cleanup timer on first real request
   const now   = Date.now();
   const entry = store.get(identifier);
   if (!entry) {

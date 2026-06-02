@@ -1,4 +1,5 @@
-import '@/lib/env';
+// NOTE: env validation is deferred to request time only (not import/build time).
+// Do NOT add 'import @/lib/env' here — it throws when env vars are absent during build.
 import dns from 'dns';
 import mongoose from 'mongoose';
 const { Schema, model, models } = mongoose;
@@ -18,8 +19,6 @@ type MongooseCache = {
 declare global {
   var _mongoose: MongooseCache | undefined;
 }
-
-const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!global._mongoose) {
   global._mongoose = { conn: null, promise: null };
@@ -69,20 +68,21 @@ async function connectWithRetry(uri: string, maxAttempts = 3): Promise<typeof mo
 }
 
 export async function connectDB() {
-  if (mongoose.connection.readyState === 1) {
-    cached.conn = mongoose;
+  if (cached.conn) {
     await ensureWorkspaceAssignment();
-    return mongoose;
+    return cached.conn;
   }
 
-  if (mongoose.connection.readyState === 2 && cached.promise) {
-    await cached.promise;
+  if (cached.promise) {
+    const conn = await cached.promise;
     await ensureWorkspaceAssignment();
-    return cached.promise;
+    return conn;
   }
 
+  // Read URI at request time, not module scope
+  const MONGODB_URI = process.env.MONGODB_URI;
   if (!MONGODB_URI) {
-    throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+    throw new Error('MONGODB_URI environment variable is not set. Add it to Railway Variables.');
   }
 
   cached.promise = connectWithRetry(MONGODB_URI);

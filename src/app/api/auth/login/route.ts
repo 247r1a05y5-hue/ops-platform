@@ -7,6 +7,12 @@ import { checkRateLimit, resetRateLimit } from '@/lib/rate-limit';
 import { csrfCheck } from '@/lib/require-auth';
 import bcrypt from 'bcryptjs';
 
+// Force dynamic rendering — this route must never be statically pre-rendered.
+// Without this, Next.js build tries to collect route data at build time,
+// which runs module-scope code before env vars are available.
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   // CSRF check
   const csrfError = csrfCheck(req);
