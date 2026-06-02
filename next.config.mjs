@@ -1,14 +1,6 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  turbopack: {
-    // Required: disambiguates workspace root when multiple lockfiles exist
-    root: __dirname,
-  },
+  // Image optimisation — allow Cloudinary CDN
   images: {
     remotePatterns: [
       {
@@ -17,6 +9,22 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
+  },
+
+  // Disable Next.js telemetry in CI/CD
+  // (also set NEXT_TELEMETRY_DISABLED=1 in Railway env vars)
+
+  // Trailing slashes — keep consistent with Railway reverse proxy
+  trailingSlash: false,
+
+  // Allow Railway's public domain in production
+  // (Next.js 15 requires this for server actions across origins)
+  experimental: {
+    serverActions: {
+      allowedOrigins: process.env.NEXT_PUBLIC_APP_URL
+        ? [process.env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, '')]
+        : [],
+    },
   },
 };
 

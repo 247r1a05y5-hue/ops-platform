@@ -32,7 +32,9 @@ export async function POST(req: NextRequest) {
   if (!isParticipant) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Broadcast via Socket.io if available
-  const io = (globalThis as any)._socketIO;
+  // globalThis._socketIO → set by server.mjs (Railway combined server)
+  // globalThis._io       → set by src/lib/socket-server.ts (fallback)
+  const io = (globalThis as any)._socketIO ?? (globalThis as any)._io;
   if (io) {
     const payload = {
       type: 'typing',

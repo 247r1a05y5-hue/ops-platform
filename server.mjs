@@ -1,41 +1,67 @@
 /**
  * server.mjs
  *
- * Custom Next.js server that boots Socket.io on the same HTTP server.
+ * Production-hardened Next.js + Socket.io combined server.
+ * Deploy this entire repo to Railway — it runs BOTH the Next.js app
+ * AND the persistent Socket.io realtime server on the same process/port.
  *
  * USAGE:
- *   node server.mjs          (production)
- *   node server.mjs --dev    (development — wraps next dev)
+ *   node server.mjs          (production — Railway)
+ *   node server.mjs --dev    (local dev)
  *
- * In package.json, replace:
- *   "dev":   "next dev"      → "node server.mjs --dev"
- *   "start": "next start"    → "node server.mjs"
- *
- * This is the ONLY reliable way to share one HTTP server between
- * Next.js and Socket.io in the App Router. The "route handler hack"
- * approach (attaching in an API route) is unreliable across all
- * deployment environments.
+ * Environment variables required (set in Railway dashboard):
+ *   PORT              — set automatically by Railway
+ *   NEXT_PUBLIC_APP_URL — your Railway public URL  e.g. https://ops-xxx.up.railway.app
+ *   JWT_SECRET        — same secret used by Next.js auth
+ *   MONGODB_URI       — MongoDB Atlas connection string
+ *   (all other app env vars — see .env.example)
  */
 
 import { createServer } from 'node:http';
-import { parse } from 'node:url';
-import next from 'next';
+import { parse }        from 'node:url';
+import next             from 'next';
 import { Server as SocketIOServer } from 'socket.io';
-import { jwtVerify } from 'jose';
+import { jwtVerify }    from 'jose';
 
 const dev  = process.argv.includes('--dev');
 const port = parseInt(process.env.PORT ?? '3000', 10);
 
+// ── CORS origin ───────────────────────────────────────────────────────────────
+// In production: allow requests from the NEXT_PUBLIC_APP_URL domain only.
+// Falls back to '*' in dev for convenience.
+function getAllowedOrigins() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!dev && appUrl) {
+    // Support comma-separated list of origins for multi-domain setups
+    return appUrl.split(',').map(u => u.trim()).filter(Boolean);
+  }
+  return '*';
+}
+
 // ── Next.js app ───────────────────────────────────────────────────────────────
 
-const app     = next({ dev, turbopack: dev });
-const handle  = app.getRequestHandler();
+const app    = next({ dev, turbopack: dev });
+const handle = app.getRequestHandler();
 
+console.log(`[OPS] Preparing Next.js (${dev ? 'dev' : 'production'})…`);
 await app.prepare();
+console.log('[OPS] Next.js ready.');
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
 
 const httpServer = createServer((req, res) => {
+  // Health check endpoint — used by Railway to verify the container is alive
+  if (req.url === '/health' || req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      uptime: process.uptime(),
+      ts: new Date().toISOString(),
+      socketio: io?.sockets?.sockets?.size ?? 0,
+    }));
+    return;
+  }
+
   const parsedUrl = parse(req.url ?? '/', true);
   handle(req, res, parsedUrl);
 });
@@ -44,12 +70,25 @@ const httpServer = createServer((req, res) => {
 
 const io = new SocketIOServer(httpServer, {
   path: '/api/socketio',
-  cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
+  cors: {
+    origin: getAllowedOrigins(),
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  // Allow both WebSocket (preferred) and long-polling (fallback behind proxies)
   transports: ['websocket', 'polling'],
-  pingTimeout:    20_000,
-  pingInterval:   10_000,
-  upgradeTimeout: 10_000,
+  // Keep-alive / reconnect tuning
+  pingTimeout:    30_000,
+  pingInterval:   15_000,
+  upgradeTimeout: 15_000,
+  // Allow Socket.io v3 clients (forward-compat)
+  allowEIO3: true,
+  // Max HTTP buffer for large attachments / ICE candidates
+  maxHttpBufferSize: 1e6,
 });
+
+// Expose io so Next.js API routes can do io.to(...).emit(...)
+globalThis._socketIO        = io;
 
 // ── Global state ──────────────────────────────────────────────────────────────
 
@@ -57,14 +96,12 @@ const presenceLastSeen = new Map(); // userId → timestamp
 const pendingSignals   = new Map(); // userId → [{data, expiresAt}]
 const userWorkspace    = new Map(); // userId → workspaceId
 
-const PRESENCE_TTL = 45_000;
-const SIGNAL_TTL   = 30_000;
-
-// Expose io globally so Next.js API routes can call io.to(...).emit(...)
-globalThis._socketIO       = io;
 globalThis._presenceLastSeen = presenceLastSeen;
 globalThis._pendingSignals   = pendingSignals;
 globalThis._userWorkspace    = userWorkspace;
+
+const PRESENCE_TTL = 45_000;
+const SIGNAL_TTL   = 30_000;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -129,13 +166,15 @@ function cleanExpiredPresence() {
   }
 }
 
-setInterval(cleanExpiredPresence, 15_000);
+setInterval(cleanExpiredPresence, 15_000).unref();
 
 // ── JWT auth ──────────────────────────────────────────────────────────────────
 
 async function verifyToken(token) {
   try {
-    const key = new TextEncoder().encode(process.env.JWT_SECRET);
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    const key = new TextEncoder().encode(secret);
     const { payload } = await jwtVerify(token, key);
     return payload;
   } catch {
@@ -146,18 +185,28 @@ async function verifyToken(token) {
 // ── Socket.io auth middleware ─────────────────────────────────────────────────
 
 io.use(async (socket, next) => {
-  let token = socket.handshake.auth?.token;
-  if (!token && socket.handshake.headers.cookie) {
-    const match = socket.handshake.headers.cookie.match(/ops_session=([^;]+)/);
-    if (match) token = decodeURIComponent(match[1]);
+  try {
+    // 1. Token from explicit auth handshake (preferred for cross-origin clients)
+    let token = socket.handshake.auth?.token;
+
+    // 2. Fallback: extract from cookie header (same-origin clients)
+    if (!token && socket.handshake.headers.cookie) {
+      const match = socket.handshake.headers.cookie.match(/ops_session=([^;]+)/);
+      if (match) token = decodeURIComponent(match[1]);
+    }
+
+    if (!token) return next(new Error('AUTH_REQUIRED'));
+
+    const payload = await verifyToken(token);
+    if (!payload) return next(new Error('AUTH_INVALID'));
+
+    socket.userId      = String(payload.sub);
+    socket.userName    = String(payload.name ?? 'Unknown');
+    socket.workspaceId = String(payload.workspaceId ?? 'ops-main');
+    next();
+  } catch {
+    next(new Error('AUTH_ERROR'));
   }
-  if (!token) return next(new Error('AUTH_REQUIRED'));
-  const payload = await verifyToken(token);
-  if (!payload) return next(new Error('AUTH_INVALID'));
-  socket.userId      = payload.sub;
-  socket.userName    = payload.name;
-  socket.workspaceId = payload.workspaceId ?? 'ops-main';
-  next();
 });
 
 // ── Connection handler ────────────────────────────────────────────────────────
@@ -172,21 +221,29 @@ io.on('connection', (socket) => {
   const wasOffline = !isUserOnline(userId);
   presenceLastSeen.set(userId, Date.now());
 
-  // Presence snapshot
+  // Send full presence snapshot to the newly connected client
   socket.emit('chat_event', {
     type: 'presence_snapshot',
     onlineUserIds: getOnlineUserIds(),
   });
 
   if (wasOffline) broadcastPresenceChange(userId, true);
+
+  // Deliver any buffered signals that arrived while the user was offline
   flushPendingSignals(userId);
 
+  // ── Client → server events ────────────────────────────────────────────────
+
   socket.on('join_conversation', (conversationId) => {
-    if (typeof conversationId === 'string') socket.join(`conv:${conversationId}`);
+    if (typeof conversationId === 'string' && conversationId.length > 0) {
+      socket.join(`conv:${conversationId}`);
+    }
   });
 
   socket.on('leave_conversation', (conversationId) => {
-    socket.leave(`conv:${conversationId}`);
+    if (typeof conversationId === 'string') {
+      socket.leave(`conv:${conversationId}`);
+    }
   });
 
   socket.on('heartbeat', () => {
@@ -205,22 +262,26 @@ io.on('connection', (socket) => {
     });
   });
 
+  // WebRTC / Jitsi call signaling relay
   socket.on('signal', (data) => {
     if (!data?.type || !data?.targetUserId) return;
-    // Validate signal type
+
     const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup'];
     if (!VALID_TYPES.includes(data.type)) return;
 
     const payload = {
-      type: 'vid_signal',
-      subtype: data.type,
-      from: userId,
-      fromName: userName,
+      type:           'vid_signal',
+      subtype:        data.type,
+      from:           userId,
+      fromName:       userName,
       conversationId: data.conversationId ?? null,
-      sdp: data.sdp ?? null,
-      candidate: data.candidate ?? null,
+      sdp:            data.sdp       ?? null,
+      candidate:      data.candidate ?? null,
     };
+
     const delivered = pushToUser(data.targetUserId, payload);
+
+    // Queue non-ICE signals for delivery on next connect (30 s window)
     if (!delivered && data.type !== 'ice') {
       const list = pendingSignals.get(data.targetUserId) ?? [];
       list.push({ data: payload, expiresAt: Date.now() + SIGNAL_TTL });
@@ -228,12 +289,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
+    // 5 s grace period — allows tab reloads / brief reconnects without
+    // broadcasting a spurious offline event
     setTimeout(() => {
       const room = io.sockets.adapter.rooms.get(`user:${userId}`);
       if (!room || room.size === 0) {
-        // 5 s grace period passed and still no reconnect — presence will TTL out
-        // Instant-offline: uncomment below
+        // User truly gone — TTL will handle the presence_change broadcast
+        // Uncomment for instant-offline behaviour:
         // presenceLastSeen.delete(userId);
         // broadcastPresenceChange(userId, false);
       }
@@ -241,8 +304,29 @@ io.on('connection', (socket) => {
   });
 });
 
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+
+function shutdown(signal) {
+  console.log(`[OPS] ${signal} received — shutting down…`);
+  io.close(() => {
+    httpServer.close(() => {
+      console.log('[OPS] Server closed.');
+      process.exit(0);
+    });
+  });
+  // Force exit after 10 s
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-httpServer.listen(port, () => {
-  console.log(`> Ready on http://localhost:${port} [Socket.io attached]`);
+httpServer.listen(port, '0.0.0.0', () => {
+  const origins = getAllowedOrigins();
+  console.log(`[OPS] ✅ Server ready on port ${port}`);
+  console.log(`[OPS] Socket.io path: /api/socketio`);
+  console.log(`[OPS] CORS origins: ${Array.isArray(origins) ? origins.join(', ') : origins}`);
+  console.log(`[OPS] Health check: http://localhost:${port}/health`);
 });
