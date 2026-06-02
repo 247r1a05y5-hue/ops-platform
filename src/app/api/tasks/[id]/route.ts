@@ -1,0 +1,118 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { connectDB, Task, User } from '@/lib/db';
+import { requireAuth, csrfCheck } from '@/lib/require-auth';
+import { sendEmail, isValidEmail } from '@/lib/email';
+import { logActivity } from '@/lib/activity';
+
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
+  const { session, error } = await requireAuth(req);
+  if (error) return error;
+
+  try {
+    await connectDB();
+    const { id } = await ctx.params;
+    const body = await req.json();
+
+    const allowed = ['title', 'description', 'stage', 'priority', 'assignee', 'dueDate', 'tags'];
+    const update: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (key in body) update[key] = body[key];
+    }
+
+    // Capture previous stage for comparison
+    const previousTask = await Task.findById(id).lean() as any;
+    const task = await Task.findByIdAndUpdate(id, update, { new: true });
+    if (!task) return NextResponse.json({ success: false, error: 'Task not found.' }, { status: 404 });
+
+    // Determine what changed for email subject
+    const stageChanged = previousTask && body.stage && previousTask.stage !== body.stage;
+    const completed    = stageChanged && body.stage === 'Done';
+    const assigned     = body.assignee && previousTask?.assignee !== body.assignee;
+
+    const actionLabel = completed
+      ? `Task Completed: ${task.title}`
+      : stageChanged
+      ? `Task Stage Updated: ${task.title}`
+      : assigned
+      ? `Task Reassigned: ${task.title}`
+      : `Task Updated: ${task.title}`;
+
+    const details = [
+      stageChanged ? `Stage: ${previousTask?.stage} → ${task.stage}` : null,
+      assigned ? `Assigned to: ${task.assignee}` : null,
+      body.priority ? `Priority: ${task.priority}` : null,
+    ].filter(Boolean).join('. ') || 'Task details updated.';
+
+    // Notify assignee
+    const assigneeIdentifier = task.assignee as string;
+    if (assigneeIdentifier) {
+      const assigneeUser = await User.findOne({
+        $or: [{ email: assigneeIdentifier }, { name: assigneeIdentifier }],
+      }).select('email name role').lean() as any;
+
+      if (assigneeUser?.email && isValidEmail(assigneeUser.email)) {
+        await sendEmail({
+          event: 'task_update',
+          to: assigneeUser.email,
+          vars: {
+            name: assigneeUser.name,
+            role: assigneeUser.role || 'Employee',
+            action: actionLabel,
+            description: details,
+          },
+        }).catch(e => console.error('[TaskUpdate] assignee email failed:', e.message));
+      }
+    }
+
+    // Admin copy
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@ops.com';
+    if (isValidEmail(adminEmail)) {
+      await sendEmail({
+        event: 'task_update',
+        to: adminEmail,
+        vars: {
+          name: session.name,
+          role: session.role,
+          action: actionLabel,
+          description: `Updated by ${session.name}. ${details}`,
+        },
+      }).catch(e => console.error('[TaskUpdate] admin email failed:', e.message));
+    }
+
+    await logActivity({
+      userId: session.sub,
+      actionType: 'task_update',
+      module: 'Tasks',
+      description: `Task "${task.title}" updated by ${session.name}. ${details}`,
+      req,
+    }).catch(console.error);
+
+    return NextResponse.json({ success: true, task });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, ctx: Ctx) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
+  const { error } = await requireAuth(req, ['Admin', 'Manager']);
+  if (error) return error;
+
+  try {
+    await connectDB();
+    const { id } = await ctx.params;
+    const task = await Task.findByIdAndDelete(id);
+    if (!task) return NextResponse.json({ success: false, error: 'Task not found.' }, { status: 404 });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}

@@ -1,0 +1,129 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionFromRequest, DB_TO_ROUTE, SESSION_COOKIE } from '@/lib/auth';
+
+// ─── Route Policy ─────────────────────────────────────────────────────────────
+
+// Page routes → redirect to /login on failure
+const PROTECTED_PAGE_PREFIXES = [
+  '/dashboard',
+  '/admin',
+  '/manager',
+  '/employee',
+  '/marketing',
+  '/mr',
+  '/crm',
+  '/invoices',
+  '/tasks',
+  '/analytics',
+  '/catalog',
+  '/settings',
+  '/integrations',
+  '/pay',
+];
+
+// API routes → return 401/403 JSON on failure
+const PROTECTED_API_PREFIXES = [
+  '/api/leads',
+  '/api/invoices',
+  '/api/notifications',
+  '/api/documents',
+  '/api/export',
+  '/api/activity',
+  '/api/email',
+  '/api/gmail',
+  '/api/payment',
+  '/api/test-whatsapp',
+  '/api/tasks',
+  '/api/projects',
+  '/api/catalog',
+  '/api/analytics',
+  '/api/settings',
+  '/api/sequences',
+];
+
+// Role-based page access
+const ROLE_PAGE_MAP: Record<string, string[]> = {
+  '/dashboard': ['Admin'],
+  '/admin':     ['Admin'],
+  '/manager':   ['Admin', 'Manager'],
+  '/employee':  ['Admin', 'Manager', 'Staff'],
+  '/marketing': ['Admin', 'Manager', 'User'],
+  '/mr':        ['Admin', 'Manager', 'User'],
+};
+
+// Public routes (always accessible)
+const PUBLIC_PATHS = new Set([
+  '/login', '/landing', '/', '/reset-password',
+  '/api/auth/login', '/api/auth/signup', '/api/auth/me',
+  '/api/auth/password-reset',
+  '/api/payment/webhook',
+]);
+
+// ─── Proxy (Next.js 16+ convention) ─────────────────────────────────────────
+
+export async function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Always allow public paths
+  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+
+  // Allow static assets and Next.js internals
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/public') ||
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|webp|css|js|woff|woff2|ttf)$/)
+  ) {
+    return NextResponse.next();
+  }
+
+  const isProtectedPage = PROTECTED_PAGE_PREFIXES.some(p => pathname.startsWith(p));
+  const isProtectedApi  = PROTECTED_API_PREFIXES.some(p => pathname.startsWith(p));
+
+  if (!isProtectedPage && !isProtectedApi) return NextResponse.next();
+
+  // ── Verify session ────────────────────────────────────────────────────────
+  const session = await getSessionFromRequest(req);
+
+  if (!session) {
+    if (isProtectedApi) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const loginUrl = new URL('/login', req.url);
+    loginUrl.searchParams.set('next', pathname);
+    const res = NextResponse.redirect(loginUrl);
+    res.headers.set('Set-Cookie', `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+    return res;
+  }
+
+  // ── Role-based page access ────────────────────────────────────────────────
+  if (isProtectedPage) {
+    const matchedPrefix = Object.keys(ROLE_PAGE_MAP).find(p => pathname.startsWith(p));
+    if (matchedPrefix) {
+      const allowed = ROLE_PAGE_MAP[matchedPrefix];
+      if (!allowed.includes(session.role)) {
+        const homeRoute = DB_TO_ROUTE[session.role] ?? '/login';
+        return NextResponse.redirect(new URL(homeRoute, req.url));
+      }
+    }
+  }
+
+  // ── Inject user info into request headers for API routes ─────────────────
+  const reqHeaders = new Headers(req.headers);
+  reqHeaders.set('x-user-id',    session.sub);
+  reqHeaders.set('x-user-email', session.email);
+  reqHeaders.set('x-user-name',  session.name);
+  reqHeaders.set('x-user-role',  session.role);
+
+  return NextResponse.next({ request: { headers: reqHeaders } });
+}
+
+
+// Keep 'middleware' export as alias so older tooling still works
+export const middleware = proxy;
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};
