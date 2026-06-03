@@ -1,121 +1,82 @@
 /**
- * server.mjs
+ * server.mjs  — PRODUCTION ENTRY POINT
  *
- * Production-hardened Next.js + Socket.io combined server.
- * Deploy this entire repo to Railway — it runs BOTH the Next.js app
- * AND the persistent Socket.io realtime server on the same process/port.
+ * Single-VPS architecture: Next.js + Socket.IO in one Node.js process.
  *
  * USAGE:
- *   node server.mjs          (production — Railway)
- *   node server.mjs --dev    (local dev)
+ *   node server.mjs          (production)
+ *   node server.mjs --dev    (development — wraps next dev)
  *
- * Environment variables required (set in Railway dashboard):
- *   PORT              — set automatically by Railway
- *   NEXT_PUBLIC_APP_URL — your Railway public URL  e.g. https://ops-xxx.up.railway.app
- *   JWT_SECRET        — same secret used by Next.js auth
- *   MONGODB_URI       — MongoDB Atlas connection string
- *   (all other app env vars — see .env.example)
+ * package.json scripts:
+ *   "dev":   "node server.mjs --dev"
+ *   "start": "node server.mjs"
+ *
+ * This is the ONLY place Socket.IO is initialized.
+ * It sets BOTH globalThis._socketIO and globalThis._io so that
+ * all API routes and lib/socket-server.ts see the same instance.
  */
 
 import { createServer } from 'node:http';
-import { parse }        from 'node:url';
-import next             from 'next';
+import { parse } from 'node:url';
+import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
-import { jwtVerify }    from 'jose';
+import { jwtVerify } from 'jose';
 
 const dev  = process.argv.includes('--dev');
 const port = parseInt(process.env.PORT ?? '3000', 10);
-
-// ── CORS origin ───────────────────────────────────────────────────────────────
-// In production, allow the realtime server host plus the deployed frontend origin(s).
-// This is required when the Vercel frontend connects to the Railway Socket.io server.
-function getAllowedOrigins() {
-  if (dev) return '*';
-
-  const candidates = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.NEXT_PUBLIC_SOCKET_URL,
-    process.env.ALLOWED_ORIGINS,
-    process.env.FRONTEND_URL,
-    process.env.NEXT_PUBLIC_FRONTEND_URL,
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-    process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : undefined,
-  ];
-
-  const origins = candidates
-    .flatMap(value => String(value ?? '')
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean))
-    .filter((value, index, list) => list.indexOf(value) === index);
-
-  return origins.length > 0 ? origins : ['http://localhost:3000'];
-}
 
 // ── Next.js app ───────────────────────────────────────────────────────────────
 
 const app    = next({ dev, turbopack: dev });
 const handle = app.getRequestHandler();
 
-console.log(`[OPS] Preparing Next.js (${dev ? 'dev' : 'production'})…`);
 await app.prepare();
-console.log('[OPS] Next.js ready.');
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
 
 const httpServer = createServer((req, res) => {
-  // Health check endpoint — used by Railway to verify the container is alive
-  if (req.url === '/health' || req.url === '/healthz') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      uptime: process.uptime(),
-      ts: new Date().toISOString(),
-      socketio: io?.sockets?.sockets?.size ?? 0,
-    }));
-    return;
-  }
-
   const parsedUrl = parse(req.url ?? '/', true);
   handle(req, res, parsedUrl);
 });
 
-// ── Socket.io ─────────────────────────────────────────────────────────────────
+// ── Socket.IO ─────────────────────────────────────────────────────────────────
 
 const io = new SocketIOServer(httpServer, {
   path: '/api/socketio',
   cors: {
-    origin: getAllowedOrigins(),
+    origin: process.env.NEXT_PUBLIC_APP_URL ?? '*',
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  // Allow both WebSocket (preferred) and long-polling (fallback behind proxies)
   transports: ['websocket', 'polling'],
-  // Keep-alive / reconnect tuning
-  pingTimeout:    30_000,
-  pingInterval:   15_000,
-  upgradeTimeout: 15_000,
-  // Allow Socket.io v3 clients (forward-compat)
+  pingTimeout:    20_000,
+  pingInterval:   10_000,
+  upgradeTimeout: 10_000,
   allowEIO3: true,
-  // Max HTTP buffer for large attachments / ICE candidates
-  maxHttpBufferSize: 1e6,
 });
 
-// Expose io so Next.js API routes can do io.to(...).emit(...)
-globalThis._socketIO        = io;
-
 // ── Global state ──────────────────────────────────────────────────────────────
+// Keep both _socketIO (legacy) and _io (socket-server.ts) pointing at the same instance.
 
 const presenceLastSeen = new Map(); // userId → timestamp
 const pendingSignals   = new Map(); // userId → [{data, expiresAt}]
 const userWorkspace    = new Map(); // userId → workspaceId
 
+const PRESENCE_TTL = 45_000;
+const SIGNAL_TTL   = 30_000;
+
+// Set ALL globals so every import path works
+globalThis._socketIO         = io;   // used by send/typing/read/signal routes directly
+globalThis._io               = io;   // used by lib/socket-server.ts helpers
 globalThis._presenceLastSeen = presenceLastSeen;
 globalThis._pendingSignals   = pendingSignals;
 globalThis._userWorkspace    = userWorkspace;
 
-const PRESENCE_TTL = 45_000;
-const SIGNAL_TTL   = 30_000;
+// Also expose on global (Node.js globalThis === global in practice, but be explicit)
+global._io               = io;
+global._presenceLastSeen = presenceLastSeen;
+global._pendingSignals   = pendingSignals;
+global._userWorkspace    = userWorkspace;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -180,15 +141,13 @@ function cleanExpiredPresence() {
   }
 }
 
-setInterval(cleanExpiredPresence, 15_000).unref();
+setInterval(cleanExpiredPresence, 15_000);
 
 // ── JWT auth ──────────────────────────────────────────────────────────────────
 
 async function verifyToken(token) {
   try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
-    const key = new TextEncoder().encode(secret);
+    const key = new TextEncoder().encode(process.env.JWT_SECRET);
     const { payload } = await jwtVerify(token, key);
     return payload;
   } catch {
@@ -196,31 +155,21 @@ async function verifyToken(token) {
   }
 }
 
-// ── Socket.io auth middleware ─────────────────────────────────────────────────
+// ── Socket.IO auth middleware ─────────────────────────────────────────────────
 
 io.use(async (socket, next) => {
-  try {
-    // 1. Token from explicit auth handshake (preferred for cross-origin clients)
-    let token = socket.handshake.auth?.token;
-
-    // 2. Fallback: extract from cookie header (same-origin clients)
-    if (!token && socket.handshake.headers.cookie) {
-      const match = socket.handshake.headers.cookie.match(/ops_session=([^;]+)/);
-      if (match) token = decodeURIComponent(match[1]);
-    }
-
-    if (!token) return next(new Error('AUTH_REQUIRED'));
-
-    const payload = await verifyToken(token);
-    if (!payload) return next(new Error('AUTH_INVALID'));
-
-    socket.userId      = String(payload.sub);
-    socket.userName    = String(payload.name ?? 'Unknown');
-    socket.workspaceId = String(payload.workspaceId ?? 'ops-main');
-    next();
-  } catch {
-    next(new Error('AUTH_ERROR'));
+  let token = socket.handshake.auth?.token;
+  if (!token && socket.handshake.headers.cookie) {
+    const match = socket.handshake.headers.cookie.match(/ops_session=([^;]+)/);
+    if (match) token = decodeURIComponent(match[1]);
   }
+  if (!token) return next(new Error('AUTH_REQUIRED'));
+  const payload = await verifyToken(token);
+  if (!payload) return next(new Error('AUTH_INVALID'));
+  socket.userId      = payload.sub;
+  socket.userName    = payload.name;
+  socket.workspaceId = payload.workspaceId ?? 'ops-main';
+  next();
 });
 
 // ── Connection handler ────────────────────────────────────────────────────────
@@ -235,18 +184,16 @@ io.on('connection', (socket) => {
   const wasOffline = !isUserOnline(userId);
   presenceLastSeen.set(userId, Date.now());
 
-  // Send full presence snapshot to the newly connected client
+  // Presence snapshot for the connecting client
   socket.emit('chat_event', {
     type: 'presence_snapshot',
     onlineUserIds: getOnlineUserIds(),
   });
 
   if (wasOffline) broadcastPresenceChange(userId, true);
-
-  // Deliver any buffered signals that arrived while the user was offline
   flushPendingSignals(userId);
 
-  // ── Client → server events ────────────────────────────────────────────────
+  // ── Client events ─────────────────────────────────────────────────────────
 
   socket.on('join_conversation', (conversationId) => {
     if (typeof conversationId === 'string' && conversationId.length > 0) {
@@ -255,9 +202,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave_conversation', (conversationId) => {
-    if (typeof conversationId === 'string') {
-      socket.leave(`conv:${conversationId}`);
-    }
+    socket.leave(`conv:${conversationId}`);
   });
 
   socket.on('heartbeat', () => {
@@ -268,89 +213,57 @@ io.on('connection', (socket) => {
   socket.on('typing', (data) => {
     if (!data?.conversationId) return;
     socket.to(`conv:${data.conversationId}`).emit('chat_event', {
-      type: 'typing',
+      type:           'typing',
       conversationId: data.conversationId,
       userId,
-      name: userName,
-      isTyping: !!data.isTyping,
+      name:           userName,
+      isTyping:       !!data.isTyping,
     });
   });
 
-  const relaySignal = (data, eventName) => {
-    if (!data?.targetUserId) return;
+  socket.on('signal', (data) => {
+    if (!data?.type || !data?.targetUserId) return;
 
-    const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup', 'offer', 'call-user', 'incoming-call', 'accept-call', 'ice-candidate', 'end-call'];
-    const type = data.type ?? eventName;
-    if (!VALID_TYPES.includes(type)) return;
+    const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup'];
+    if (!VALID_TYPES.includes(data.type)) return;
 
     const payload = {
-      type: 'vid_signal',
-      subtype: type,
-      from: userId,
-      fromName: userName,
+      type:           'vid_signal',
+      subtype:        data.type,
+      from:           userId,
+      fromName:       userName,
       conversationId: data.conversationId ?? null,
-      workspaceId: data.workspaceId ?? null,
-      sdp: data.sdp ?? null,
-      candidate: data.candidate ?? null,
+      sdp:            data.sdp ?? null,
+      candidate:      data.candidate ?? null,
     };
 
-    console.info('[Railway Relay]', { eventName, from: userId, to: data.targetUserId, subtype: payload.subtype });
-
     const delivered = pushToUser(data.targetUserId, payload);
-    if (!delivered && type !== 'ice' && type !== 'ice-candidate') {
+
+    // Queue non-ICE signals for brief offline window (reconnect recovery)
+    if (!delivered && data.type !== 'ice') {
       const list = pendingSignals.get(data.targetUserId) ?? [];
       list.push({ data: payload, expiresAt: Date.now() + SIGNAL_TTL });
       pendingSignals.set(data.targetUserId, list);
     }
-  };
+  });
 
-  socket.on('signal', (data) => relaySignal(data, 'signal'));
-  socket.on('call-user', (data) => relaySignal(data, 'call-user'));
-  socket.on('incoming-call', (data) => relaySignal(data, 'incoming-call'));
-  socket.on('accept-call', (data) => relaySignal(data, 'accept-call'));
-  socket.on('offer', (data) => relaySignal(data, 'offer'));
-  socket.on('answer', (data) => relaySignal(data, 'answer'));
-  socket.on('ice-candidate', (data) => relaySignal(data, 'ice-candidate'));
-  socket.on('end-call', (data) => relaySignal(data, 'end-call'));
-
-  socket.on('disconnect', (reason) => {
-    // 5 s grace period — allows tab reloads / brief reconnects without
-    // broadcasting a spurious offline event
+  socket.on('disconnect', () => {
+    // 5-second grace period — allows tab reloads without false-offline events
     setTimeout(() => {
       const room = io.sockets.adapter.rooms.get(`user:${userId}`);
       if (!room || room.size === 0) {
-        // User truly gone — TTL will handle the presence_change broadcast
-        // Uncomment for instant-offline behaviour:
-        // presenceLastSeen.delete(userId);
+        // Still no sockets after grace — let presence TTL expire naturally.
+        // Uncomment next line for instant offline:
         // broadcastPresenceChange(userId, false);
       }
     }, 5_000);
   });
 });
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
-
-function shutdown(signal) {
-  console.log(`[OPS] ${signal} received — shutting down…`);
-  io.close(() => {
-    httpServer.close(() => {
-      console.log('[OPS] Server closed.');
-      process.exit(0);
-    });
-  });
-  // Force exit after 10 s
-  setTimeout(() => process.exit(1), 10_000).unref();
-}
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
-
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 httpServer.listen(port, '0.0.0.0', () => {
-  const origins = getAllowedOrigins();
-  console.log(`[OPS] ✅ Server ready on port ${port}`);
-  console.log(`[OPS] Socket.io path: /api/socketio`);
-  console.log(`[OPS] CORS origins: ${Array.isArray(origins) ? origins.join(', ') : origins}`);
-  console.log(`[OPS] Health check: http://localhost:${port}/health`);
+  console.log(`> OPS Platform ready on http://0.0.0.0:${port}`);
+  console.log(`> Socket.IO attached at /api/socketio`);
+  console.log(`> Environment: ${dev ? 'development' : 'production'}`);
 });

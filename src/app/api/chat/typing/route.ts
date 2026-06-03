@@ -4,16 +4,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation } from '@/lib/db';
+import { getIO } from '@/lib/socket-server';
 
 /**
  * POST /api/chat/typing
  *
- * NOTE: With Socket.io, typing events are now emitted directly from the
- * client via socket.emit('typing', ...) — this HTTP route is a fallback
- * for environments where the socket connection isn't available.
- *
- * The socket server handles typing relay in its 'typing' event handler,
- * so this route is largely unused but kept for backwards compatibility.
+ * HTTP fallback for typing indicators. In normal operation, clients emit
+ * typing events directly via socket.emit('typing', ...) — this route only
+ * handles cases where the socket connection is temporarily unavailable.
  */
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
@@ -31,17 +29,15 @@ export async function POST(req: NextRequest) {
   const isParticipant = conv.participants.some((p: any) => String(p) === session.sub);
   if (!isParticipant) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // Broadcast via Socket.io if available
-  // globalThis._socketIO → set by server.mjs (Railway combined server)
-  // globalThis._io       → set by src/lib/socket-server.ts (fallback)
-  const io = (globalThis as any)._socketIO ?? (globalThis as any)._io;
+  // Broadcast via Socket.IO
+  const io = getIO();
   if (io) {
     const payload = {
-      type: 'typing',
+      type:           'typing',
       conversationId,
-      userId: session.sub,
-      name: session.name,
-      isTyping: !!isTyping,
+      userId:         session.sub,
+      name:           session.name,
+      isTyping:       !!isTyping,
     };
     io.to(`conv:${conversationId}`).except(`user:${session.sub}`).emit('chat_event', payload);
   }

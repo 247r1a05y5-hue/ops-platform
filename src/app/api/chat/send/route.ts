@@ -4,14 +4,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Message, MessageReadStatus, User, Workspace } from '@/lib/db';
+import { getIO } from '@/lib/socket-server';
 
 /**
  * POST /api/chat/send
  * Body: { conversationId?, recipientId?, body, attachments?, parentMessageId? }
  *
- * Broadcasts new messages via Socket.io (pushes to conversation room +
- * individual user rooms). Falls back to the chat-sse shim if Socket.io
- * is not initialized (should never happen in production).
+ * Broadcasts new messages via Socket.IO (pushes to conversation room +
+ * individual user rooms).
  */
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
@@ -104,29 +104,18 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  // ── Broadcast via Socket.io ──────────────────────────────────────────────
-  // globalThis._socketIO is set by server.mjs (our combined Railway server).
-  // globalThis._io is set by src/lib/socket-server.ts (fallback init path).
-  const io = (globalThis as any)._socketIO ?? (globalThis as any)._io;
+  // Broadcast via Socket.IO
+  const io = getIO();
   if (io) {
-    // Emit to the conversation room (all participants who have joined it)
+    // Emit to the conversation room (all participants who joined it)
     io.to(`conv:${String(conv._id)}`).emit('chat_event', payload);
-    // Also push directly to each participant's user room in case they
-    // haven't called join_conversation yet (e.g. they have the app open
-    // on a different page that doesn't know about this conversation).
+    // Also push to individual user rooms for participants NOT in the conv room
     for (const participantId of conv.participants) {
       io.to(`user:${String(participantId)}`).emit('chat_event', payload);
     }
   } else {
-    // Last-resort: SSE shim (only active in rare cold-start edge cases)
-    try {
-      const { pushChatSSE } = await import('@/lib/chat-sse');
-      for (const participantId of conv.participants) {
-        pushChatSSE(String(participantId), payload);
-      }
-    } catch {
-      // SSE not available — client will re-fetch on next poll
-    }
+    // Should never happen on VPS — log a warning
+    console.warn('[chat/send] Socket.IO not available — message saved but not broadcast in realtime');
   }
 
   return NextResponse.json({

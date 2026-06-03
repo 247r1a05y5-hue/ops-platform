@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, MessageReadStatus, User, Conversation } from '@/lib/db';
-// pushChatSSE via socket-server (imported lazily below)
+import { getIO } from '@/lib/socket-server';
 import mongoose from 'mongoose';
 
 export const runtime = 'nodejs';
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * POST /api/chat/conversations/read
  * Body: { conversationId }
  * Marks all messages in a conversation as read by the current user.
- * Broadcasts read_receipt to other participants via SSE so they can
+ * Broadcasts read_receipt to other participants via Socket.IO so they can
  * show seen indicators in real time.
  */
 export async function POST(req: NextRequest) {
@@ -25,11 +25,9 @@ export async function POST(req: NextRequest) {
 
   await connectDB();
 
-  // Fetch conversation to get participants
   const conv = await Conversation.findById(conversationId).lean() as any;
   if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Find the latest message in this conversation
   const latestMessage = await Message.findOne({
     conversationId: new mongoose.Types.ObjectId(conversationId),
   }).sort({ createdAt: -1 }).lean() as any;
@@ -43,7 +41,7 @@ export async function POST(req: NextRequest) {
     { upsert: true }
   );
 
-  // ── Broadcast read_receipt to other participants so they see "Seen" ──────────
+  // Broadcast read_receipt to other participants
   const readReceiptPayload = {
     type:           'read_receipt',
     conversationId,
@@ -53,21 +51,19 @@ export async function POST(req: NextRequest) {
     lastReadMsgId:  readMsgId ? String(readMsgId) : null,
   };
 
-  // Broadcast via Socket.io
-  const io = (globalThis as any)._socketIO;
+  const io = getIO();
+
   for (const participantId of conv.participants) {
-    if (String(participantId) !== session.sub) {
-      if (io) {
-        io.to(`user:${String(participantId)}`).emit('chat_event', readReceiptPayload);
-      }
+    if (String(participantId) !== session.sub && io) {
+      io.to(`user:${String(participantId)}`).emit('chat_event', readReceiptPayload);
     }
   }
 
-  // ── Compute updated unread count for THIS user (for badge sync across tabs) ──
+  // Compute updated unread count for THIS user (for badge sync across tabs)
   const currentUser = await User.findById(session.sub).lean() as any;
   const workspaceId = currentUser?.workspaceId;
 
-  if (workspaceId) {
+  if (workspaceId && io) {
     const conversations = await Conversation.find({
       workspaceId,
       participants: session.sub,
@@ -110,15 +106,13 @@ export async function POST(req: NextRequest) {
       totalUnread += count;
     }
 
-    // Push to other tabs of this user via Socket.io
-    if (io) {
-      io.to(`user:${session.sub}`).emit('chat_event', {
-        type:         'unread_update',
-        conversationId,
-        unreadCount:  0,
-        totalUnread,
-      });
-    }
+    // Push unread badge update to all tabs of this user
+    io.to(`user:${session.sub}`).emit('chat_event', {
+      type:        'unread_update',
+      conversationId,
+      unreadCount: 0,
+      totalUnread,
+    });
   }
 
   return NextResponse.json({ success: true });

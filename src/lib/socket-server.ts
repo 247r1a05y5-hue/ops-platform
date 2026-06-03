@@ -1,107 +1,64 @@
 /**
  * lib/socket-server.ts
  *
- * Singleton Socket.io server — attached to the Next.js HTTP server.
+ * Helper utilities for broadcasting via Socket.IO from within API routes.
  *
- * Architecture:
- *   - One persistent Socket.io instance per Node.js process (survives HMR)
- *   - Room-based broadcasting: workspace rooms + conversation rooms
- *   - Heartbeat-based presence with 45 s TTL
- *   - Pending signal queue for vid_signal delivery during reconnect windows
- *   - Drop-in replacement for all pushChatSSE / broadcastPresenceChange calls
+ * IMPORTANT: This file does NOT initialize Socket.IO. Initialization is done
+ * exclusively in server.mjs at boot time. This file only reads the instance
+ * that server.mjs sets on globalThis.
  *
- * Room naming conventions:
- *   user:{userId}          — user's personal room (all their tabs/devices)
- *   workspace:{workspaceId} — all users in a workspace
- *   conv:{conversationId}   — all participants in a conversation
+ * All functions are safe to call even before the first request — they check
+ * for the global instance and no-op gracefully if not yet available.
  */
 
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import type { Server as HTTPServer } from 'http';
-import { jwtVerify } from 'jose';
+import type { Server as SocketIOServer } from 'socket.io';
 
-// ── Global state (survives Next.js HMR) ──────────────────────────────────────
+// ── Shared state references (all set by server.mjs) ──────────────────────────
 
-interface PendingSignal {
-  data: object;
-  expiresAt: number;
-}
-
+// TypeScript declarations so we can access the globals set in server.mjs
 declare global {
   var _io:               SocketIOServer | undefined;
+  var _socketIO:         SocketIOServer | undefined;  // same instance, legacy name
   var _presenceLastSeen: Map<string, number> | undefined;
   var _presenceInterval: NodeJS.Timeout | undefined;
-  var _pendingSignals:   Map<string, PendingSignal[]> | undefined;
-  // userId → workspaceId mapping (populated on socket connect)
+  var _pendingSignals:   Map<string, { data: object; expiresAt: number }[]> | undefined;
   var _userWorkspace:    Map<string, string> | undefined;
-  // socket.id → userId mapping for reconnect / stale ID cleanup
-  var _socketUserMap:    Map<string, string> | undefined;
 }
 
-if (!global._presenceLastSeen) global._presenceLastSeen = new Map();
-if (!global._pendingSignals)   global._pendingSignals   = new Map();
-if (!global._userWorkspace)    global._userWorkspace    = new Map();
-if (!global._socketUserMap)    global._socketUserMap    = new Map();
+const PRESENCE_TTL = 45_000;
+const SIGNAL_TTL   = 30_000;
 
-function lastSeen():      Map<string, number>           { return global._presenceLastSeen!; }
-function pendingSignals(): Map<string, PendingSignal[]>  { return global._pendingSignals!; }
-function userWorkspace():  Map<string, string>           { return global._userWorkspace!; }
-function socketUserMap():  Map<string, string>           { return global._socketUserMap!; }
+// ── IO accessor ───────────────────────────────────────────────────────────────
 
-const PRESENCE_TTL = 45_000; // 45 s — 3 missed 15 s heartbeats
-const SIGNAL_TTL   = 30_000; // 30 s queued signal window
-
-function getAllowedOrigins(): string[] | '*' {
-  if (process.env.NODE_ENV !== 'production') return '*';
-
-  const candidates = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.NEXT_PUBLIC_SOCKET_URL,
-    process.env.ALLOWED_ORIGINS,
-    process.env.FRONTEND_URL,
-    process.env.NEXT_PUBLIC_FRONTEND_URL,
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-    process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : undefined,
-  ];
-
-  const origins = candidates
-    .flatMap(value => String(value ?? '')
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean))
-    .filter((value, index, list) => list.indexOf(value) === index);
-
-  return origins.length > 0 ? origins : ['http://localhost:3000'];
+/**
+ * Returns the Socket.IO server instance, or null if not yet initialized.
+ * Checks both global names to handle any code path.
+ */
+export function getIO(): SocketIOServer | null {
+  return global._io ?? global._socketIO ?? null;
 }
 
-// ── JWT auth helper ───────────────────────────────────────────────────────────
-
-async function verifySocketAuth(token: string): Promise<{ sub: string; name: string; workspaceId?: string } | null> {
-  try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
-    const key = new TextEncoder().encode(secret);
-    const { payload } = await jwtVerify(token, key);
-    return payload as any;
-  } catch {
-    return null;
-  }
-}
+// State map accessors — read from global maps set by server.mjs
+function lastSeen():      Map<string, number>                              { return global._presenceLastSeen ?? new Map(); }
+function pendingSignals(): Map<string, { data: object; expiresAt: number }[]> { return global._pendingSignals   ?? new Map(); }
+function userWorkspace():  Map<string, string>                             { return global._userWorkspace    ?? new Map(); }
 
 // ── Presence helpers ──────────────────────────────────────────────────────────
 
 export function isUserOnline(userId: string): boolean {
-  if (!global._io) return false;
-  const room = global._io.sockets.adapter.rooms.get(`user:${userId}`);
+  const io = getIO();
+  if (!io) return false;
+  const room = io.sockets.adapter.rooms.get(`user:${userId}`);
   if (room && room.size > 0) return true;
   const t = lastSeen().get(userId);
   return !!t && Date.now() - t < PRESENCE_TTL;
 }
 
 export function getOnlineUserIds(): string[] {
+  const io = getIO();
   const online = new Set<string>();
-  if (global._io) {
-    for (const [roomName] of global._io.sockets.adapter.rooms) {
+  if (io) {
+    for (const [roomName] of io.sockets.adapter.rooms) {
       if (roomName.startsWith('user:')) online.add(roomName.slice(5));
     }
   }
@@ -115,32 +72,13 @@ export function getOnlineUserIds(): string[] {
 export function touchUserPresence(userId: string) {
   const wasOffline = !isUserOnline(userId);
   lastSeen().set(userId, Date.now());
-  if (wasOffline && global._io) {
-    broadcastPresenceChange(userId, true);
-  }
+  if (wasOffline) broadcastPresenceChange(userId, true);
 }
 
 export function forceUserOffline(userId: string) {
   if (isUserOnline(userId)) return; // still has live sockets
   lastSeen().delete(userId);
   broadcastPresenceChange(userId, false);
-}
-
-function cleanExpiredPresence() {
-  const now = Date.now();
-  for (const [userId, ts] of lastSeen().entries()) {
-    const hasConn = isUserOnline(userId);
-    if (!hasConn && now - ts > PRESENCE_TTL) {
-      lastSeen().delete(userId);
-      broadcastPresenceChange(userId, false);
-    }
-  }
-  // Clean expired pending signals
-  for (const [uid, signals] of pendingSignals().entries()) {
-    const live = signals.filter(s => s.expiresAt > now);
-    if (live.length === 0) pendingSignals().delete(uid);
-    else pendingSignals().set(uid, live);
-  }
 }
 
 // ── Signal queue ──────────────────────────────────────────────────────────────
@@ -151,18 +89,6 @@ export function storePendingSignal(userId: string, data: object) {
   pendingSignals().set(userId, list);
 }
 
-function flushPendingSignals(userId: string) {
-  const list = pendingSignals().get(userId);
-  if (!list || list.length === 0) return;
-  pendingSignals().delete(userId);
-  const now = Date.now();
-  for (const sig of list) {
-    if (sig.expiresAt > now) {
-      pushToUser(userId, sig.data);
-    }
-  }
-}
-
 // ── Broadcasting helpers ──────────────────────────────────────────────────────
 
 /**
@@ -170,11 +96,12 @@ function flushPendingSignals(userId: string) {
  * Returns true if the user has at least one connected socket.
  */
 export function pushToUser(userId: string, data: object): boolean {
-  if (!global._io) return false;
+  const io = getIO();
+  if (!io) return false;
   const room = `user:${userId}`;
-  const roomObj = global._io.sockets.adapter.rooms.get(room);
+  const roomObj = io.sockets.adapter.rooms.get(room);
   if (!roomObj || roomObj.size === 0) return false;
-  global._io.to(room).emit('chat_event', data);
+  io.to(room).emit('chat_event', data);
   return true;
 }
 
@@ -195,14 +122,14 @@ export function pushToParticipants(
  * Broadcast a presence change to ALL connected users in the same workspace.
  */
 export function broadcastPresenceChange(userId: string, isOnline: boolean) {
-  if (!global._io) return;
+  const io = getIO();
+  if (!io) return;
   const payload = { type: 'presence_change', userId, isOnline };
   const wsId = userWorkspace().get(userId);
   if (wsId) {
-    global._io.to(`workspace:${wsId}`).emit('chat_event', payload);
+    io.to(`workspace:${wsId}`).emit('chat_event', payload);
   } else {
-    // Fallback: broadcast to all if workspace unknown
-    global._io.emit('chat_event', payload);
+    io.emit('chat_event', payload);
   }
 }
 
@@ -210,184 +137,28 @@ export function broadcastPresenceChange(userId: string, isOnline: boolean) {
  * Broadcast to all users in a workspace.
  */
 export function broadcastToWorkspace(workspaceId: string, data: object, excludeUserId?: string) {
-  if (!global._io) return;
+  const io = getIO();
+  if (!io) return;
   if (excludeUserId) {
-    global._io.to(`workspace:${workspaceId}`).except(`user:${excludeUserId}`).emit('chat_event', data);
+    io.to(`workspace:${workspaceId}`).except(`user:${excludeUserId}`).emit('chat_event', data);
   } else {
-    global._io.to(`workspace:${workspaceId}`).emit('chat_event', data);
+    io.to(`workspace:${workspaceId}`).emit('chat_event', data);
   }
 }
 
 // Legacy alias — keeps all existing callers (send/route, typing/route, etc.) working
 export const pushChatSSE = pushToUser;
 
-// ── Server initialization ─────────────────────────────────────────────────────
+// ── initSocketServer is a NO-OP on VPS ───────────────────────────────────────
+// Kept for import compatibility only. server.mjs handles initialization.
+import type { Server as HTTPServer } from 'http';
 
-export function getIO(): SocketIOServer | null {
-  return global._io ?? null;
-}
-
-export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
-  if (global._io) return global._io;
-
-  const io = new SocketIOServer(httpServer, {
-    path: '/api/socketio',
-    cors: {
-      origin: getAllowedOrigins(),
-      methods: ['GET', 'POST'],
-      credentials: true,
-    },
-    transports: ['websocket', 'polling'],
-    pingTimeout:  20_000,
-    pingInterval: 10_000,
-    upgradeTimeout: 10_000,
-    allowEIO3: true,
-  });
-
-  global._io = io;
-
-  // ── Authentication middleware ──────────────────────────────────────────────
-  io.use(async (socket, next) => {
-    try {
-      // Token can come from auth handshake or cookie header
-      let token: string | undefined = socket.handshake.auth?.token;
-
-      if (!token && socket.handshake.headers.cookie) {
-        const match = socket.handshake.headers.cookie.match(/ops_session=([^;]+)/);
-        if (match) token = decodeURIComponent(match[1]);
-      }
-
-      if (!token) return next(new Error('AUTH_REQUIRED'));
-
-      const payload = await verifySocketAuth(token);
-      if (!payload) return next(new Error('AUTH_INVALID'));
-
-      (socket as any).userId = payload.sub;
-      (socket as any).userName = payload.name;
-      (socket as any).workspaceId = payload.workspaceId ?? 'ops-main';
-      next();
-    } catch (err) {
-      next(new Error('AUTH_ERROR'));
-    }
-  });
-
-  // ── Connection handler ─────────────────────────────────────────────────────
-  io.on('connection', async (socket: Socket) => {
-    const userId: string      = (socket as any).userId;
-    const userName: string    = (socket as any).userName;
-    const workspaceId: string = (socket as any).workspaceId ?? 'ops-main';
-
-    // Track user → workspace and socket id mapping
-    userWorkspace().set(userId, workspaceId);
-    socketUserMap().set(socket.id, userId);
-
-    // Join personal + workspace rooms
-    socket.join(`user:${userId}`);
-    socket.join(`workspace:${workspaceId}`);
-
-    // Mark presence
-    const wasOffline = !isUserOnline(userId);
-    lastSeen().set(userId, Date.now());
-
-    // Send presence snapshot to this socket
-    socket.emit('chat_event', {
-      type: 'presence_snapshot',
-      onlineUserIds: getOnlineUserIds(),
-    });
-
-    // Broadcast this user coming online to their workspace
-    if (wasOffline) {
-      broadcastPresenceChange(userId, true);
-    }
-
-    // Flush any queued signals
-    flushPendingSignals(userId);
-
-    // ── Client events ──────────────────────────────────────────────────────
-
-    /** Join a conversation room for targeted message delivery */
-    socket.on('join_conversation', (conversationId: string) => {
-      if (typeof conversationId === 'string' && conversationId.length > 0) {
-        socket.join(`conv:${conversationId}`);
-      }
-    });
-
-    /** Leave a conversation room */
-    socket.on('leave_conversation', (conversationId: string) => {
-      socket.leave(`conv:${conversationId}`);
-    });
-
-    /** Heartbeat — keeps presence TTL alive */
-    socket.on('heartbeat', () => {
-      lastSeen().set(userId, Date.now());
-      socket.emit('heartbeat_ack');
-    });
-
-    /** Typing indicator — server relays to conversation room excluding sender */
-    socket.on('typing', (data: { conversationId: string; isTyping: boolean }) => {
-      if (!data?.conversationId) return;
-      socket.to(`conv:${data.conversationId}`).emit('chat_event', {
-        type: 'typing',
-        conversationId: data.conversationId,
-        userId,
-        name: userName,
-        isTyping: !!data.isTyping,
-      });
-    });
-
-    const relaySignal = (data: any, eventName: string) => {
-      if (!data?.targetUserId) return;
-
-      const payload = {
-        type: 'vid_signal',
-        subtype: data.type ?? eventName,
-        from: userId,
-        fromName: userName,
-        conversationId: data.conversationId ?? null,
-        workspaceId: data.workspaceId ?? null,
-        sdp: data.sdp ?? null,
-        candidate: data.candidate ?? null,
-      };
-
-      console.info('[Socket Relay]', { eventName, from: userId, to: data.targetUserId, subtype: payload.subtype });
-
-      const delivered = pushToUser(data.targetUserId, payload);
-      if (!delivered) {
-        storePendingSignal(data.targetUserId, payload);
-      }
-    };
-
-    /** Jitsi calling signaling relay */
-    socket.on('signal', (data: any) => relaySignal(data, 'signal'));
-    socket.on('call-user', (data: any) => relaySignal(data, 'call-user'));
-    socket.on('incoming-call', (data: any) => relaySignal(data, 'incoming-call'));
-    socket.on('accept-call', (data: any) => relaySignal(data, 'accept-call'));
-    socket.on('offer', (data: any) => relaySignal(data, 'offer'));
-    socket.on('answer', (data: any) => relaySignal(data, 'answer'));
-    socket.on('ice-candidate', (data: any) => relaySignal(data, 'ice-candidate'));
-    socket.on('end-call', (data: any) => relaySignal(data, 'end-call'));
-
-    // ── Disconnect ─────────────────────────────────────────────────────────
-    socket.on('disconnect', (reason) => {
-      console.warn('[Socket] disconnect', { userId, reason, socketId: socket.id });
-      socketUserMap().delete(socket.id);
-      setTimeout(() => {
-        const room = io.sockets.adapter.rooms.get(`user:${userId}`);
-        const stillConnected = room && room.size > 0;
-        if (!stillConnected) {
-          lastSeen().set(userId, Date.now() - PRESENCE_TTL);
-        }
-      }, 5_000);
-    });
-  });
-
-  // ── Presence cleanup interval ──────────────────────────────────────────────
-  if (!global._presenceInterval) {
-    const iv = setInterval(cleanExpiredPresence, 15_000);
-    if (typeof iv.unref === 'function') iv.unref();
-    global._presenceInterval = iv;
+export function initSocketServer(httpServer: HTTPServer): SocketIOServer | null {
+  const existing = getIO();
+  if (existing) {
+    console.log('[socket-server] initSocketServer called but Socket.IO already running (server.mjs owns it)');
+    return existing;
   }
-
-  console.log('[Socket.io] Server initialized on /api/socketio');
-  return io;
+  console.warn('[socket-server] WARNING: initSocketServer called but no Socket.IO instance found. Did server.mjs start?');
+  return null;
 }

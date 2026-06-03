@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Image optimisation — allow Cloudinary CDN
+  // No turbopack root needed — single deployment, no workspace ambiguity
   images: {
     remotePatterns: [
       {
@@ -11,20 +11,11 @@ const nextConfig = {
     ],
   },
 
-  // Disable Next.js telemetry in CI/CD
-  // (also set NEXT_TELEMETRY_DISABLED=1 in Railway env vars)
-
-  // Trailing slashes — keep consistent with Railway reverse proxy
-  trailingSlash: false,
-
-  // Allow Railway's public domain in production
-  // (Next.js 15 requires this for server actions across origins)
+  // Ensure Next.js doesn't try to serve the custom server path
+  // (server.mjs is the entry point, not next start)
   experimental: {
-    serverActions: {
-      allowedOrigins: process.env.NEXT_PUBLIC_APP_URL
-        ? [process.env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, '')]
-        : [],
-    },
+    // Enable server actions if you use them
+    // serverActions: { allowedOrigins: ['yourdomain.com'] },
   },
 };
 
