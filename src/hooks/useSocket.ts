@@ -48,9 +48,8 @@ function getSessionToken(): string | undefined {
 }
 
 function createSocket(): Socket {
-  // NEXT_PUBLIC_SOCKET_URL can be set to the Railway URL for split deployments,
-  // or left empty for combined Railway deployments (same origin).
-  const socketUrl  = process.env.NEXT_PUBLIC_SOCKET_URL || undefined;
+  // NEXT_PUBLIC_SOCKET_URL should point to the Railway realtime host in production.
+  const socketUrl  = (process.env.NEXT_PUBLIC_SOCKET_URL || '').replace(/\/$/, '') || undefined;
   const token      = getSessionToken();
 
   const socketOpts = {
@@ -64,6 +63,12 @@ function createSocket(): Socket {
     withCredentials: true,      // send cookies for same-origin auth
     auth: token ? { token } : undefined,  // explicit token for cross-origin auth
   };
+
+  console.info('[Socket] connecting to realtime server', {
+    target: socketUrl || window.location.origin,
+    hasToken: Boolean(token),
+    transports: socketOpts.transports,
+  });
 
   return socketUrl
     ? io(socketUrl, socketOpts)
@@ -89,8 +94,18 @@ export function useSocket() {
     const socket = getSharedSocket();
     socketRef.current = socket;
 
-    const onConnect    = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
+    const onConnect = () => {
+      console.info('[Socket] connected', {
+        id: socket.id,
+        transport: socket.io?.engine?.transport?.name || 'unknown',
+        url: process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin,
+      });
+      setConnected(true);
+    };
+    const onDisconnect = (reason: string) => {
+      console.warn('[Socket] disconnected', { reason, id: socket.id });
+      setConnected(false);
+    };
 
     if (socket.connected) setConnected(true);
 
@@ -146,13 +161,22 @@ export function useSocket() {
   }, []);
 
   const emitSignal = useCallback((data: {
-    type: 'ring' | 'answer' | 'ice' | 'ice_restart' | 'reject' | 'hangup';
+    type: 'ring' | 'answer' | 'ice' | 'ice_restart' | 'reject' | 'hangup' | 'offer' | 'call-user' | 'incoming-call' | 'accept-call' | 'ice-candidate' | 'end-call';
     targetUserId: string;
     conversationId?: string;
+    workspaceId?: string;
     sdp?: RTCSessionDescriptionInit;
     candidate?: RTCIceCandidateInit;
   }) => {
-    socketRef.current?.emit('signal', data);
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    socket.emit('signal', data);
+    if (data.type === 'ring') socket.emit('call-user', data);
+    if (data.type === 'answer') socket.emit('accept-call', data);
+    if (data.type === 'reject' || data.type === 'hangup') socket.emit('end-call', data);
+    if (data.type === 'ice' || data.type === 'ice_restart') socket.emit('ice-candidate', data);
+    if (data.type === 'offer') socket.emit('offer', data);
   }, []);
 
   return {

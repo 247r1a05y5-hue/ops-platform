@@ -27,15 +27,29 @@ const dev  = process.argv.includes('--dev');
 const port = parseInt(process.env.PORT ?? '3000', 10);
 
 // ── CORS origin ───────────────────────────────────────────────────────────────
-// In production: allow requests from the NEXT_PUBLIC_APP_URL domain only.
-// Falls back to '*' in dev for convenience.
+// In production, allow the realtime server host plus the deployed frontend origin(s).
+// This is required when the Vercel frontend connects to the Railway Socket.io server.
 function getAllowedOrigins() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (!dev && appUrl) {
-    // Support comma-separated list of origins for multi-domain setups
-    return appUrl.split(',').map(u => u.trim()).filter(Boolean);
-  }
-  return '*';
+  if (dev) return '*';
+
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SOCKET_URL,
+    process.env.ALLOWED_ORIGINS,
+    process.env.FRONTEND_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : undefined,
+  ];
+
+  const origins = candidates
+    .flatMap(value => String(value ?? '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean))
+    .filter((value, index, list) => list.indexOf(value) === index);
+
+  return origins.length > 0 ? origins : ['http://localhost:3000'];
 }
 
 // ── Next.js app ───────────────────────────────────────────────────────────────
@@ -262,32 +276,42 @@ io.on('connection', (socket) => {
     });
   });
 
-  // WebRTC / Jitsi call signaling relay
-  socket.on('signal', (data) => {
-    if (!data?.type || !data?.targetUserId) return;
+  const relaySignal = (data, eventName) => {
+    if (!data?.targetUserId) return;
 
-    const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup'];
-    if (!VALID_TYPES.includes(data.type)) return;
+    const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup', 'offer', 'call-user', 'incoming-call', 'accept-call', 'ice-candidate', 'end-call'];
+    const type = data.type ?? eventName;
+    if (!VALID_TYPES.includes(type)) return;
 
     const payload = {
-      type:           'vid_signal',
-      subtype:        data.type,
-      from:           userId,
-      fromName:       userName,
+      type: 'vid_signal',
+      subtype: type,
+      from: userId,
+      fromName: userName,
       conversationId: data.conversationId ?? null,
-      sdp:            data.sdp       ?? null,
-      candidate:      data.candidate ?? null,
+      workspaceId: data.workspaceId ?? null,
+      sdp: data.sdp ?? null,
+      candidate: data.candidate ?? null,
     };
 
-    const delivered = pushToUser(data.targetUserId, payload);
+    console.info('[Railway Relay]', { eventName, from: userId, to: data.targetUserId, subtype: payload.subtype });
 
-    // Queue non-ICE signals for delivery on next connect (30 s window)
-    if (!delivered && data.type !== 'ice') {
+    const delivered = pushToUser(data.targetUserId, payload);
+    if (!delivered && type !== 'ice' && type !== 'ice-candidate') {
       const list = pendingSignals.get(data.targetUserId) ?? [];
       list.push({ data: payload, expiresAt: Date.now() + SIGNAL_TTL });
       pendingSignals.set(data.targetUserId, list);
     }
-  });
+  };
+
+  socket.on('signal', (data) => relaySignal(data, 'signal'));
+  socket.on('call-user', (data) => relaySignal(data, 'call-user'));
+  socket.on('incoming-call', (data) => relaySignal(data, 'incoming-call'));
+  socket.on('accept-call', (data) => relaySignal(data, 'accept-call'));
+  socket.on('offer', (data) => relaySignal(data, 'offer'));
+  socket.on('answer', (data) => relaySignal(data, 'answer'));
+  socket.on('ice-candidate', (data) => relaySignal(data, 'ice-candidate'));
+  socket.on('end-call', (data) => relaySignal(data, 'end-call'));
 
   socket.on('disconnect', (reason) => {
     // 5 s grace period — allows tab reloads / brief reconnects without

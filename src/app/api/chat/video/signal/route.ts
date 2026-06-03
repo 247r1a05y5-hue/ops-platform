@@ -20,13 +20,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { type, targetUserId, conversationId, workspaceId } = body;
+  const { type, targetUserId, conversationId, workspaceId, sdp, candidate } = body;
 
   if (!type || !targetUserId) {
     return NextResponse.json({ error: 'type and targetUserId are required' }, { status: 400 });
   }
 
-  const validTypes = ['ring', 'answer', 'reject', 'hangup'];
+  const validTypes = ['ring', 'answer', 'reject', 'hangup', 'ice', 'ice_restart', 'offer', 'call-user', 'incoming-call', 'accept-call', 'ice-candidate', 'end-call'];
   if (!validTypes.includes(type)) {
     return NextResponse.json(
       { error: `Invalid signal type. Must be one of: ${validTypes.join(', ')}` },
@@ -41,6 +41,8 @@ export async function POST(req: NextRequest) {
     fromName:       session.name,
     conversationId: conversationId ?? null,
     workspaceId:    workspaceId ?? null,
+    sdp:            sdp ?? null,
+    candidate:      candidate ?? null,
   };
 
   const io = (globalThis as any)._socketIO;

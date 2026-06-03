@@ -34,18 +34,45 @@ declare global {
   var _pendingSignals:   Map<string, PendingSignal[]> | undefined;
   // userId → workspaceId mapping (populated on socket connect)
   var _userWorkspace:    Map<string, string> | undefined;
+  // socket.id → userId mapping for reconnect / stale ID cleanup
+  var _socketUserMap:    Map<string, string> | undefined;
 }
 
 if (!global._presenceLastSeen) global._presenceLastSeen = new Map();
 if (!global._pendingSignals)   global._pendingSignals   = new Map();
 if (!global._userWorkspace)    global._userWorkspace    = new Map();
+if (!global._socketUserMap)    global._socketUserMap    = new Map();
 
 function lastSeen():      Map<string, number>           { return global._presenceLastSeen!; }
 function pendingSignals(): Map<string, PendingSignal[]>  { return global._pendingSignals!; }
 function userWorkspace():  Map<string, string>           { return global._userWorkspace!; }
+function socketUserMap():  Map<string, string>           { return global._socketUserMap!; }
 
 const PRESENCE_TTL = 45_000; // 45 s — 3 missed 15 s heartbeats
 const SIGNAL_TTL   = 30_000; // 30 s queued signal window
+
+function getAllowedOrigins(): string[] | '*' {
+  if (process.env.NODE_ENV !== 'production') return '*';
+
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SOCKET_URL,
+    process.env.ALLOWED_ORIGINS,
+    process.env.FRONTEND_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : undefined,
+  ];
+
+  const origins = candidates
+    .flatMap(value => String(value ?? '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean))
+    .filter((value, index, list) => list.indexOf(value) === index);
+
+  return origins.length > 0 ? origins : ['http://localhost:3000'];
+}
 
 // ── JWT auth helper ───────────────────────────────────────────────────────────
 
@@ -206,7 +233,7 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
     path: '/api/socketio',
     cors: {
-      origin: '*',
+      origin: getAllowedOrigins(),
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -250,8 +277,9 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
     const userName: string    = (socket as any).userName;
     const workspaceId: string = (socket as any).workspaceId ?? 'ops-main';
 
-    // Track user → workspace
+    // Track user → workspace and socket id mapping
     userWorkspace().set(userId, workspaceId);
+    socketUserMap().set(socket.id, userId);
 
     // Join personal + workspace rooms
     socket.join(`user:${userId}`);
@@ -307,44 +335,49 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
       });
     });
 
-    /** Jitsi calling signaling relay */
-    socket.on('signal', (data: {
-      type: 'ring' | 'answer' | 'reject' | 'hangup';
-      targetUserId: string;
-      conversationId?: string;
-      workspaceId?: string;
-    }) => {
-      if (!data?.type || !data?.targetUserId) return;
+    const relaySignal = (data: any, eventName: string) => {
+      if (!data?.targetUserId) return;
 
       const payload = {
         type: 'vid_signal',
-        subtype: data.type,
+        subtype: data.type ?? eventName,
         from: userId,
         fromName: userName,
         conversationId: data.conversationId ?? null,
         workspaceId: data.workspaceId ?? null,
+        sdp: data.sdp ?? null,
+        candidate: data.candidate ?? null,
       };
 
-      const delivered = pushToUser(data.targetUserId, payload);
+      console.info('[Socket Relay]', { eventName, from: userId, to: data.targetUserId, subtype: payload.subtype });
 
+      const delivered = pushToUser(data.targetUserId, payload);
       if (!delivered) {
         storePendingSignal(data.targetUserId, payload);
       }
-    });
+    };
+
+    /** Jitsi calling signaling relay */
+    socket.on('signal', (data: any) => relaySignal(data, 'signal'));
+    socket.on('call-user', (data: any) => relaySignal(data, 'call-user'));
+    socket.on('incoming-call', (data: any) => relaySignal(data, 'incoming-call'));
+    socket.on('accept-call', (data: any) => relaySignal(data, 'accept-call'));
+    socket.on('offer', (data: any) => relaySignal(data, 'offer'));
+    socket.on('answer', (data: any) => relaySignal(data, 'answer'));
+    socket.on('ice-candidate', (data: any) => relaySignal(data, 'ice-candidate'));
+    socket.on('end-call', (data: any) => relaySignal(data, 'end-call'));
 
     // ── Disconnect ─────────────────────────────────────────────────────────
-    socket.on('disconnect', () => {
-      // Wait for other sockets of this user before declaring offline
-      // Socket.io handles room cleanup automatically
+    socket.on('disconnect', (reason) => {
+      console.warn('[Socket] disconnect', { userId, reason, socketId: socket.id });
+      socketUserMap().delete(socket.id);
       setTimeout(() => {
         const room = io.sockets.adapter.rooms.get(`user:${userId}`);
         const stillConnected = room && room.size > 0;
         if (!stillConnected) {
-          // Don't instantly broadcast offline — let TTL handle brief reconnects
-          // But update lastSeen so the TTL can expire naturally
-          // For instant-offline behavior, call forceUserOffline(userId)
+          lastSeen().set(userId, Date.now() - PRESENCE_TTL);
         }
-      }, 5_000); // 5 s grace period for tab reloads
+      }, 5_000);
     });
   });
 
