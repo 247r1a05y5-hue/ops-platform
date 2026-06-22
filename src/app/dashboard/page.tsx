@@ -43,6 +43,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<any[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New task input states
@@ -61,7 +62,7 @@ export default function Dashboard() {
   // Load KPI stats based on selected tab
   const fetchStats = async () => {
     try {
-      const res = await fetch(`/api/dashboard/stats?period=${activeTab}`);
+      const res = await fetch(`/api/dashboard/stats?period=${activeTab}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setStats(data.stats);
@@ -74,7 +75,7 @@ export default function Dashboard() {
   // Load actual tasks from DB
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks');
+      const res = await fetch('/api/tasks', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         // Map backend tasks to frontend expectations
@@ -99,7 +100,7 @@ export default function Dashboard() {
   // Load invoices from DB
   const fetchInvoices = async () => {
     try {
-      const res = await fetch('/api/invoices');
+      const res = await fetch('/api/invoices', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setInvoices(data.invoices);
@@ -109,11 +110,22 @@ export default function Dashboard() {
     }
   };
 
+  // Load live team members with task counts
+  const fetchTeam = async () => {
+    try {
+      const res = await fetch('/api/dashboard/team', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) setTeamMembers(data.team);
+    } catch (err) {
+      console.error('Failed to load team:', err);
+    }
+  };
+
   // Sync everything on mount and when active period tab changes
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      await Promise.all([fetchStats(), fetchTasks(), fetchInvoices()]);
+      await Promise.all([fetchStats(), fetchTasks(), fetchInvoices(), fetchTeam()]);
       setLoading(false);
     };
     loadAll();
@@ -257,13 +269,6 @@ export default function Dashboard() {
     }
   };
 
-  // Dynamic system overview mock lists
-  const employees = [
-    { name: 'Maya Thompson', role: 'Ops Director', status: 'Online', tasks: 14 },
-    { name: 'Mateo Rivera', role: 'Developer', status: 'Busy', tasks: 11 },
-    { name: 'Priya Patel', role: 'Marketing', status: 'Online', tasks: 9 },
-  ];
-
   // Dynamic invoicing logic
   const pendingInvoices = invoices.filter(inv => inv.status === 'Pending');
   const overdueTotal = invoices
@@ -393,32 +398,55 @@ export default function Dashboard() {
                 <button onClick={() => showToast('Viewing team performance', 'info')} className="text-xs font-semibold text-accent hover:underline">View All</button>
               </div>
               <div className="space-y-4">
-                {employees.map((emp, i) => (
-                  <motion.div 
-                    key={i} 
-                    initial={{ opacity: 0, x: -10 }} 
-                    animate={{ opacity: 1, x: 0 }} 
-                    transition={{ delay: 0.3 + (i * 0.1) }}
-                    className="flex items-center justify-between p-3 rounded-lg bg-base border border-border/50 hover:border-accent/30 transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 flex items-center justify-center text-[10px] font-bold group-hover:scale-110 transition-transform">
-                        {emp.name.split(' ').map(n => n[0]).join('')}
+                {loading ? (
+                  [1,2,3].map(i => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-base border border-border/50 animate-pulse">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-border"/>
+                        <div className="space-y-1.5"><div className="h-2.5 w-24 bg-border rounded"/><div className="h-2 w-16 bg-border rounded"/></div>
                       </div>
-                      <div>
-                        <div className="text-xs font-bold">{emp.name}</div>
-                        <div className="text-[10px] text-secondary font-medium">{emp.role}</div>
-                      </div>
+                      <div className="h-2.5 w-12 bg-border rounded"/>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="text-xs font-bold">{emp.tasks} Tasks</div>
-                        <div className="text-[10px] text-emerald-500 font-bold">{emp.status}</div>
+                  ))
+                ) : teamMembers.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-secondary">No team members found.</div>
+                ) : (
+                  teamMembers.map((emp, i) => (
+                    <motion.div
+                      key={emp.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 + (i * 0.08) }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-base border border-border/50 hover:border-accent/30 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 flex items-center justify-center text-[10px] font-bold group-hover:scale-110 transition-transform">
+                            {emp.name.split(' ').map((n: string) => n[0]).join('')}
+                          </div>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface ${
+                            emp.status === 'Online' ? 'bg-emerald-500' :
+                            emp.status === 'Away'   ? 'bg-amber-400' : 'bg-border'
+                          }`}/>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold">{emp.name}</div>
+                          <div className="text-[10px] text-secondary font-medium">{emp.role}</div>
+                        </div>
                       </div>
-                      <MoreHorizontal size={14} className="text-tertiary" />
-                    </div>
-                  </motion.div>
-                ))}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-xs font-bold">{emp.tasks} Open Tasks</div>
+                          <div className={`text-[10px] font-bold ${
+                            emp.status === 'Online' ? 'text-emerald-500' :
+                            emp.status === 'Away'   ? 'text-amber-400' : 'text-secondary'
+                          }`}>{emp.status}</div>
+                        </div>
+                        <MoreHorizontal size={14} className="text-tertiary" />
+                      </div>
+                    </motion.div>
+                  ))
+                )}
               </div>
             </motion.div>
 

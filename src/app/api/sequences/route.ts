@@ -2,17 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Sequence, EmailTemplate } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/sequences — list all sequences
 export async function GET(req: NextRequest) {
-  const { error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
     await connectDB();
     const sequences = await Sequence.find().sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, sequences });
+    return NextResponse.json({ success: true, sequences }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }
 
@@ -21,7 +33,7 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { error } = await requireAuth(req, ['Admin', 'Manager']);
+  const { error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -58,7 +70,7 @@ export async function DELETE(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { error } = await requireAuth(req, ['Admin', 'Manager']);
+  const { error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {

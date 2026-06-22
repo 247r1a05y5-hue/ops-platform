@@ -15,10 +15,10 @@ interface Props {
   role: Role;
 }
 
-const roleDefaults: Record<Role, { name: string; email: string; title: string; initials: string }> = {
-  manager: { name: 'Maya Thompson', email: 'maya@opsplatform.io', title: 'Department Manager', initials: 'MT' },
-  staff:   { name: 'Priya Patel',   email: 'priya@opsplatform.io', title: 'Operations Staff', initials: 'PP' },
-  marketing: { name: 'Jordan Lee', email: 'jordan@opsplatform.io', title: 'Marketing Representative', initials: 'JL' },
+const roleDefaults: Record<Role, { title: string }> = {
+  manager:   { title: 'Department Manager' },
+  staff:     { title: 'Operations Staff' },
+  marketing: { title: 'Marketing Representative' },
 };
 
 function SunIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -44,10 +44,10 @@ export default function SharedSettingsModule({ role }: Props) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [formData, setFormData] = useState({
-    fullName: defaults.name,
-    email: defaults.email,
+    fullName: '',
+    email: '',
     title: defaults.title,
-    phone: '+1 (555) 000-0000',
+    phone: '',
     timezone: 'UTC-5 (Eastern Time)',
     language: 'English (US)',
   });
@@ -82,27 +82,50 @@ export default function SharedSettingsModule({ role }: Props) {
 
   const [showPass, setShowPass] = useState(false);
 
-  // Load user from session (AuthContext) and persisted notifSettings from the API
+  // Load user profile + notifSettings from the API (source of truth = DB)
   useEffect(() => {
-    if (user) {
-      setFormData(prev => ({
-        ...prev,
-        fullName: user.name || defaults.name,
-        email: user.email || defaults.email,
-      }));
-    }
-    // Fetch persisted notification settings from DB
-    fetch('/api/settings', { credentials: 'include' })
+    fetch('/api/settings', { credentials: 'include', cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
-        if (data.success && data.notifSettings && Object.keys(data.notifSettings).length > 0) {
-          setNotifSettings(prev => ({ ...prev, ...data.notifSettings }));
+        if (data.success) {
+          if (data.profile) {
+            setFormData(prev => ({
+              ...prev,
+              fullName: data.profile.name || user?.name || '',
+              email:    data.profile.email || user?.email || '',
+            }));
+          } else if (user) {
+            // Fallback to AuthContext if profile not in response
+            setFormData(prev => ({
+              ...prev,
+              fullName: user.name  || '',
+              email:    user.email || '',
+            }));
+          }
+          if (data.notifSettings && Object.keys(data.notifSettings).length > 0) {
+            setNotifSettings(prev => ({ ...prev, ...data.notifSettings }));
+          }
+        } else if (user) {
+          setFormData(prev => ({
+            ...prev,
+            fullName: user.name  || '',
+            email:    user.email || '',
+          }));
         }
       })
-      .catch(() => { /* silently ignore — defaults remain */ })
+      .catch(() => {
+        // On network error, fall back to AuthContext user
+        if (user) {
+          setFormData(prev => ({
+            ...prev,
+            fullName: user.name  || '',
+            email:    user.email || '',
+          }));
+        }
+      })
       .finally(() => setSettingsLoaded(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, defaults.name, defaults.email]);
+  }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +159,14 @@ export default function SharedSettingsModule({ role }: Props) {
         });
         const data = await res.json();
         if (data.success) {
+          // Write the DB-confirmed profile back into formData (prevent stale/fake data)
+          if (data.profile) {
+            setFormData(prev => ({
+              ...prev,
+              fullName: data.profile.name  || prev.fullName,
+              email:    data.profile.email || prev.email,
+            }));
+          }
           showToast('Profile updated successfully', 'success');
         } else {
           showToast(data.error || 'Failed to update profile', 'error');

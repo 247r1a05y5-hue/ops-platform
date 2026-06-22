@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Project } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth(req);
   if (error) return error;
@@ -9,9 +12,18 @@ export async function GET(req: NextRequest) {
   try {
     await connectDB();
     const projects = await Project.find().sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, projects });
+    return NextResponse.json({ success: true, projects }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }
 

@@ -31,30 +31,10 @@ export async function logActivity({ userId, actionType, description, module = 'S
     userAgent: req?.headers.get('user-agent') || 'Unknown'
   });
 
-  // 3. Trigger Dual Notifications if it's a significant action
-  const significantActions = [
-    'login', 'logout', 'registration', 'first_login', 'file_download', 'upload',
-    'report_generation', 'task_update', 'task_creation', 'workflow_action',
-    'ticket_update', 'export_csv', 'new_project', 'email_sent',
-    'password_reset', 'profile_update',
-    // Time tracking & shift events
-    'shift_start', 'shift_stop', 'time_log',
-    // Approval events
-    'approval_requested', 'approval_approved', 'approval_rejected',
-    // Reminder events
-    'reminder_cron',
-  ];
-
-  if (significantActions.includes(actionType)) {
-    // sendDualNotification internally calls sendEmail which logs to EmailLog
-    await sendDualNotification({
-      userEmail: user.email,
-      userName: user.name,
-      userRole: user.role,
-      action: actionType.replace(/_/g, ' ').toUpperCase(),
-      description
-    }).catch(console.error);
-  }
+  // 3. Trigger Dual Notifications
+  // Notifications are now handled centrally by the ActivityLogSchema.post('save') model hook in db.ts.
+  // This ensures dual notification emails are triggered consistently whether logActivity()
+  // or direct ActivityLog.create() is used across different parts of the application.
 
   return log;
 }

@@ -7,6 +7,16 @@ import { connectDB, Conversation, Message, MessageReadStatus, User, Workspace } 
 import { getIO } from '@/lib/socket-server';
 
 /**
+ * GET /api/chat/send
+ * Retrieve current JWT session token (for explicit Socket.io auth)
+ */
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get('ops_session')?.value;
+  if (!token) return NextResponse.json({ error: 'No session' }, { status: 401 });
+  return NextResponse.json({ token });
+}
+
+/**
  * POST /api/chat/send
  * Body: { conversationId?, recipientId?, body, attachments?, parentMessageId? }
  *

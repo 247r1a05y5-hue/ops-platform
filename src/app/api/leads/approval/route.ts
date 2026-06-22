@@ -10,7 +10,7 @@ import { createNotification } from '@/lib/notifications';
  * Query: ?status=pending|approved|rejected
  */
 export async function GET(req: NextRequest) {
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
+    if (session.role === 'User' || session.role === 'MR') {
+      filter.requestedBy = session.sub;
+    }
 
     const requests = await ApprovalRequest.find(filter)
       .populate('leadId', 'name email company value stage')

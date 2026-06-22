@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { connectDB, User } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { csrfCheck } from '@/lib/require-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
@@ -15,6 +16,16 @@ function hashToken(plain: string): string {
 export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
+
+  // Rate limiting - prevent spam reset requests (per IP)
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  const rl = await checkRateLimit(`password-reset-post:ip:${ip}`);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: `Too many password reset requests. Try again in ${Math.ceil((rl.retryAfterSeconds ?? 300) / 60)} minute(s).` },
+      { status: 429 }
+    );
+  }
 
   try {
     const { email } = await req.json();
@@ -68,6 +79,16 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
+
+  // Rate limiting - prevent brute-forcing reset tokens (per IP)
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  const rl = await checkRateLimit(`password-reset-put:ip:${ip}`);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: `Too many password reset attempts. Try again in ${Math.ceil((rl.retryAfterSeconds ?? 300) / 60)} minute(s).` },
+      { status: 429 }
+    );
+  }
 
   try {
     const { email, token, newPassword } = await req.json();

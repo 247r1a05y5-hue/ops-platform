@@ -7,6 +7,9 @@ import EmployeeSidebar from './EmployeeSidebar';
 import MRSidebar from './MRSidebar';
 import Topbar from './Topbar';
 import { useTheme } from '@/context/ThemeContext';
+import { useUI } from '@/context/UIContext';
+
+import { useAuth } from '@/context/AuthContext';
 
 // Pages that should NOT have the dashboard shell
 const PUBLIC_PATHS = ['/landing', '/login', '/', '/reset-password'];
@@ -14,13 +17,23 @@ const PUBLIC_PATHS = ['/landing', '/login', '/', '/reset-password'];
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, mounted } = useTheme();
+  const { sidebarOpen, setSidebarOpen } = useUI();
+  const { user } = useAuth();
   const isPublic = PUBLIC_PATHS.includes(pathname);
 
   const getSidebar = () => {
-    if (pathname.startsWith('/manager')) return <ManagerSidebar />;
-    if (pathname.startsWith('/employee')) return <EmployeeSidebar />;
-    if (pathname.startsWith('/mr') || pathname.startsWith('/marketing')) return <MRSidebar />;
-    return <Sidebar />; // Default to Admin Sidebar
+    if (!user) {
+      if (pathname.startsWith('/manager')) return <ManagerSidebar />;
+      if (pathname.startsWith('/employee')) return <EmployeeSidebar />;
+      if (pathname.startsWith('/mr') || pathname.startsWith('/marketing')) return <MRSidebar />;
+      return <Sidebar />;
+    }
+    const role = user.role;
+    if (role === 'Admin') return <Sidebar />;
+    if (role === 'Manager') return <ManagerSidebar />;
+    if (role === 'Staff' || role === 'Employee') return <EmployeeSidebar />;
+    if (role === 'User' || role === 'MR') return <MRSidebar />;
+    return <Sidebar />;
   };
 
   if (isPublic) {
@@ -36,9 +49,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       data-theme={activeTheme}
       className={`flex h-screen overflow-hidden selection:bg-accent/30 text-primary bg-base font-sans leading-relaxed ${activeTheme === 'dark' ? 'dark' : ''}`}
     >
-      <Suspense fallback={<div className="w-64 bg-base border-r border-border h-screen" />}>
-        {getSidebar()}
-      </Suspense>
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden cursor-pointer"
+        />
+      )}
+
+      {/* Responsive Sidebar Wrapper */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 lg:static lg:translate-x-0 transition-transform duration-300 ease-in-out shrink-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:block'
+        }`}
+      >
+        <Suspense fallback={<div className="w-64 bg-base border-r border-border h-screen" />}>
+          {getSidebar()}
+        </Suspense>
+      </div>
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <Topbar />
         <main className="flex-1 overflow-x-hidden overflow-y-auto relative bg-base">

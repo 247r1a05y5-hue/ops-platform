@@ -22,15 +22,26 @@ function getRedirectUri(req: NextRequest): string {
   return `${appUrl}/api/gmail/oauth?action=callback`;
 }
 
-function buildAuthUrl(clientId: string, redirectUri: string): string {
+function buildAuthUrl(clientId: string, redirectUri: string, state?: string): string {
   const params = new URLSearchParams({
     client_id:     clientId,
     redirect_uri:  redirectUri,
     response_type: 'code',
-    scope:         'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email',
+    // calendar.events scope is sufficient for creating Google Meet events and is
+    // classified as "sensitive" (not "restricted") — enabling OAuth app publication
+    // without a full Google security review. The full `calendar` scope is restricted
+    // and would block publishing for non-verified apps.
+    scope: [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/calendar.events',
+    ].join(' '),
     access_type:   'offline',
-    prompt:        'consent', // ensures refresh_token is always returned
+    prompt:        'consent', // always re-prompt so we always get refresh_token + latest scopes
   });
+  if (state) {
+    params.set('state', state);
+  }
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
@@ -85,7 +96,7 @@ async function refreshAccessToken(
 // ─── GET /api/gmail/oauth?action=connect|callback|status|disconnect ──────────
 
 export async function GET(req: NextRequest) {
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'Employee', 'Staff', 'MR']);
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -94,9 +105,10 @@ export async function GET(req: NextRequest) {
   try {
     // ── connect: redirect user to Google consent screen ───────────────────
     if (action === 'connect') {
+      const returnToParam = searchParams.get('returnTo') || '/mr?tab=email';
       const { clientId } = getOAuthClient();
       const redirectUri  = getRedirectUri(req);
-      const authUrl      = buildAuthUrl(clientId, redirectUri);
+      const authUrl      = buildAuthUrl(clientId, redirectUri, returnToParam);
       return NextResponse.redirect(authUrl);
     }
 
@@ -104,8 +116,9 @@ export async function GET(req: NextRequest) {
     if (action === 'callback') {
       const code        = searchParams.get('code');
       const oauthError  = searchParams.get('error');
+      const state       = searchParams.get('state');
       const appUrl      = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get('host')}`;
-      const returnTo    = '/mr?tab=email';
+      const returnTo    = state || '/mr?tab=email';
 
       if (oauthError || !code) {
         const errorMsg = oauthError === 'access_denied'
@@ -130,6 +143,10 @@ export async function GET(req: NextRequest) {
         errorUrl.searchParams.set('message', 'Failed to connect Gmail. Please try again.');
         errorUrl.searchParams.set('returnTo', returnTo);
         return NextResponse.redirect(errorUrl.toString());
+      }
+
+      if (tokens.email && session.email && tokens.email.toLowerCase() !== session.email.toLowerCase()) {
+        console.warn(`[Gmail OAuth] WARNING: Connected Google email ('${tokens.email}') does not match app account email ('${session.email}'). Connection allowed.`);
       }
 
       await connectDB();
@@ -157,9 +174,12 @@ export async function GET(req: NextRequest) {
       await connectDB();
       const record = await GmailToken.findOne({ userId: session.sub });
       return NextResponse.json({
-        success:   true,
-        connected: !!record,
-        email:     record?.email ?? null,
+        success:          true,
+        connected:        !!record,
+        email:            record?.email ?? null,
+        hasRefreshToken:  !!(record?.refreshToken),
+        tokenExpiresAt:   record?.expiryDate ?? null,
+        isExpired:        record?.expiryDate ? Date.now() > record.expiryDate : null,
       });
     }
 

@@ -35,7 +35,7 @@ export default function Catalog() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch('/api/catalog', { credentials: 'include' });
+      const res = await fetch('/api/catalog', { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       if (data.success) setItems(data.items);
     } catch (err) {

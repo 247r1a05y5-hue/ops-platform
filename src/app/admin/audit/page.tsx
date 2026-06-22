@@ -38,7 +38,7 @@ export default function AuditPage() {
     setLoading(true); setError(null);
     try {
       const p = new URLSearchParams({ page: String(page), limit: '50', ...(search && { search }), ...(actionType && { actionType }), ...(module && { module }), ...(from && { from }), ...(to && { to }) });
-      const res = await fetch(`/api/admin/audit?${p}`);
+      const res = await fetch(`/api/admin/audit?${p}`, { cache: 'no-store' });
       if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
       const data = await res.json();
       setLogs(data.logs || []); setPagination(data.pagination);

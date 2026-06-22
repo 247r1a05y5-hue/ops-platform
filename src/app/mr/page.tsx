@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -9,7 +9,8 @@ import {
   ChevronRight, MoreHorizontal, Send, Download,
   Clock, FileText, Share2, Trash2, UserPlus,
   Zap, Star, ArrowUpRight, BarChart3, X,
-  Image, Type, Paperclip, Settings, Hash, Shield, Bell, MessageSquare
+  Image, Type, Paperclip, Settings, Hash, Shield, Bell, MessageSquare,
+  CheckSquare, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerActivityLog } from '@/utils/activity';
@@ -151,7 +152,7 @@ const PipelineModule = ({
     try {
       const res = await fetch('/api/leads', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({
           id: draggedId,
           action: 'update_stage',
@@ -373,7 +374,7 @@ const EmailModule = ({
 
       const res = await fetch('/api/email/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({
           leadId: selectedLeadId,
           to: targetLead.email,
@@ -579,7 +580,241 @@ const EmailModule = ({
   );
 };
 
+const TasksModule = ({
+  showToast,
+  user
+}: {
+  showToast: any;
+  user: any;
+}) => {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [reminders, setReminders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [remTitle, setRemTitle] = useState('');
+  const [remDueAt, setRemDueAt] = useState('');
+  const [remDesc, setRemDesc] = useState('');
+
+  const fetchTasksAndReminders = async () => {
+    try {
+      const [tasksRes, remRes] = await Promise.all([
+        fetch('/api/tasks'),
+        fetch('/api/reminders')
+      ]);
+
+      if (tasksRes.ok) {
+        const tasksData = await tasksRes.json();
+        if (tasksData.success) {
+          const filtered = tasksData.tasks.filter((t: any) => 
+            t.assignee === user?.name || t.assigneeId === user?.sub
+          );
+          setTasks(filtered.length > 0 ? filtered : tasksData.tasks);
+        }
+      }
+
+      if (remRes.ok) {
+        const remData = await remRes.json();
+        if (remData.success) {
+          setReminders(remData.reminders || []);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error syncing tasks and reminders', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasksAndReminders();
+  }, []);
+
+  const handleCreateReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!remTitle || !remDueAt) {
+      showToast('Reminder title and due date are required', 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        body: JSON.stringify({
+          title: remTitle,
+          description: remDesc,
+          dueAt: remDueAt,
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Reminder created successfully', 'success');
+        setRemTitle('');
+        setRemDesc('');
+        setRemDueAt('');
+        fetchTasksAndReminders();
+      } else {
+        showToast(data.error || 'Failed to create reminder', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to create reminder', 'error');
+    }
+  };
+
+  const handleToggleReminder = async (id: string, currentCompleted: boolean) => {
+    try {
+      const res = await fetch('/api/reminders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        body: JSON.stringify({
+          id,
+          completed: !currentCompleted
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(currentCompleted ? 'Reminder reopened' : 'Reminder completed', 'success');
+        fetchTasksAndReminders();
+      } else {
+        showToast(data.error || 'Failed to update reminder', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to update reminder', 'error');
+    }
+  };
+
+  const handleDeleteReminder = async (id: string) => {
+    try {
+      const res = await fetch(`/api/reminders?id=${id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Reminder deleted successfully', 'success');
+        fetchTasksAndReminders();
+      } else {
+        showToast(data.error || 'Failed to delete reminder', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to delete reminder', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-2 p-0 overflow-hidden bg-surface">
+          <div className="p-6 border-b border-border flex items-center justify-between bg-base/30">
+            <h3 className="text-sm font-bold flex items-center gap-2"><CheckSquare size={18} className="text-accent"/> Tasks Workflow</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {tasks.map((task, i) => (
+              <div key={task._id || i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold text-tertiary uppercase">{task.code || `TSK-${i+1}`}</span>
+                    <Badge text={task.stage || 'Backlog'} type={task.stage === 'Done' ? 'success' : task.stage === 'Review' ? 'warning' : 'info'} />
+                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${task.priority === 'High' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-secondary bg-surface border-border'}`}>
+                      {task.priority || 'Medium'}
+                    </span>
+                  </div>
+                  <h4 className="text-xs font-bold text-primary">{task.title}</h4>
+                  <p className="text-[10px] text-secondary mt-1">{task.description}</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-tertiary font-bold">Assignee: {task.assignee || 'Unassigned'}</div>
+                  {task.dueDate && (
+                    <div className="text-[10px] text-secondary font-semibold mt-1">Due: {new Date(task.dueDate).toLocaleDateString()}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {tasks.length === 0 && (
+              <div className="p-8 text-center text-secondary font-semibold text-xs">No active tasks recorded</div>
+            )}
+          </div>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="p-0 overflow-hidden bg-surface">
+            <div className="p-6 border-b border-border bg-base/30">
+              <h3 className="text-sm font-bold flex items-center gap-2"><Clock size={18} className="text-indigo-500"/> Reminders & Alerts</h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-y-auto">
+              {reminders.map((rem, i) => (
+                <div key={rem._id || i} className={`p-4 flex items-start justify-between gap-3 ${rem.completed ? 'bg-emerald-500/5' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={rem.completed}
+                    onChange={() => handleToggleReminder(rem._id, rem.completed)}
+                    className="mt-1 rounded border-border text-accent focus:ring-accent cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`text-xs font-bold text-primary ${rem.completed ? 'line-through text-secondary' : ''}`}>{rem.title}</h4>
+                    {rem.description && (
+                      <p className="text-[10px] text-secondary mt-0.5 truncate">{rem.description}</p>
+                    )}
+                    <div className="text-[9px] text-tertiary font-semibold mt-1">Due: {new Date(rem.dueAt).toLocaleString()}</div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteReminder(rem._id)}
+                    className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-500/10 transition-all text-xs font-bold"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+              {reminders.length === 0 && (
+                <div className="p-6 text-center text-secondary font-semibold text-xs">No pending reminders</div>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="text-xs font-black text-tertiary uppercase tracking-widest mb-4">Set New Reminder</h3>
+            <form onSubmit={handleCreateReminder} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Reminder Title</label>
+                <input
+                  type="text"
+                  value={remTitle}
+                  onChange={e => setRemTitle(e.target.value)}
+                  placeholder="e.g. Call client back"
+                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Description (Optional)</label>
+                <textarea
+                  value={remDesc}
+                  onChange={e => setRemDesc(e.target.value)}
+                  placeholder="e.g. Discuss Q3 proposal details"
+                  rows={2}
+                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent resize-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Due At</label>
+                <input
+                  type="datetime-local"
+                  value={remDueAt}
+                  onChange={e => setRemDueAt(e.target.value)}
+                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
+                />
+              </div>
+              <button type="submit" className="w-full py-3 bg-accent text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-accent/20">
+                <Plus size={14} /> Add Reminder
+              </button>
+            </form>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const FinanceModule = ({ 
+
   invoices, 
   showToast, 
   refreshInvoices,
@@ -609,7 +844,7 @@ const FinanceModule = ({
       showToast('Generating Razorpay payment invoice...', 'info');
       const res = await fetch('/api/invoices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({
           client: payClient,
           amount: `$${parseFloat(payAmount).toLocaleString()}`,
@@ -798,7 +1033,7 @@ const ResourceModule = ({
         showToast('Encrypting and uploading media kit proposal...', 'info');
         const res = await fetch('/api/documents/upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
           body: JSON.stringify({
             leadId: selectedLeadId,
             fileName: file.name,
@@ -926,7 +1161,7 @@ const ResourceModule = ({
 // --- Main Shell ---
 
 function MRDashboard() {
-  const [activeTab, setActiveTab] = useState<'leads' | 'email' | 'finance' | 'resources' | 'settings'>('leads');
+  const [activeTab, setActiveTab] = useState<'leads' | 'email' | 'finance' | 'resources' | 'tasks' | 'settings'>('leads');
   const { showToast } = useUI();
 
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -942,7 +1177,7 @@ function MRDashboard() {
   const tab = searchParams.get('tab');
 
   useEffect(() => {
-    if (tab && ['leads', 'email', 'finance', 'resources', 'settings'].includes(tab)) {
+    if (tab && ['leads', 'email', 'finance', 'resources', 'tasks', 'settings'].includes(tab)) {
       setActiveTab(tab as any);
     } else {
       setActiveTab('leads');
@@ -1020,8 +1255,8 @@ function MRDashboard() {
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex bg-surface border border-border rounded-xl p-1 mb-8 shadow-inner max-w-lg">
-        {['leads', 'email', 'finance', 'resources'].map(t => (
+      <div className="flex bg-surface border border-border rounded-xl p-1 mb-8 shadow-inner max-w-xl">
+        {['leads', 'email', 'finance', 'resources', 'tasks'].map(t => (
           <button 
             key={t} 
             onClick={() => setActiveTab(t as any)}
@@ -1078,6 +1313,15 @@ function MRDashboard() {
                       <p className="text-secondary text-xs font-semibold">Securely manage contracts, media kits, and shared campaign assets.</p>
                    </div>
                    <ResourceModule leads={leads} showToast={showToast} refreshLeads={fetchData} currentUser={currentUser.name} setLeads={setLeads} />
+                </motion.div>
+              )}
+              {activeTab === 'tasks' && (
+                <motion.div key="tasks" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
+                   <div className="flex flex-col gap-1 mb-8">
+                      <h2 className="text-xl font-bold text-primary">Tasks & Reminders</h2>
+                      <p className="text-secondary text-xs font-semibold">View work assignments, keep track of milestones, and set operational alerts.</p>
+                   </div>
+                   <TasksModule showToast={showToast} user={currentUser} />
                 </motion.div>
               )}
            </AnimatePresence>
@@ -1144,6 +1388,30 @@ function MRDashboard() {
                  }} className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-2">
                     <Send size={16}/> Go to Outreach Composer
                  </button>
+                 <button onClick={async () => {
+                   try {
+                     showToast('Sharing via WhatsApp...', 'info');
+                     const msg = `Hello ${selectedLead.name}, we are looking forward to our collaboration with ${selectedLead.company}. Let us know if you have any questions!`;
+                     const res = await fetch('/api/whatsapp', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+                       body: JSON.stringify({
+                         phone: selectedLead.phone || '15550000000',
+                         message: msg
+                       })
+                     });
+                     const data = await res.json();
+                     if (data.success) {
+                       showToast('Shared successfully via WhatsApp!', 'success');
+                     } else {
+                       showToast(data.error || 'Failed to share via WhatsApp', 'error');
+                     }
+                   } catch (err) {
+                     showToast('Error sharing via WhatsApp', 'error');
+                   }
+                 }} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <MessageSquare size={16}/> Share via WhatsApp
+                 </button>
               </div>
            </div>
          )}
@@ -1165,3 +1433,4 @@ export default function MRPage() {
     </Suspense>
   );
 }
+

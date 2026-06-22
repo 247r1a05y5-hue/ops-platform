@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {

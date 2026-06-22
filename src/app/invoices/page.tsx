@@ -39,7 +39,7 @@ export default function Invoices() {
   
   const fetchInvoices = async () => {
     try {
-      const res = await fetch('/api/invoices');
+      const res = await fetch('/api/invoices', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setInvoices(data.invoices);

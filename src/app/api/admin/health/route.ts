@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/require-auth';
+import mongoose from 'mongoose';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  const { error } = await requireAuth(req, ['Admin']);
+  if (error) return error;
+
+  try {
+    const dbStatus = mongoose.connection.readyState === 1 ? 'healthy' : 'disconnected';
+    const whatsappConfigured = !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID);
+    const razorpayConfigured = !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+    const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+    
+    return NextResponse.json({
+      success: true,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: { status: dbStatus, details: dbStatus === 'healthy' ? 'MongoDB Atlas Connected' : 'Disconnected' },
+        whatsapp: { status: whatsappConfigured ? 'configured' : 'disabled' },
+        paymentGateway: { status: razorpayConfigured ? 'configured' : 'disabled' },
+        emailService: { status: smtpConfigured ? 'configured' : 'disabled' }
+      }
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}

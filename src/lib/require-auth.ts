@@ -25,6 +25,24 @@ export async function requireAuth(
     };
   }
 
+  // Instantly enforce account suspension by checking DB status
+  try {
+    const { connectDB, User } = await import('./db');
+    await connectDB();
+    const user = await User.findById(session.sub).select('suspended');
+    if (!user || user.suspended) {
+      return {
+        session: null,
+        error: NextResponse.json(
+          { success: false, error: 'Your account has been suspended or deactivated.' },
+          { status: 403 }
+        ),
+      };
+    }
+  } catch (err) {
+    console.error('[requireAuth] Suspended check failed:', err);
+  }
+
   if (allowedRoles && !allowedRoles.includes(session.role)) {
     return {
       session: null,
@@ -40,21 +58,26 @@ export async function requireAuth(
 
 // ─── CSRF / Origin Check ─────────────────────────────────────────────────────
 // For state-changing endpoints (POST/PUT/DELETE) with cookie auth,
-// verify the Origin or Referer header matches the host.
+// verify the Origin or Referer header matches the host,
+// OR the request includes our custom x-csrf-token header (double-submit pattern).
 
 export function checkOrigin(req: NextRequest): boolean {
   const method = req.method;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
 
-  const origin = req.headers.get('origin');
+  // Custom header present → request came from our JS code (not a cross-site form)
+  const csrfHeader = req.headers.get('x-csrf-token');
+  if (csrfHeader && csrfHeader.length > 0) return true;
+
+  const origin  = req.headers.get('origin');
   const referer = req.headers.get('referer');
-  const host = req.headers.get('host');
+  const host    = req.headers.get('host');
 
   if (!host) return true; // Can't check without host
 
   const allowed = [`http://${host}`, `https://${host}`];
 
-  if (origin) return allowed.some(a => origin.startsWith(a));
+  if (origin)  return allowed.some(a => origin.startsWith(a));
   if (referer) return allowed.some(a => referer.startsWith(a));
 
   // No origin/referer - allow in dev, block in prod
@@ -70,6 +93,7 @@ export function csrfCheck(req: NextRequest): NextResponse | null {
   }
   return null;
 }
+
 
 // ─── Cron Authentication ─────────────────────────────────────────────────────
 // Enforce CRON_SECRET Bearer token validation for cron endpoints.

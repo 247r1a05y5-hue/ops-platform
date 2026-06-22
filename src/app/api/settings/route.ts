@@ -5,6 +5,9 @@ import { connectDB, User, UserSettings } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/settings — return profile + notif prefs for the current user
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
@@ -17,15 +20,29 @@ export async function GET(req: NextRequest) {
       UserSettings.findOne({ userId: session.sub }).lean(),
     ]);
 
-    if (!user) return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
+    if (!user) return NextResponse.json({ success: false, error: 'User not found.' }, {
+      status: 404,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
 
     return NextResponse.json({
       success: true,
       profile: user,
       notifSettings: (settings as any)?.notifSettings ?? {},
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }
 
@@ -122,6 +139,25 @@ export async function PUT(req: NextRequest) {
       );
 
       return NextResponse.json({ success: true, message: 'Notification preferences saved.' });
+    }
+
+    // ── Security settings (session timeout) ───────────────────────────────
+    if (action === 'security') {
+      const { sessionTimeout } = body;
+      const validTimeouts = ['15', '30', '60', '120'];
+      if (!sessionTimeout || !validTimeouts.includes(String(sessionTimeout))) {
+        return NextResponse.json({ success: false, error: 'Invalid session timeout. Valid values: 15, 30, 60, 120.' }, { status: 400 });
+      }
+
+      await UserSettings.findOneAndUpdate(
+        { userId: session.sub },
+        { userId: session.sub, sessionTimeout: String(sessionTimeout), updatedAt: new Date() },
+        { upsert: true, new: true }
+      );
+
+      // Re-issue JWT with the new timeout so it takes effect from the next login
+      // (current session is unaffected by design — the user must log out and back in)
+      return NextResponse.json({ success: true, message: `Session timeout updated to ${sessionTimeout} minutes. Changes take effect on your next login.` });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

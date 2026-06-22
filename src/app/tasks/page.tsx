@@ -52,8 +52,8 @@ export default function Tasks() {
   const fetchData = useCallback(async () => {
     try {
       const [tRes, pRes] = await Promise.all([
-        fetch('/api/tasks', { credentials: 'include' }),
-        fetch('/api/projects', { credentials: 'include' }),
+        fetch('/api/tasks', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/projects', { credentials: 'include', cache: 'no-store' }),
       ]);
       const [tData, pData] = await Promise.all([tRes.json(), pRes.json()]);
       if (tData.success) setTasks(tData.tasks);

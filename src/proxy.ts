@@ -33,6 +33,7 @@ const PROTECTED_API_PREFIXES = [
   '/api/gmail',
   '/api/payment',
   '/api/test-whatsapp',
+  '/api/whatsapp',
   '/api/tasks',
   '/api/projects',
   '/api/catalog',
@@ -47,8 +48,12 @@ const ROLE_PAGE_MAP: Record<string, string[]> = {
   '/admin':     ['Admin'],
   '/manager':   ['Admin', 'Manager'],
   '/employee':  ['Admin', 'Manager', 'Staff'],
-  '/marketing': ['Admin', 'Manager', 'User'],
-  '/mr':        ['Admin', 'Manager', 'User'],
+  '/marketing': ['Admin', 'Manager', 'User', 'MR'],
+  '/mr':        ['Admin', 'Manager', 'User', 'MR'],
+  '/crm':       ['Admin', 'Manager'],
+  '/tasks':     ['Admin', 'Manager'],
+  '/analytics': ['Admin', 'Manager'],
+  '/settings':  ['Admin', 'Manager'],
 };
 
 // Public routes (always accessible)
@@ -75,6 +80,52 @@ export async function proxy(req: NextRequest) {
     pathname.match(/\.(ico|png|jpg|jpeg|svg|webp|css|js|woff|woff2|ttf)$/)
   ) {
     return NextResponse.next();
+  }
+
+  // Always allow maintenance splash page and maintenance status API
+  if (
+    pathname.startsWith('/api/admin/maintenance') ||
+    pathname.startsWith('/maintenance')
+  ) {
+    return NextResponse.next();
+  }
+
+  // ── Maintenance Mode Check ────────────────────────────────────────────────
+  try {
+    const origin = req.nextUrl.origin;
+    const res = await fetch(`${origin}/api/admin/maintenance`, {
+      next: { revalidate: 5 } // cache for 5 seconds to reduce DB load
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.enabled) {
+        // Maintenance is active, check if user is Admin
+        const token = req.cookies.get(SESSION_COOKIE)?.value;
+        let isAdmin = false;
+        
+        if (token) {
+          try {
+            const { jwtVerify } = await import('jose');
+            const key = new TextEncoder().encode(process.env.JWT_SECRET || 'ops_platform_change_this_to_a_long_random_secret_min_32_chars_acfd4fe2ac7c04ecbd640f445f1cdd7d');
+            const { payload } = await jwtVerify(token, key);
+            if (payload && payload.role === 'Admin') {
+              isAdmin = true;
+            }
+          } catch (e) {
+            // Invalid token
+          }
+        }
+
+        if (!isAdmin) {
+          const mUrl = req.nextUrl.clone();
+          mUrl.pathname = '/maintenance';
+          return NextResponse.redirect(mUrl);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Proxy Middleware] Maintenance mode validation error:', err);
   }
 
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some(p => pathname.startsWith(p));

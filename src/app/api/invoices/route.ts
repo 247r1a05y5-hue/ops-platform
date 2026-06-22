@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Invoice } from '@/lib/db';
+import { connectDB, Invoice, User } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { logActivity } from '@/lib/activity';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// ── Workspace isolation helper ──────────────────────────────────────────────────
+// Invoice schema has no workspaceId field (existing docs need no migration for
+// single-workspace deployments — all users share ops-main). For multi-tenant
+// isolation, we resolve the current user's workspaceId and look up workspace
+// member emails, then filter invoices whose clientEmail matches a workspace
+// member. Invoices with no clientEmail are included (internally created).
+async function getWorkspaceMemberEmails(userId: string): Promise<string[] | null> {
+  try {
+    const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
+    if (!currentUser?.workspaceId) return null; // single workspace — skip filter
+    const members = await User.find({ workspaceId: currentUser.workspaceId })
+      .select('email').lean() as any[];
+    return members.map((m: any) => m.email).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
 
 // GET all invoices
 export async function GET(req: NextRequest) {
-  const { error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -17,23 +37,39 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '0');
 
-    let query = Invoice.find().sort({ createdAt: -1 });
-    
+    // ── Workspace isolation ─────────────────────────────────────────────────
+    const memberEmails = await getWorkspaceMemberEmails(session.sub);
+    const baseFilter: any = {};
+    if (memberEmails) {
+      // Invoices whose clientEmail belongs to a workspace member, or no clientEmail set
+      baseFilter.$or = [
+        { clientEmail: { $in: memberEmails } },
+        { clientEmail: '' },
+        { clientEmail: { $exists: false } },
+      ];
+    }
+
+    let query = Invoice.find(baseFilter).sort({ createdAt: -1 });
     if (limit > 0) {
       query = query.skip((page - 1) * limit).limit(limit);
     }
-    
-    const invoices = await query;
-    const total = await Invoice.countDocuments();
 
-    return NextResponse.json({ 
-      success: true, 
+    const invoices = await query;
+    const total = await Invoice.countDocuments(baseFilter);
+
+    return NextResponse.json({
+      success: true,
       invoices,
-      metadata: { total, page, limit, pages: limit > 0 ? Math.ceil(total / limit) : 1 } 
+      metadata: { total, page, limit, pages: limit > 0 ? Math.ceil(total / limit) : 1 }
+    }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+    });
   }
 }
 
@@ -42,7 +78,7 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -100,7 +136,7 @@ export async function PUT(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -174,6 +210,11 @@ export async function PUT(req: NextRequest) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
+}
+
+// PATCH invoice (aliased to PUT)
+export async function PATCH(req: NextRequest) {
+  return PUT(req);
 }
 
 // DELETE invoice

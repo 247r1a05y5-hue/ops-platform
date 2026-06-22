@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { Search, Bell, Sun, Moon, Settings as SettingsIcon, LogOut, Check } from 'lucide-react';
+import { Search, Bell, Sun, Moon, Settings as SettingsIcon, LogOut, Check, Menu } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -22,18 +22,20 @@ const ROLE_COLORS: Record<string, string> = {
   Manager: 'bg-accent/10 text-accent',
   Staff:   'bg-emerald-500/10 text-emerald-600',
   User:    'bg-indigo-500/10 text-indigo-500',
+  MR:      'bg-indigo-500/10 text-indigo-500',
 };
 
 const ROLE_ROUTE: Record<string, string> = {
   Admin:   '/dashboard',
   Manager: '/manager',
   Staff:   '/employee',
-  User:    '/marketing',
+  User:    '/mr',
+  MR:      '/mr',
 };
 
 export default function Topbar() {
   const pathname = usePathname();
-  const { showToast } = useUI();
+  const { showToast, setSidebarOpen } = useUI();
   const { theme, toggleTheme, mounted } = useTheme();
   const { user, logout } = useAuth();
 
@@ -155,16 +157,24 @@ export default function Topbar() {
   };
 
   return (
-    <div className="h-16 border-b border-border bg-base/80 backdrop-blur-md flex items-center justify-between px-8 z-50 sticky top-0 w-full shrink-0 transition-colors">
+    <div className="h-16 border-b border-border bg-base/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-50 sticky top-0 w-full shrink-0 transition-colors gap-4">
 
-      <div className="flex-1 max-w-xl">
-        <div className="relative group">
+      <div className="flex items-center gap-2 flex-1 max-w-xl">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+          aria-label="Open sidebar"
+        >
+          <Menu size={20} />
+        </button>
+
+        <div className="relative group flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-accent transition-colors" size={16} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search across your workspace (Press '/' to focus)"
+            placeholder="Search workspace..."
             className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-primary placeholder-secondary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all font-medium"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -174,12 +184,12 @@ export default function Topbar() {
             }}
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
-            <kbd className="px-1.5 py-0.5 text-[10px] bg-border text-secondary rounded font-mono">⌘K</kbd>
+            <kbd className="hidden sm:inline px-1.5 py-0.5 text-[10px] bg-border text-secondary rounded font-mono">⌘K</kbd>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-4">
         <button
           className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
           onClick={() => {

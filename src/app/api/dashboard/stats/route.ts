@@ -18,6 +18,9 @@ function parseAmount(amountStr: string): number {
   return parseFloat(String(amountStr).replace(/[^0-9.]/g, '')) || 0;
 }
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth(req);
   if (error) return error;
@@ -33,16 +36,9 @@ export async function GET(req: NextRequest) {
 
     // Invoice seeding disabled — use seed script
 
-    // 3. Auto-seed default leads if empty
-    const leadCount = await Lead.countDocuments();
-    if (leadCount === 0) {
-      await Lead.create([
-        { name: 'Sarah Jenkins', company: 'Acme Inc', value: '$24,000', stage: 'Discovery', status: 'Hot', email: 'sarah@acme.com', phone: '+1 555-0199', assignedToName: 'Maya Thompson' },
-        { name: 'John Doe', company: 'Nexus Retail', value: '$12,500', stage: 'Contacted', status: 'Warm', email: 'john@nexus.com', phone: '+1 555-0210', assignedToName: 'Priya Patel' }
-      ]);
-    }
 
     const startDate = getPeriodStartDate(period);
+
 
     // Compute Metrics Dynamically via live aggregates
     // A. Open Tasks count
@@ -75,11 +71,23 @@ export async function GET(req: NextRequest) {
       mrrChange = '+100%';
     }
 
-    // D. Churn (calculate standard yield/retention metrics, keep it dynamic yet proportional)
-    const totalLeads = await Lead.countDocuments();
-    const lostLeads = await Lead.countDocuments({ stage: 'Closing', status: 'Cold' });
-    const calculatedChurn = totalLeads > 0 ? (lostLeads / totalLeads) * 100 : 1.8;
-    const finalChurn = calculatedChurn > 0 ? calculatedChurn.toFixed(1) : '1.8';
+    // D. Churn — calculate real customer cancellations using lost leads ratio
+    //    Compare this month vs previous month to get a real trend
+    const thisMonthStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const prevMonthStart = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+    const [totalLeads, lostLeads, prevTotalLeads, prevLostLeads] = await Promise.all([
+      Lead.countDocuments({ createdAt: { $gte: thisMonthStart } }),
+      Lead.countDocuments({ createdAt: { $gte: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
+      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart } }),
+      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
+    ]);
+
+    const currentChurn = totalLeads > 0 ? (lostLeads / totalLeads) * 100 : 0;
+    const prevChurn    = prevTotalLeads > 0 ? (prevLostLeads / prevTotalLeads) * 100 : 0;
+    const churnDelta   = currentChurn - prevChurn;
+    const finalChurn   = currentChurn.toFixed(1);
+    const churnChange  = (churnDelta >= 0 ? '+' : '') + churnDelta.toFixed(1) + '%';
 
     const responseData = [
       {
@@ -92,8 +100,8 @@ export async function GET(req: NextRequest) {
       {
         title: 'Monthly Churn',
         value: `${finalChurn}%`,
-        change: '-0.4%',
-        sub: 'Real-time',
+        change: churnChange,
+        sub: 'vs prior 30 days',
         color: 'text-blue-600 dark:text-blue-400'
       },
       {
@@ -115,10 +123,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       stats: responseData
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[dashboard/stats] Error:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }

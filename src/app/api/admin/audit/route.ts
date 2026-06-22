@@ -7,6 +7,9 @@ import { requireAuth } from '@/lib/require-auth';
  * Admin-only. Returns paginated ActivityLog entries.
  * Query: page, limit, actionType, module, userId, from, to, search
  */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin']);
   if (error) return error;
@@ -22,12 +25,15 @@ export async function GET(req: NextRequest) {
     const from = searchParams.get('from'), to = searchParams.get('to');
     if (from || to) { const r: any = {}; if (from) r.$gte = new Date(from); if (to) r.$lte = new Date(to); filter.timestamp = r; }
     const search = searchParams.get('search');
-    if (search) filter.$or = [
-      { description: { $regex: search, $options: 'i' } },
-      { name:        { $regex: search, $options: 'i' } },
-      { userEmail:   { $regex: search, $options: 'i' } },
-      { actionType:  { $regex: search, $options: 'i' } },
-    ];
+    if (search) {
+      const safeSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      filter.$or = [
+        { description: { $regex: safeSearch, $options: 'i' } },
+        { name:        { $regex: safeSearch, $options: 'i' } },
+        { userEmail:   { $regex: safeSearch, $options: 'i' } },
+        { actionType:  { $regex: safeSearch, $options: 'i' } },
+      ];
+    }
 
     const [logs, total, actionTypes, modules] = await Promise.all([
       ActivityLog.find(filter).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).lean(),
@@ -36,8 +42,17 @@ export async function GET(req: NextRequest) {
       ActivityLog.distinct('module'),
     ]);
 
-    return NextResponse.json({ success: true, logs, pagination: { total, page, limit, pages: Math.ceil(total / limit) }, meta: { actionTypes, modules } });
+    return NextResponse.json({ success: true, logs, pagination: { total, page, limit, pages: Math.ceil(total / limit) }, meta: { actionTypes, modules } }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }

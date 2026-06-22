@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, User, Workspace } from '@/lib/db';
+import { connectDB, User, Workspace, UserSettings } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { logActivity } from '@/lib/activity';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
 import { checkRateLimit, resetRateLimit } from '@/lib/rate-limit';
 import { csrfCheck } from '@/lib/require-auth';
 import bcrypt from 'bcryptjs';
+
+// Helper: load session timeout preference (minutes) for a user
+async function getUserSessionTimeout(userId: string): Promise<number | undefined> {
+  try {
+    const settings = await UserSettings.findOne({ userId }).select('sessionTimeout').lean() as any;
+    if (settings?.sessionTimeout) {
+      const mins = parseInt(settings.sessionTimeout, 10);
+      return isNaN(mins) ? undefined : mins;
+    }
+  } catch { /* fall back to default */ }
+  return undefined;
+}
 
 // Force dynamic rendering — this route must never be statically pre-rendered.
 // Without this, Next.js build tries to collect route data at build time,
@@ -18,11 +30,62 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  let email = '';
   try {
     const body = await req.json();
-    email = (body.email || '').toLowerCase().trim();
-    const { password } = body;
+    const { password, userId, twoFactorToken } = body;
+    const email = (body.email || '').toLowerCase().trim();
+
+    // ── 2FA Token Verification ─────────────────────────────────────────────
+    if (userId && twoFactorToken) {
+      await connectDB();
+      const user = await User.findById(userId);
+      if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        return NextResponse.json({ success: false, error: 'Invalid 2FA request.' }, { status: 400 });
+      }
+
+      const { verifyToken } = await import('@/lib/totp');
+      const isValid = verifyToken(user.twoFactorSecret, twoFactorToken);
+      if (!isValid) {
+        return NextResponse.json({ success: false, error: 'Invalid verification code.' }, { status: 400 });
+      }
+
+      // Complete login
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Log activity
+      await logActivity({
+        userId: user._id,
+        actionType: 'login',
+        module: 'Authentication',
+        description: `User ${user.email} logged in with Two-Factor Authentication.`,
+        req
+      });
+
+      // Read session timeout preference
+      const timeoutMins = await getUserSessionTimeout(String(user._id));
+      const maxAgeSec   = timeoutMins ? timeoutMins * 60 : undefined;
+
+      // Issue JWT session cookie
+      const token = await createSessionToken({
+        sub: String(user._id),
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      }, timeoutMins);
+
+      const res = NextResponse.json({
+        success: true,
+        user: {
+          id: String(user._id),
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
+      setSessionCookie(res, token, maxAgeSec);
+      return res;
+    }
 
     if (!email || !password) {
       return NextResponse.json(
@@ -66,6 +129,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid credentials.' }, { status: 401 });
     }
 
+    if (user.suspended) {
+      return NextResponse.json({ success: false, error: 'Your account has been suspended. Please contact administration.' }, { status: 403 });
+    }
+
     // ── Verify password ────────────────────────────────────────────────────
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
@@ -75,6 +142,15 @@ export async function POST(req: NextRequest) {
     // ── Reset rate limit on success ────────────────────────────────────────
     await resetRateLimit(ipKey);
     await resetRateLimit(emailKey);
+
+    // ── Challenge for 2FA if enabled ────────────────────────────────────────
+    if (user.twoFactorEnabled) {
+      return NextResponse.json({
+        success: true,
+        requires2FA: true,
+        userId: user._id.toString()
+      });
+    }
 
     // ── First-login handling ───────────────────────────────────────────────
     if (user.firstLogin) {
@@ -125,12 +201,15 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Issue JWT and set HTTP-only cookie ─────────────────────────────────
+    const timeoutMins = await getUserSessionTimeout(String(user._id));
+    const maxAgeSec   = timeoutMins ? timeoutMins * 60 : undefined;
+
     const token = await createSessionToken({
       sub: String(user._id),
       email: user.email,
       name: user.name,
       role: user.role,
-    });
+    }, timeoutMins);
 
     const res = NextResponse.json({
       success: true,
@@ -142,7 +221,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    setSessionCookie(res, token);
+    setSessionCookie(res, token, maxAgeSec);
     return res;
 
   } catch (error) {

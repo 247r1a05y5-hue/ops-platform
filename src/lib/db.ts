@@ -111,6 +111,10 @@ const UserSchema = new Schema({
   lastLogin: Date,
   passwordResetToken:  String,
   passwordResetExpiry: Date,
+  suspended: { type: Boolean, default: false },
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorSecret: String,
+  status: { type: String, enum: ['Online', 'Away', 'Offline'], default: 'Offline' },
 });
 
 // 2. Activity Logs
@@ -129,6 +133,65 @@ const ActivityLogSchema = new Schema({
 });
 ActivityLogSchema.index({ userId: 1 });
 ActivityLogSchema.index({ timestamp: -1 });
+
+// Post-save hook to trigger dual email notifications centrally for all significant actions.
+ActivityLogSchema.post('save', async function (doc: any) {
+  try {
+    const significantActions = [
+      'login', 'logout', 'registration', 'first_login', 'file_download', 'upload',
+      'report_generation', 'task_update', 'task_creation', 'workflow_action',
+      'ticket_update', 'export_csv', 'new_project', 'email_sent',
+      'password_reset', 'profile_update',
+      // CRM actions logged directly or via workflow engine
+      'crm_stage_enter', 'crm_outreach', 'crm_qualified', 'crm_proposal',
+      'crm_negotiation', 'crm_conversion', 'crm_call_logged', 'crm_negotiation_note',
+      'crm_proposal_sent', 'crm_payment_received',
+      // Invoice and Payment
+      'invoice_payment',
+      'proposal_approved', 'proposal_rejected',
+      // Time tracking & shift events
+      'shift_start', 'shift_stop', 'time_log',
+      // Approval events
+      'approval_requested', 'approval_approved', 'approval_rejected',
+      // Reminder events
+      'reminder_cron',
+    ];
+
+    if (significantActions.includes(doc.actionType)) {
+      // Dynamic import to avoid circular dependency at startup
+      const { sendDualNotification, isValidEmail } = await import('./email');
+      
+      let email = doc.userEmail || '';
+      let name = doc.name || '';
+      let role = doc.userRole || '';
+
+      if (!email && doc.userId) {
+        try {
+          const userDoc = await mongoose.model('User').findById(doc.userId).select('email name role').lean() as any;
+          if (userDoc) {
+            email = userDoc.email || '';
+            if (!name) name = userDoc.name || '';
+            if (!role) role = userDoc.role || '';
+          }
+        } catch (dbErr) {
+          console.error('[ActivityLog post-save user lookup failed]:', dbErr);
+        }
+      }
+
+      if (email && isValidEmail(email)) {
+        await sendDualNotification({
+          userEmail: email,
+          userName: name || 'User',
+          userRole: role || 'User',
+          action: doc.actionType.replace(/_/g, ' ').toUpperCase(),
+          description: doc.description || '',
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[ActivityLog post-save notify failed]:', err);
+  }
+});
 
 // 3. Email Logs
 const EmailLogSchema = new Schema({
@@ -267,7 +330,7 @@ const GmailTokenSchema = new Schema({
 const TaskSchema = new Schema({
   title:       { type: String, required: true },
   description: { type: String, default: '' },
-  stage:       { type: String, enum: ['Backlog', 'In Progress', 'Review', 'Done'], default: 'Backlog' },
+  stage:       { type: String, enum: ['Backlog', 'To Do', 'In Progress', 'Review', 'Under Review', 'Done', 'Blocked'], default: 'Backlog' },
   priority:    { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
   assignee:    { type: String, default: '' },
   dueDate:     Date,
@@ -276,6 +339,10 @@ const TaskSchema = new Schema({
   code:        { type: String, default: '' },
   createdBy:   { type: String, default: '' },
   createdAt:   { type: Date, default: Date.now },
+  progress:    { type: Number, default: 0 },
+  subtasks:    { type: [{ title: String, done: Boolean }], default: [] },
+  logs:        { type: [{ time: String, note: String, author: String }], default: [] },
+  attachments: { type: [String], default: [] },
 });
 TaskSchema.index({ projectId: 1 });
 TaskSchema.index({ assignee: 1 });
@@ -314,6 +381,7 @@ CatalogItemSchema.index({ createdAt: -1 });
 const UserSettingsSchema = new Schema({
   userId:        { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   notifSettings: { type: Schema.Types.Mixed, default: {} },
+  sessionTimeout:{ type: String, default: '30' }, // in minutes
   updatedAt:     { type: Date, default: Date.now },
 });
 
@@ -512,6 +580,10 @@ try {
   UserSchema.add({ workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', default: null } });
 } catch (_) { /* already added on hot-reload */ }
 
+try {
+  UserSchema.add({ status: { type: String, enum: ['Online', 'Away', 'Offline'], default: 'Offline' } });
+} catch (_) { /* already added on hot-reload */ }
+
 export const Workspace          = (models.Workspace          || model('Workspace',          WorkspaceSchema)) as any;
 export const Conversation       = (models.Conversation       || model('Conversation',       ConversationSchema)) as any;
 export const Message            = (models.Message            || model('Message',            MessageSchema)) as any;
@@ -568,6 +640,53 @@ ChatAuditLogSchema.index({ workspaceId: 1 });
 ChatAuditLogSchema.index({ exportedAt: -1 });
 
 export const ChatAuditLog = (models.ChatAuditLog || model('ChatAuditLog', ChatAuditLogSchema)) as any;
+
+// ── Meeting Schema ───────────────────────────────────────────────────────────
+const MeetingSchema = new Schema({
+  meetingId: { type: String, required: true, unique: true },
+  creatorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  creatorName: { type: String, required: true },
+  roomId: { type: String, required: true },
+  meetingLink: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  status: { type: String, enum: ['active', 'ended'], default: 'active' }
+});
+
+export const Meeting = (models.Meeting || model('Meeting', MeetingSchema)) as any;
+
+// ── SystemConfig Schema ──────────────────────────────────────────────────────
+const SystemConfigSchema = new Schema({
+  key: { type: String, required: true, unique: true },
+  value: { type: Schema.Types.Mixed, required: true },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+export const SystemConfig = (models.SystemConfig || model('SystemConfig', SystemConfigSchema)) as any;
+
+// ── Invitation Schema ────────────────────────────────────────────────────────
+const InvitationSchema = new Schema({
+  email: { type: String, required: true, unique: true },
+  role: { type: String, required: true, enum: ['Admin', 'Manager', 'Staff', 'User', 'Employee', 'MR'] },
+  token: { type: String, required: true, unique: true },
+  expiresAt: { type: Date, required: true },
+  workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', default: null }, // optional — set after workspace is assigned
+  invitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  status: { type: String, enum: ['pending', 'accepted', 'expired'], default: 'pending' },
+  createdAt: { type: Date, default: Date.now },
+});
+InvitationSchema.index({ token: 1 });
+InvitationSchema.index({ email: 1 });
+InvitationSchema.index({ status: 1, expiresAt: 1 });
+
+export const Invitation = (models.Invitation || model('Invitation', InvitationSchema)) as any;
+
+// ── Additional compound indexes for billing & analytics ───────────────────────
+try {
+  // Invoice: fast MRR queries by status + date
+  const InvModel = (models.Invoice || model('Invoice', InvoiceSchema)) as any;
+  InvModel.schema.index({ status: 1, createdAt: -1 });
+} catch (_) { /* already defined */ }
+
 
 // ── Workspace Auto-Assignment and Migration Helper ───────────────────────────
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users

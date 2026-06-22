@@ -9,6 +9,7 @@ import {
   FileText, CornerDownRight, MessageCircle, Loader2,
   AlertCircle, PhoneCall, PhoneOff, PhoneIncoming,
   MicOff, VideoOff, CheckCheck, Check, Mic, Camera,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -114,6 +115,77 @@ function avatarBg(name: string): string {
   return `${c1}, ${c2}`;
 }
 
+// ── URL / Google Meet link renderer ──────────────────────────────────────────
+
+const URL_REGEX = /(https?:\/\/[^\s<>"']+)/g;
+
+function renderMessageBody(text: string, isSelf: boolean): React.ReactNode {
+  if (!text) return null;
+  const parts = text.split(URL_REGEX);
+  return parts.map((part, i) => {
+    if (!part.match(URL_REGEX)) return part; // plain text
+
+    const isMeet = /meet\.google\.com/i.test(part);
+
+    if (isMeet) {
+      // Render as a prominent "Join Meeting" button
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            marginTop: 6,
+            padding: '5px 11px',
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            textDecoration: 'none',
+            background: isSelf
+              ? 'rgba(255,255,255,0.18)'
+              : 'linear-gradient(135deg,#22c55e,#16a34a)',
+            color: '#fff',
+            border: isSelf ? '1px solid rgba(255,255,255,0.3)' : 'none',
+            boxShadow: isSelf ? 'none' : '0 2px 8px rgba(34,197,94,0.35)',
+            cursor: 'pointer',
+            transition: 'opacity 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          title={part}
+        >
+          <span style={{ fontSize: 14 }}>🎥</span> Join Google Meet
+        </a>
+      );
+    }
+
+    // All other URLs — clickable underlined link
+    return (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--accent-primary)',
+          textDecoration: 'underline',
+          textUnderlineOffset: 2,
+          wordBreak: 'break-all',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        {part}
+      </a>
+    );
+  });
+}
+
 // ── Main ChatModule ─────────────────────────────────────────────────────────────
 
 export default function ChatModule() {
@@ -183,6 +255,19 @@ export default function ChatModule() {
   const [showNewDM, setShowNewDM]           = useState(false);
   const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceUser[]>([]);
 
+  // ── Google Meet State ──────────────────────────────────────────────────────
+  const [creatingMeet, setCreatingMeet] = useState(false);
+  const [meetingToast, setMeetingToast] = useState<{
+    creatorName: string;
+    meetingLink: string;
+    conversationId: string;
+    conversationName: string;
+  } | null>(null);
+  const [showMeetSetupModal, setShowMeetSetupModal] = useState(false);
+  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean | null>(null);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  const [checkingGoogle, setCheckingGoogle] = useState(true);
+
   // ── Jitsi Video Call State ─────────────────────────────────────────────────
   const [callState, setCallState]     = useState<CallState>('idle');
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
@@ -210,7 +295,25 @@ export default function ChatModule() {
   useEffect(() => { activeThreadParentRef.current = activeThreadParent; }, [activeThreadParent]);
   // Keep call refs in sync so SSE handler always reads current values
   useEffect(() => { callStateRef.current = callState; }, [callState]);
-  useEffect(() => { activeCallConvIdRef.current = activeCallConvId; }, [activeCallConvId]);
+  // Check Google connection status for the current user
+  const checkGoogleConnection = useCallback(async () => {
+    setCheckingGoogle(true);
+    try {
+      const res = await fetch('/api/gmail/oauth?action=status');
+      if (res.ok) {
+        const data = await res.json();
+        setIsGoogleConnected(data.connected === true);
+        setGoogleEmail(data.email || null);
+      } else {
+        setIsGoogleConnected(false);
+      }
+    } catch (err) {
+      console.error('[Google Meet Check] Failed to check status:', err);
+      setIsGoogleConnected(false);
+    } finally {
+      setCheckingGoogle(false);
+    }
+  }, []);
 
   // ── Fetch conversations ───────────────────────────────────────────────────
 
@@ -361,11 +464,13 @@ export default function ChatModule() {
   ): Promise<{ ok: boolean; code?: string; queued?: boolean }> => {
     // Use Socket.io for signaling — instant, no HTTP overhead
     if (socket && socket.connected) {
+      console.log('[STAGE 2] Outgoing socket event (signal) emitted', { type, targetUserId, ...extra });
       socket.emit('signal', { type, targetUserId, ...extra });
       return { ok: true };
     }
     // Fallback to HTTP if socket not available
     try {
+      console.log('[STAGE 2] Outgoing HTTP signal (socket offline)', { type, targetUserId, ...extra });
       const res = await fetch('/api/chat/video/signal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -410,6 +515,8 @@ export default function ChatModule() {
     const target = conv.otherParticipants[0];
     if (!target) return;
 
+    console.log('[STAGE 1] Call button clicked', { conversationId: activeConvId, targetUserId: target._id });
+
     setCallError(null);
     const wId = conv.workspaceId || 'ops-main';
     console.log('[Jitsi Call] Initiating new Jitsi call to:', target.name);
@@ -430,6 +537,56 @@ export default function ChatModule() {
       setCallError('Could not reach the other user. Please check your connection and try again.');
     }
   }, [activeConvId, conversations, sendSignal, hangupLocal]);
+
+  // ── Google Meet creation ──────────────────────────────────────────────────
+  const handleCreateGoogleMeetDirect = useCallback(async () => {
+    if (!activeConvId || creatingMeet) return;
+    setCreatingMeet(true);
+    try {
+      const res = await fetch('/api/chat/video/meet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: activeConvId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window.open(data.meetingLink, '_blank');
+        fetchMessages(activeConvId);
+        setShowMeetSetupModal(false);
+      } else {
+        if (data.debug) console.error('[Video Meet] Google API error:', data.debug);
+        const msg = data.error || 'Failed to start video call.';
+        // If token is expired/revoked, refresh connection status and show modal
+        if (msg.includes('reconnect') || msg.includes('Integrations') || msg.includes('token')) {
+          setIsGoogleConnected(false);
+          setGoogleEmail(null);
+          setShowMeetSetupModal(true);
+        } else if (msg.includes('Calendar API')) {
+          alert(`${msg}\n\nThis must be enabled in your Google Cloud Console before video calls will work.`);
+        } else {
+          alert(msg);
+        }
+      }
+    } catch (error) {
+      console.error('[Video Meet] Fetch error:', error);
+      alert('Network error. Please check your connection and try again.');
+    } finally {
+      setCreatingMeet(false);
+    }
+  }, [activeConvId, fetchMessages, creatingMeet]);
+
+  // Keep backward compat alias
+  const handleCreateGoogleMeet = handleCreateGoogleMeetDirect;
+
+  const handleStartMeetClick = useCallback(() => {
+    // If not connected, show the guided setup modal
+    if (!isGoogleConnected) {
+      setShowMeetSetupModal(true);
+      return;
+    }
+    handleCreateGoogleMeetDirect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGoogleConnected, handleCreateGoogleMeetDirect]);
 
   // ── Accept incoming call ──────────────────────────────────────────────────
 
@@ -488,6 +645,7 @@ export default function ChatModule() {
     const onConnect = () => {
       fetchConversationsRef.current().catch(() => {});
       if (activeConvIdRef.current) {
+        socket.emit('join_conversation', activeConvIdRef.current);
         fetchMessagesRef.current(activeConvIdRef.current);
         markConversationReadRef.current(activeConvIdRef.current);
       }
@@ -502,6 +660,7 @@ export default function ChatModule() {
 
       // ── New message ──────────────────────────────────────────────────────
       if (payload.type === 'new_message') {
+        console.log('[CLIENT] new_message received', payload.message);
         const msg: ChatMessage = payload.message;
         const isCurrent = msg.conversationId === currentConvId;
         const isSelf = msg.senderId === user?.id;
@@ -648,9 +807,11 @@ export default function ChatModule() {
       if (payload.type === 'vid_signal') {
         const { subtype, from, fromName, conversationId, workspaceId } = payload;
 
+        console.log('[STAGE 6] Receiver listener received vid_signal', { subtype, from, fromName, conversationId });
         console.debug(`[Jitsi Call] Signal received: ${subtype} from ${fromName ?? from}`);
 
         if (subtype === 'ring') {
+          console.log('[CLIENT] incoming_call received', { from: fromName || from, conversationId });
           console.log('[Jitsi Call] Incoming call (ring) received from:', fromName || from);
           if (callStateRef.current !== 'idle') {
             console.log('[Jitsi Call] Busy — auto-rejecting incoming ring from:', fromName || from);
@@ -659,6 +820,7 @@ export default function ChatModule() {
           }
           setIncomingCall({ from, fromName, conversationId, workspaceId: workspaceId || 'ops-main' });
           setCallState('ringing_in');
+          console.log('[STAGE 7] Popup state updated to ringing_in', { callState: 'ringing_in', incomingCall: { from, fromName } });
         }
 
         if (subtype === 'answer') {
@@ -681,6 +843,21 @@ export default function ChatModule() {
           hangupLocal(false);
         }
       }
+
+      // ── Video meeting started toast ──
+      if (payload.type === 'video_meeting_started') {
+        console.log('[CLIENT] video_meeting_started received', payload);
+        setMeetingToast({
+          creatorName: payload.creatorName,
+          meetingLink: payload.meetingLink,
+          conversationId: payload.conversationId,
+          conversationName: payload.conversationName,
+        });
+        // Auto-dismiss after 12 seconds
+        setTimeout(() => {
+          setMeetingToast(current => current?.meetingLink === payload.meetingLink ? null : current);
+        }, 12000);
+      }
     };
 
     socket.on('chat_event', onChatEvent);
@@ -695,6 +872,9 @@ export default function ChatModule() {
   // ── Initial load ──────────────────────────────────────────────────────────
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  // ── Check Google connection on mount ─────────────────────────────────────
+  useEffect(() => { checkGoogleConnection(); }, [checkGoogleConnection]);
 
   useEffect(() => {
     if (activeConvId) {
@@ -764,6 +944,13 @@ export default function ChatModule() {
         setMessages(prev =>
           prev.map(m => m._id === optimisticMsg._id ? { ...m, _id: data.message._id } : m)
         );
+        if (socket && socket.connected) {
+          socket.emit('new_message', {
+            conversationId: activeConvId,
+            message: data.message,
+            participantIds: conversations.find(c => c._id === activeConvId)?.participants || []
+          });
+        }
       }
     } catch (e) { console.error('[Chat] send error:', e); }
     finally { setSending(false); }
@@ -804,6 +991,13 @@ export default function ChatModule() {
         setThreadReplies(prev =>
           prev.map(m => m._id === optimistic._id ? { ...m, _id: data.message._id } : m)
         );
+        if (socket && socket.connected) {
+          socket.emit('new_message', {
+            conversationId: activeConvId,
+            message: data.message,
+            participantIds: conversations.find(c => c._id === activeConvId)?.participants || []
+          });
+        }
       }
     } catch (e) { console.error('[Thread send]', e); }
     finally { setSendingThread(false); }
@@ -1178,7 +1372,7 @@ export default function ChatModule() {
       `}</style>
 
       <div style={{
-        display:'flex', height:700, borderRadius:16,
+        display:'flex', height:'calc(100vh - 120px)', minHeight:500, borderRadius:16,
         border:'1px solid var(--border-subtle)',
         overflow:'hidden', background:'var(--bg-surface)',
         boxShadow:'0 4px 32px rgba(0,0,0,.08)',
@@ -1331,11 +1525,10 @@ export default function ChatModule() {
         )}
 
         {/* ══ SIDEBAR ══ */}
-        <div style={{
-          width:252, borderRight:'1px solid var(--border-subtle)',
-          display:'flex', flexDirection:'column',
-          background:'var(--bg-base)', flexShrink:0, position:'relative',
-        }}>
+        <div 
+          className={`w-full lg:w-[252px] flex flex-col shrink-0 relative ${activeConv ? 'hidden lg:flex' : 'flex'}`}
+          style={{ borderRight: '1px solid var(--border-subtle)', background: 'var(--bg-base)' }}
+        >
           {/* Header */}
           <div style={{ padding:'14px 14px 10px', borderBottom:'1px solid var(--border-subtle)' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -1546,7 +1739,10 @@ export default function ChatModule() {
         </div>
 
         {/* ══ MAIN CHAT ══ */}
-        <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0, background:'var(--bg-surface)' }}>
+        <div 
+          className={`flex-1 flex flex-col min-w-0 ${!activeConv ? 'hidden lg:flex' : 'flex'}`}
+          style={{ background: 'var(--bg-surface)' }}
+        >
           {activeConv ? (
             <>
               {/* Chat header */}
@@ -1556,6 +1752,13 @@ export default function ChatModule() {
                 background:'var(--bg-surface)', zIndex:1,
               }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <button 
+                    onClick={() => setActiveConvId(null)}
+                    className="lg:hidden p-1 rounded-lg text-secondary hover:text-primary hover:bg-base transition-colors"
+                    title="Back to chats"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
                   <div style={{ position:'relative' }}>
                     <div style={{
                       width:36, height:36, borderRadius:'50%',
@@ -1594,8 +1797,24 @@ export default function ChatModule() {
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:2 }}>
-                  <button className="cm-ibtn" onClick={handleVideoCall} disabled={callState!=='idle'} title="Video call" style={{ opacity:callState!=='idle'?.4:1 }}>
-                    <Video size={16}/>
+                  <button
+                    className="cm-ibtn"
+                    onClick={handleStartMeetClick}
+                    disabled={creatingMeet}
+                    title={isGoogleConnected ? `Start Google Meet (${googleEmail ?? 'Connected'})` : 'Start Google Meet — Connect your Google account'}
+                    style={{ opacity: creatingMeet ? 0.4 : 1, position: 'relative' }}
+                  >
+                    {creatingMeet ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' } as any}/> : <Video size={16}/>}
+                    {/* Connection dot indicator */}
+                    {!checkingGoogle && (
+                      <span style={{
+                        position: 'absolute', top: 4, right: 4,
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: isGoogleConnected ? '#22c55e' : '#ef4444',
+                        border: '1.5px solid var(--bg-surface)',
+                        boxShadow: isGoogleConnected ? '0 0 4px #22c55e88' : '0 0 4px #ef444488',
+                      }}/>
+                    )}
                   </button>
                   <button className="cm-ibtn" onClick={handleAISummary} title="AI Summary">
                     <Sparkles size={16} style={{ color:'#f59e0b' }}/>
@@ -1752,7 +1971,11 @@ export default function ChatModule() {
                             </span>
                           ) : (
                             <>
-                              {msg.body && <div style={{ lineHeight:1.52 }}>{msg.body}</div>}
+                              {msg.body && (
+                                <div style={{ lineHeight: 1.52, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                                  {renderMessageBody(msg.body, isSelf)}
+                                </div>
+                              )}
                               {msg.attachments && msg.attachments.length>0 && (
                                 <div style={{ marginTop:msg.body?8:0, display:'flex', flexDirection:'column', gap:5 }}>
                                   {msg.attachments.map((file,fidx)=>{
@@ -1873,6 +2096,35 @@ export default function ChatModule() {
                   {uploading ? <Loader2 size={16} style={{ animation:'spin 1s linear infinite', color:'var(--accent-primary)' } as any}/> : <Paperclip size={16}/>}
                 </button>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display:'none' }}/>
+                
+                {/* 🎥 Video Call Button */}
+                <button
+                  className="cm-ibtn accent"
+                  onClick={handleCreateGoogleMeet}
+                  disabled={creatingMeet}
+                  title="Start Google Meet Video Call"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    border: '1px solid rgba(99, 102, 241, 0.2)',
+                    color: 'var(--accent-primary)',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {creatingMeet ? (
+                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' } as any} />
+                  ) : (
+                    <>
+                      <span>🎥</span> Video Call
+                    </>
+                  )}
+                </button>
                 <input
                   type="text"
                   placeholder={uploading?'Uploading…':`Message ${activeConv?.name??''}…`}
@@ -1905,10 +2157,10 @@ export default function ChatModule() {
 
         {/* ══ THREAD PANEL ══ */}
         {activeThreadParent && (
-          <div className="cm-fadeIn" style={{
-            width:296, borderLeft:'1px solid var(--border-subtle)',
-            background:'var(--bg-surface)', display:'flex', flexDirection:'column', flexShrink:0,
-          }}>
+          <div 
+            className="w-full lg:w-[296px] absolute lg:relative right-0 top-0 bottom-0 z-20 flex flex-col cm-fadeIn"
+            style={{ borderLeft: '1px solid var(--border-subtle)', background: 'var(--bg-surface)', height: '100%' }}
+          >
             <div style={{ padding:'11px 14px', borderBottom:'1px solid var(--border-subtle)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div style={{ display:'flex', alignItems:'center', gap:7 }}>
                 <MessageCircle size={14} style={{ color:'var(--accent-primary)' }}/>
@@ -1958,7 +2210,9 @@ export default function ChatModule() {
                     </div>
                     <span style={{ fontSize:10, color:'var(--text-tertiary)' }}>{formatTime(reply.createdAt)}</span>
                   </div>
-                  <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0, lineHeight:1.5, wordBreak:'break-word' }}>{reply.body}</p>
+                  <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0, lineHeight:1.5, wordBreak:'break-word' }}>
+                     {renderMessageBody(reply.body, false)}
+                   </p>
                   {reply.reactions && reply.reactions.length>0 && (
                     <div style={{ display:'flex', flexWrap:'wrap', gap:3, marginTop:5 }}>
                       {reply.reactions.map((r,ri)=>(
@@ -2086,6 +2340,150 @@ export default function ChatModule() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ GOOGLE MEET SETUP MODAL ══ */}
+        {showMeetSetupModal && (
+          <div className="cm-fadeIn" style={{ position:'absolute', inset:0, zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)', backdropFilter:'blur(12px)', borderRadius:16 }}>
+            <div className="cm-scaleIn" style={{ background:'var(--bg-surface)', border:'1px solid var(--border-subtle)', borderRadius:18, width:340, padding:24, boxShadow:'0 24px 64px rgba(0,0,0,.32)', display:'flex', flexDirection:'column', gap:0 }}>
+              {/* Header */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,#4285f4,#34a853)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, boxShadow:'0 4px 12px #4285f440' }}>
+                    🎥
+                  </div>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:760, color:'var(--text-primary)', letterSpacing:'-0.01em' }}>Google Meet</div>
+                    <div style={{ fontSize:11, color:'var(--text-secondary)', fontWeight:550 }}>Video conferencing</div>
+                  </div>
+                </div>
+                <button className="cm-ibtn" onClick={() => setShowMeetSetupModal(false)}><X size={16}/></button>
+              </div>
+
+              {/* Connection status card */}
+              <div style={{ background: isGoogleConnected ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1.5px solid ${isGoogleConnected ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`, borderRadius:12, padding:'12px 14px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background: isGoogleConnected ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontSize:14 }}>{isGoogleConnected ? '✅' : '🔗'}</span>
+                </div>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color: isGoogleConnected ? '#22c55e' : '#ef4444' }}>
+                    {isGoogleConnected ? 'Google Account Connected' : 'No Google Account Connected'}
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--text-secondary)', marginTop:2, fontWeight:500 }}>
+                    {isGoogleConnected
+                      ? (googleEmail ?? 'Your account is linked and ready')
+                      : 'Connect your Google account to host meetings as yourself'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Info */}
+              {!isGoogleConnected && (
+                <div style={{ marginBottom:16 }}>
+                  <p style={{ fontSize:12, color:'var(--text-secondary)', margin:'0 0 10px', lineHeight:1.6, fontWeight:500 }}>
+                    When you connect your Google account:
+                  </p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {['You become the meeting organizer & host', 'Manage participant admission requests', 'Full host controls for your meeting'].map((item, i) => (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text-primary)', fontWeight:550 }}>
+                        <span style={{ color:'#22c55e', flexShrink:0 }}>✓</span> {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {isGoogleConnected ? (
+                  <button
+                    className="cm-pill primary"
+                    onClick={() => { setShowMeetSetupModal(false); handleCreateGoogleMeetDirect(); }}
+                    disabled={creatingMeet}
+                    style={{ justifyContent:'center', padding:'10px 16px', fontSize:13, fontWeight:700, gap:8 }}
+                  >
+                    {creatingMeet ? <><Loader2 size={14} style={{ animation:'spin 1s linear infinite' } as any}/> Creating…</> : <><Video size={14}/> Start Meeting Now</>}
+                  </button>
+                ) : (
+                  <a
+                    href={`/api/gmail/oauth?action=connect&returnTo=${encodeURIComponent('/employee?tab=chat')}`}
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                      padding:'10px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                      background:'linear-gradient(135deg,#4285f4,#34a853)', color:'#fff',
+                      textDecoration:'none', boxShadow:'0 4px 14px rgba(66,133,244,0.35)',
+                      transition:'transform 0.15s, box-shadow 0.15s',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(-1px)'; (e.currentTarget as HTMLAnchorElement).style.boxShadow='0 6px 20px rgba(66,133,244,0.45)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(0)'; (e.currentTarget as HTMLAnchorElement).style.boxShadow='0 4px 14px rgba(66,133,244,0.35)'; }}
+                  >
+                    🔗 Connect Google Account
+                  </a>
+                )}
+                {isGoogleConnected && (
+                  <a
+                    href={`/api/gmail/oauth?action=connect&returnTo=${encodeURIComponent('/employee?tab=chat')}`}
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:11, color:'var(--text-tertiary)', textDecoration:'none', fontWeight:600, padding:'4px 0' }}
+                  >
+                    Switch Google Account
+                  </a>
+                )}
+                <button
+                  className="cm-pill ghost"
+                  onClick={() => setShowMeetSetupModal(false)}
+                  style={{ justifyContent:'center', fontSize:12 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ GOOGLE MEET TOAST NOTIFICATION ══ */}
+        {meetingToast && (
+          <div className="cm-scaleIn" style={{
+            position:'absolute', bottom:74, right:20, zIndex:100,
+            background:'rgba(15, 23, 42, 0.9)', backdropFilter:'blur(12px)',
+            border:'1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius:14, padding:'12px 16px', width:280,
+            boxShadow:'0 12px 32px rgba(0,0,0,.35)',
+            display:'flex', flexDirection:'column', gap:8,
+          }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:13, fontWeight:750, color:'#fff', display:'flex', alignItems:'center', gap:6 }}>
+                <span>🎥</span> New Meeting
+              </span>
+              <button 
+                onClick={() => setMeetingToast(null)} 
+                style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,0.5)', display:'flex', padding:0 }}
+              >
+                <X size={14}/>
+              </button>
+            </div>
+            <p style={{ fontSize:12, color:'rgba(255,255,255,0.85)', margin:0, lineHeight:1.4 }}>
+              {meetingToast.creatorName} started a video call in {meetingToast.conversationName}.
+            </p>
+            <div style={{ display:'flex', gap:8, marginTop:2 }}>
+              <button
+                onClick={() => {
+                  window.open(meetingToast.meetingLink, '_blank');
+                  setMeetingToast(null);
+                }}
+                className="cm-pill primary"
+                style={{ flex:1, padding:'6px 10px', fontSize:11, justifyContent:'center' }}
+              >
+                Join Meeting
+              </button>
+              <button
+                onClick={() => setMeetingToast(null)}
+                className="cm-pill ghost"
+                style={{ padding:'6px 10px', fontSize:11, background:'rgba(255,255,255,0.1)', border:'none', color:'#fff' }}
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         )}

@@ -179,6 +179,20 @@ export const TEMPLATES: Record<string, EmailTemplate> = {
         <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard" class="btn">View Task</a>
       </center>
     `)
+  },
+  team_invite: {
+    subject: 'You have been invited to join Antigravity OPS Platform',
+    html: (vars: TemplateVars) => EmailBoilerplate('Invitation', `
+      <span class="badge">${vars.role}</span>
+      <h2 style="color: #111827; margin-top: 0;">You have been invited!</h2>
+      <p>Hi there,</p>
+      <p>${vars.invitedBy} has invited you to join the Antigravity OPS Platform team as a <strong>${vars.role}</strong>.</p>
+      <p>Click the button below to accept the invitation and set up your account:</p>
+      <center>
+        <a href="${vars.inviteLink || '#'}" class="btn">Join the Team</a>
+      </center>
+      <p style="margin-top: 20px; font-size: 14px; color: #64748b;">This invitation link will expire in 24 hours.</p>
+    `)
   }
 };
 
@@ -272,8 +286,11 @@ export async function sendDualNotification({
   action: string;
   description: string;
 }) {
-  // Admin email driven by env — never hardcoded in code
-  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@ops.com').toLowerCase().trim();
+  // Admin email driven by env — never hardcoded in code. Fallback to SENDER_EMAIL if default placeholder is used.
+  let adminEmail = (process.env.ADMIN_EMAIL || 'admin@ops.com').toLowerCase().trim();
+  if (adminEmail === 'admin@ops.com' && process.env.SENDER_EMAIL) {
+    adminEmail = process.env.SENDER_EMAIL.toLowerCase().trim();
+  }
 
   const recipients: Array<{ to: string; label: string }> = [];
 

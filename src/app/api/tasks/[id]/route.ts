@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     const body = await req.json();
 
-    const allowed = ['title', 'description', 'stage', 'priority', 'assignee', 'dueDate', 'tags'];
+    const allowed = ['title', 'description', 'stage', 'priority', 'assignee', 'dueDate', 'tags', 'progress', 'subtasks', 'logs', 'attachments'];
     const update: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body) update[key] = body[key];
@@ -97,6 +97,11 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  return PUT(req, ctx);
+}
+
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);

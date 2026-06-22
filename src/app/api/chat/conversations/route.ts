@@ -4,6 +4,9 @@ import { connectDB, Conversation, Message, MessageReadStatus, User, Workspace } 
 import { isUserOnline } from '@/lib/chat-sse';
 import mongoose from 'mongoose';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * GET /api/chat/conversations
  * Returns all conversations the current user participates in,
@@ -11,7 +14,12 @@ import mongoose from 'mongoose';
  */
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, {
+    status: 401,
+    headers: {
+      'Cache-Control': 'no-store, max-age=0, must-revalidate',
+    }
+  });
 
   await connectDB();
 
@@ -120,5 +128,9 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ success: true, conversations: result, totalUnread });
+  return NextResponse.json({ success: true, conversations: result, totalUnread }, {
+    headers: {
+      'Cache-Control': 'no-store, max-age=0, must-revalidate',
+    }
+  });
 }

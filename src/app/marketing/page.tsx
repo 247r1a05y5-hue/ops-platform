@@ -52,19 +52,11 @@ function MarketingDashboard() {
     }
   }, [tab]);
   
-  // Strategy Approvals state
-  const [proposals, setProposals] = useState([
-    { id: 'PROP-92', title: 'Q3 Brand Awareness Sequence', type: 'Email Campaign', manager: 'Maya Thompson', status: 'Approved', date: 'May 12' },
-    { id: 'PROP-94', title: 'Developer Tools Launch Promo', type: 'Discount Code', manager: 'Maya Thompson', status: 'Pending', date: 'May 15' },
-    { id: 'PROP-95', title: 'Hexacloud Case Study Outbox', type: 'Collateral Sharing', manager: 'Maya Thompson', status: 'Pending', date: 'Just now' },
-  ]);
-
-  // Campaign management state
-  const [campaigns, setCampaigns] = useState([
-    { id: 'CAMP-412', name: 'Spring Product Onboarding', status: 'Active', target: 'Developers', sent: 1450, clicks: 312, conversion: '21.5%', type: 'Email Campaign' },
-    { id: 'CAMP-415', name: 'Nova Enterprise Re-engagement', status: 'Paused', target: 'Retail Leads', sent: 890, clicks: 120, conversion: '13.4%', type: 'Promotions' },
-    { id: 'CAMP-418', name: 'Acme Growth Outreach', status: 'Draft', target: 'Tech Founders', sent: 0, clicks: 0, conversion: '0%', type: 'Outreach Activities' },
-  ]);
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [newCampName, setNewCampName] = useState('');
   const [newCampType, setNewCampType] = useState('Email Campaign');
@@ -73,45 +65,173 @@ function MarketingDashboard() {
   const [newPropTitle, setNewPropTitle] = useState('');
   const [newPropType, setNewPropType] = useState('Email Campaign');
 
-  const handleCreateCampaign = (e: React.FormEvent) => {
+  const fetchData = async () => {
+    try {
+      const [leadsRes, propRes, seqRes] = await Promise.all([
+        fetch('/api/leads'),
+        fetch('/api/leads/approval'),
+        fetch('/api/sequences')
+      ]);
+
+      let activeLeads: any[] = [];
+      if (leadsRes.ok) {
+        const leadsData = await leadsRes.json();
+        if (leadsData.success) {
+          activeLeads = leadsData.leads || [];
+          setLeads(activeLeads);
+        }
+      }
+
+      let activeProps: any[] = [];
+      if (propRes.ok) {
+        const propData = await propRes.json();
+        if (propData.success) {
+          activeProps = propData.requests.map((r: any) => ({
+            id: r._id,
+            title: r.reason || `Approval for ${r.leadId?.company || r.leadId?.name || 'Deal'}`,
+            type: 'Strategy Alignment',
+            manager: r.reviewedByName || 'Pending Review',
+            status: r.status === 'approved' ? 'Approved' : r.status === 'rejected' ? 'Rejected' : 'Pending',
+            date: new Date(r.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
+          }));
+          setProposals(activeProps);
+        }
+      }
+
+      if (seqRes.ok) {
+        const seqData = await seqRes.json();
+        if (seqData.success) {
+          const mapped = seqData.sequences.map((seq: any) => {
+            const enrolledLeads = activeLeads.filter((l: any) => l.activeSequence === seq.name);
+            const sent = enrolledLeads.length;
+            let clicks = 0;
+            enrolledLeads.forEach((l: any) => {
+              l.emails?.forEach((e: any) => {
+                clicks += (e.clicks || 0);
+              });
+            });
+            const conversion = sent > 0 ? `${Math.round((clicks / sent) * 100)}%` : '0%';
+            return {
+              id: seq._id,
+              name: seq.name,
+              status: 'Active',
+              target: 'All Leads',
+              sent: sent,
+              clicks: clicks,
+              conversion: conversion,
+              type: 'Email Campaign'
+            };
+          });
+          setCampaigns(mapped);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error syncing desk with database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampName || !newCampTarget) {
       showToast('Please fill out all campaign fields', 'warning');
       return;
     }
-    const nextId = `CAMP-${Math.floor(100 + Math.random() * 900)}`;
-    setCampaigns(prev => [
-      ...prev,
-      { id: nextId, name: newCampName, status: 'Draft', target: newCampTarget, sent: 0, clicks: 0, conversion: '0%', type: newCampType }
-    ]);
-    showToast(`Campaign ${newCampName} provisioned!`, 'success');
-    triggerActivityLog('task_creation', `Provisioned new campaign: "${newCampName}" for ${newCampTarget}`, {
-      campaignId: nextId,
-      target: newCampTarget,
-      type: newCampType
-    }).catch(console.error);
-    setNewCampName('');
-    setNewCampTarget('');
+    try {
+      const res = await fetch('/api/sequences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCampName,
+          steps: [
+            {
+              stepNumber: 1,
+              delayDays: 0,
+              subject: `Introduction to ${newCampTarget}`,
+              body: `Welcome to the ${newCampName} outreach sequence targeting ${newCampTarget}.`
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Campaign ${newCampName} provisioned!`, 'success');
+        triggerActivityLog('task_creation', `Provisioned new campaign: "${newCampName}" for ${newCampTarget}`, {
+          campaignId: data.sequence._id,
+          target: newCampTarget,
+          type: newCampType
+        }).catch(console.error);
+        fetchData();
+        setNewCampName('');
+        setNewCampTarget('');
+      } else {
+        showToast(data.error || 'Failed to create campaign', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to create campaign', 'error');
+    }
   };
 
-  const handleSubmitProposal = (e: React.FormEvent) => {
+  const handleSubmitProposal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPropTitle) {
       showToast('Please enter a proposal title', 'warning');
       return;
     }
-    const nextId = `PROP-${Math.floor(100 + Math.random() * 900)}`;
-    setProposals(prev => [
-      { id: nextId, title: newPropTitle, type: newPropType, manager: 'Maya Thompson', status: 'Pending', date: 'Just now' },
-      ...prev
-    ]);
-    showToast(`Alignment proposal "${newPropTitle}" submitted to Manager!`, 'success');
-    triggerActivityLog('workflow_action', `Submitted new strategy proposal: "${newPropTitle}" for review`, {
-      proposalId: nextId,
-      type: newPropType
-    }).catch(console.error);
-    setNewPropTitle('');
+    if (!selectedLeadId) {
+      showToast('Please select a CRM lead to link to this proposal', 'warning');
+      return;
+    }
+    try {
+      const targetLead = leads.find(l => l._id === selectedLeadId);
+      const res = await fetch('/api/leads/approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: selectedLeadId,
+          reason: newPropTitle,
+          dealValue: targetLead?.value || '$25,000'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Alignment proposal "${newPropTitle}" submitted to Manager!`, 'success');
+        fetchData();
+        setNewPropTitle('');
+        setSelectedLeadId('');
+      } else {
+        showToast(data.error || 'Failed to submit proposal', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to submit proposal', 'error');
+    }
   };
+
+  const totalLeads = leads.length;
+  const totalEmails = leads.reduce((acc, l) => acc + (l.emails?.length || 0), 0);
+  const totalClicks = leads.reduce((acc, l) => acc + (l.emails?.reduce((s, e) => s + (e.clicks || 0), 0) || 0), 0);
+  
+  const totalImpressions = (totalEmails + totalLeads * 3).toLocaleString();
+  const conversionRate = totalLeads > 0 
+    ? (leads.filter((l: any) => ['Closing', 'Proposal', 'Negotiation'].includes(l.stage)).length / totalLeads * 100).toFixed(1) + '%'
+    : '0.0%';
+  const linkClicks = totalClicks.toString();
+  const strategyAlignment = proposals.length > 0
+    ? (proposals.filter(p => p.status === 'Approved').length / proposals.length * 100).toFixed(1) + '%'
+    : '100.0%';
+
+  const STAGE_LABELS = ['Discovery', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closing'];
+  const barData = STAGE_LABELS.map(s => {
+    const count = leads.filter(l => l.stage === s).length;
+    const maxCount = Math.max(...STAGE_LABELS.map(st => leads.filter(l => l.stage === st).length), 1);
+    return Math.round((count / maxCount) * 100);
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-8 py-10 min-h-screen bg-base text-primary">
@@ -271,10 +391,10 @@ function MarketingDashboard() {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {[
-                { title: 'Total Impressions', value: '45,210', icon: Eye, trend: '+14.2%', color: 'text-blue-500' },
-                { title: 'Conversion Rate', value: '18.4%', icon: TrendingUp, trend: '+2.8%', color: 'text-emerald-500' },
-                { title: 'Link Clicks', value: '4,890', icon: MousePointer, trend: '+11.5%', color: 'text-indigo-500' },
-                { title: 'Strategy Alignment', value: '94.8%', icon: Award, trend: 'Optimal', color: 'text-accent' },
+                { title: 'Total Impressions', value: totalImpressions, icon: Eye, trend: '+14.2%', color: 'text-blue-500' },
+                { title: 'Conversion Rate', value: conversionRate, icon: TrendingUp, trend: '+2.8%', color: 'text-emerald-500' },
+                { title: 'Link Clicks', value: linkClicks, icon: MousePointer, trend: '+11.5%', color: 'text-indigo-500' },
+                { title: 'Strategy Alignment', value: strategyAlignment, icon: Award, trend: 'Optimal', color: 'text-accent' },
               ].map((s, i) => (
                 <Card key={i}>
                   <div className="flex justify-between items-center mb-4">
@@ -296,7 +416,7 @@ function MarketingDashboard() {
                 <Badge text="Live Analytics feed" type="info" />
               </div>
               <div className="h-64 flex items-end gap-2 px-2 pb-2">
-                {[45, 60, 30, 80, 50, 95, 70, 85, 40, 90, 75, 88].map((h, i) => (
+                {barData.map((h, i) => (
                   <div key={i} className="flex-1 h-full flex flex-col justify-end items-center">
                     <div className="w-full h-48 flex items-end">
                       <motion.div 
@@ -310,7 +430,7 @@ function MarketingDashboard() {
                         </div>
                       </motion.div>
                     </div>
-                    <span className="text-[8px] font-bold text-tertiary mt-2">M{i+1}</span>
+                    <span className="text-[8px] font-bold text-tertiary mt-2 truncate w-full text-center">{STAGE_LABELS[i]}</span>
                   </div>
                 ))}
               </div>
@@ -334,7 +454,7 @@ function MarketingDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-[10px] font-bold text-tertiary uppercase">{prop.id}</span>
-                          <Badge text={prop.status} type={prop.status === 'Approved' ? 'success' : 'warning'} />
+                          <Badge text={prop.status} type={prop.status === 'Approved' ? 'success' : prop.status === 'Rejected' ? 'danger' : 'warning'} />
                           <span className="text-[10px] text-tertiary font-bold">• Submitted {prop.date}</span>
                         </div>
                         <h3 className="text-sm font-bold text-primary mb-1.5">{prop.title}</h3>
@@ -345,6 +465,10 @@ function MarketingDashboard() {
                         {prop.status === 'Approved' ? (
                           <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-500">
                             <CheckCircle size={14} /> Ready to Deploy
+                          </div>
+                        ) : prop.status === 'Rejected' ? (
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-red-500">
+                            <AlertCircle size={14} /> Rejected
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 text-xs font-bold text-orange-500">
@@ -371,6 +495,19 @@ function MarketingDashboard() {
                       placeholder="e.g. Q3 Re-engagement discounts"
                       className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
                     />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Associated CRM Lead</label>
+                    <select
+                      value={selectedLeadId}
+                      onChange={e => setSelectedLeadId(e.target.value)}
+                      className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
+                    >
+                      <option value="">Select a Lead...</option>
+                      {leads.map(l => (
+                        <option key={l._id} value={l._id}>{l.company || l.name} ({l.value || '$0'})</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Alignment Manager</label>

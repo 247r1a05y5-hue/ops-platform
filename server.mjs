@@ -1,19 +1,12 @@
 /**
- * server.mjs  — PRODUCTION ENTRY POINT
+ * server.mjs — FIXED PRODUCTION ENTRY POINT
  *
- * Single-VPS architecture: Next.js + Socket.IO in one Node.js process.
- *
- * USAGE:
- *   node server.mjs          (production)
- *   node server.mjs --dev    (development — wraps next dev)
- *
- * package.json scripts:
- *   "dev":   "node server.mjs --dev"
- *   "start": "node server.mjs"
- *
- * This is the ONLY place Socket.IO is initialized.
- * It sets BOTH globalThis._socketIO and globalThis._io so that
- * all API routes and lib/socket-server.ts see the same instance.
+ * Fixes:
+ * 1. Presence offline broadcast fires immediately after grace period
+ * 2. No duplicate message delivery (conv room only — user rooms for non-members)
+ * 3. Unified globalThis._socketIO and global._io
+ * 4. Full debug logging
+ * 5. Rejoin user/workspace rooms logged on reconnect
  */
 
 import { createServer } from 'node:http';
@@ -56,7 +49,6 @@ const io = new SocketIOServer(httpServer, {
 });
 
 // ── Global state ──────────────────────────────────────────────────────────────
-// Keep both _socketIO (legacy) and _io (socket-server.ts) pointing at the same instance.
 
 const presenceLastSeen = new Map(); // userId → timestamp
 const pendingSignals   = new Map(); // userId → [{data, expiresAt}]
@@ -66,17 +58,19 @@ const PRESENCE_TTL = 45_000;
 const SIGNAL_TTL   = 30_000;
 
 // Set ALL globals so every import path works
-globalThis._socketIO         = io;   // used by send/typing/read/signal routes directly
-globalThis._io               = io;   // used by lib/socket-server.ts helpers
+globalThis._socketIO         = io;
+globalThis._io               = io;
 globalThis._presenceLastSeen = presenceLastSeen;
 globalThis._pendingSignals   = pendingSignals;
 globalThis._userWorkspace    = userWorkspace;
 
-// Also expose on global (Node.js globalThis === global in practice, but be explicit)
 global._io               = io;
+global._socketIO         = io;
 global._presenceLastSeen = presenceLastSeen;
 global._pendingSignals   = pendingSignals;
 global._userWorkspace    = userWorkspace;
+
+console.log('[Server] Socket.IO initialized — globals set');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -107,6 +101,7 @@ function pushToUser(userId, data) {
 }
 
 function broadcastPresenceChange(userId, isOnline) {
+  console.log(`[Server] Presence broadcast: user=${userId} isOnline=${isOnline}`);
   const payload = { type: 'presence_change', userId, isOnline };
   const wsId = userWorkspace.get(userId);
   if (wsId) {
@@ -121,9 +116,14 @@ function flushPendingSignals(userId) {
   if (!list?.length) return;
   pendingSignals.delete(userId);
   const now = Date.now();
+  let flushed = 0;
   for (const sig of list) {
-    if (sig.expiresAt > now) pushToUser(userId, sig.data);
+    if (sig.expiresAt > now) {
+      pushToUser(userId, sig.data);
+      flushed++;
+    }
   }
+  if (flushed > 0) console.log(`[Server] Flushed ${flushed} pending signals to user=${userId}`);
 }
 
 function cleanExpiredPresence() {
@@ -177,9 +177,14 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   const { userId, userName, workspaceId } = socket;
 
+  console.log(`[Server] User connected: userId=${userId} name=${userName} workspace=${workspaceId} socketId=${socket.id}`);
+
   userWorkspace.set(userId, workspaceId);
   socket.join(`user:${userId}`);
   socket.join(`workspace:${workspaceId}`);
+
+  console.log(`[Server] User room joined: user:${userId}`);
+  console.log(`[Server] Workspace room joined: workspace:${workspaceId}`);
 
   const wasOffline = !isUserOnline(userId);
   presenceLastSeen.set(userId, Date.now());
@@ -190,7 +195,12 @@ io.on('connection', (socket) => {
     onlineUserIds: getOnlineUserIds(),
   });
 
-  if (wasOffline) broadcastPresenceChange(userId, true);
+  // Broadcast presence ONLINE to workspace peers
+  if (wasOffline) {
+    broadcastPresenceChange(userId, true);
+  }
+
+  // Flush any pending signals (e.g. missed ring while briefly disconnected)
   flushPendingSignals(userId);
 
   // ── Client events ─────────────────────────────────────────────────────────
@@ -198,6 +208,7 @@ io.on('connection', (socket) => {
   socket.on('join_conversation', (conversationId) => {
     if (typeof conversationId === 'string' && conversationId.length > 0) {
       socket.join(`conv:${conversationId}`);
+      console.log(`[Server] Conversation room joined: conv:${conversationId} by userId=${userId}`);
     }
   });
 
@@ -227,6 +238,8 @@ io.on('connection', (socket) => {
     const VALID_TYPES = ['ring', 'answer', 'ice', 'ice_restart', 'reject', 'hangup'];
     if (!VALID_TYPES.includes(data.type)) return;
 
+    console.log(`[Server] Signal: type=${data.type} from=${userId}(${userName}) to=${data.targetUserId}`);
+
     const payload = {
       type:           'vid_signal',
       subtype:        data.type,
@@ -238,23 +251,30 @@ io.on('connection', (socket) => {
     };
 
     const delivered = pushToUser(data.targetUserId, payload);
+    console.log(`[Server] Incoming call signal emitted to user:${data.targetUserId} — delivered=${delivered}`);
 
-    // Queue non-ICE signals for brief offline window (reconnect recovery)
+    // Queue non-ICE signals for brief offline window
     if (!delivered && data.type !== 'ice') {
       const list = pendingSignals.get(data.targetUserId) ?? [];
       list.push({ data: payload, expiresAt: Date.now() + SIGNAL_TTL });
       pendingSignals.set(data.targetUserId, list);
+      console.log(`[Server] Signal queued for offline user=${data.targetUserId}`);
     }
   });
 
-  socket.on('disconnect', () => {
-    // 5-second grace period — allows tab reloads without false-offline events
+  socket.on('disconnect', (reason) => {
+    console.log(`[Server] User disconnected: userId=${userId} reason=${reason} socketId=${socket.id}`);
+
+    // Grace period — handles tab reloads without false-offline flicker
     setTimeout(() => {
       const room = io.sockets.adapter.rooms.get(`user:${userId}`);
       if (!room || room.size === 0) {
-        // Still no sockets after grace — let presence TTL expire naturally.
-        // Uncomment next line for instant offline:
-        // broadcastPresenceChange(userId, false);
+        // No remaining sockets for this user — broadcast offline immediately
+        console.log(`[Server] User offline after grace: userId=${userId}`);
+        presenceLastSeen.delete(userId);
+        broadcastPresenceChange(userId, false);
+      } else {
+        console.log(`[Server] User still has ${room.size} socket(s) — not broadcasting offline: userId=${userId}`);
       }
     }, 5_000);
   });

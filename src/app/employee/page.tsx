@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -60,11 +60,12 @@ interface SubTask {
 }
 
 interface EmployeeTask {
-  id: number;
+  id: any;
+  _id?: string;
   title: string;
   desc: string;
   due: string;
-  priority: 'Critical' | 'High' | 'Normal' | 'Low';
+  priority: 'Critical' | 'High' | 'Normal' | 'Medium' | 'Low';
   status: 'To Do' | 'In Progress' | 'Under Review' | 'Done' | 'Blocked';
   progress: number;
   estimatedHours: number;
@@ -287,7 +288,7 @@ const TimeModule = () => {
     try {
       const res = await fetch('/api/time-tracking', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({ action, duration, project: 'Active Session Work' }),
       });
       const data = await res.json();
@@ -401,7 +402,7 @@ const PerformanceModule = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
-    fetch('/api/employee/performance').then(r => r.json())
+    fetch('/api/employee/performance', { cache: 'no-store' }).then(r => r.json())
       .then(d => { if (d.success) setData(d); else setErr(d.error); })
       .catch(e => setErr(e.message)).finally(() => setLoading(false));
   }, []);
@@ -511,68 +512,125 @@ function EmployeeDashboard() {
 
   const [isAcknowledged, setIsAcknowledged] = useState(false);
 
-  // High fidelity structures for assignments
-  const [tasks, setTasks] = useState<EmployeeTask[]>([
-    { 
-      id: 1, 
-      title: 'Update media assets for Nova Retail', 
-      desc: 'Compress and upload all high-resolution promotional materials, print sequences, and brand videos for the Nova Retail Summer campaign.',
-      due: 'Today', 
-      priority: 'High', 
-      status: 'In Progress', 
-      progress: 65,
-      estimatedHours: 8,
-      completed: false,
-      attachments: ['Nova_Brandbook_v2.pdf', 'Nova_Summer_Assets_Raw.zip'],
-      subtasks: [
-        { title: 'Compress high-res promotional sequence assets', done: true },
-        { title: 'Validate asset scaling ratios', done: true },
-        { title: 'Upload bundle sequences to CDN bucket', done: false }
-      ],
-      logs: [
-        { time: '09:12 AM', author: 'Priya Patel', note: 'Configured cloud bucket CDN parameters with cache headers.' },
-        { time: '11:30 AM', author: 'Priya Patel', note: 'Compressed raw summer visuals by 45%.' }
-      ]
-    },
-    { 
-      id: 2, 
-      title: 'Draft weekly performance overview', 
-      desc: 'Generate weekly analytical report outlining logistics bottlenecks, R2 migration node status, and yield ratios across active nodes.',
-      due: 'Tomorrow', 
-      priority: 'Normal', 
-      status: 'To Do', 
-      progress: 0,
-      estimatedHours: 4,
-      completed: false,
-      attachments: ['Logistics_Telemetry_Sheet.xlsx'],
-      subtasks: [
-        { title: 'Gather bandwidth consumption telemetry', done: false },
-        { title: 'Calculate personnel output parameters', done: false }
-      ],
-      logs: []
-    },
-    { 
-      id: 3, 
-      title: 'Validate cloud storage bandwidth', 
-      desc: 'Verify load speeds, transfer yield, and potential egress congestion during peak hours for server cluster APAC-West.',
-      due: 'May 14', 
-      priority: 'Critical', 
-      status: 'Under Review', 
-      progress: 95,
-      estimatedHours: 12,
-      completed: false,
-      attachments: ['APAC_West_Telemetry.log', 'Egress_Audit_Template.pdf'],
-      subtasks: [
-        { title: 'Initiate load simulation nodes', done: true },
-        { title: 'Identify cache bypass bottlenecks', done: true },
-        { title: 'Compile visual telemetry report', done: true }
-      ],
-      logs: [
-        { time: 'Yesterday', author: 'Priya Patel', note: 'Initiated active load simulation tests with 10k concurrent virtual users.' },
-        { time: 'Today 08:00 AM', author: 'Priya Patel', note: 'Telemetry logged. Node APAC-West is holding stable at 99.4% egress yield.' }
-      ]
-    },
-  ]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [tasks, setTasks] = useState<EmployeeTask[]>([]);
+
+  useEffect(() => {
+    async function loadUserData() {
+      try {
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        const meData = await meRes.json();
+        if (!meData.success) {
+          router.push('/login');
+          return;
+        }
+        const user = meData.user;
+        setCurrentUser(user);
+
+        // Fetch tasks
+        const tasksRes = await fetch('/api/tasks', { credentials: 'include', cache: 'no-store' });
+        const tasksData = await tasksRes.json();
+        if (tasksData.success) {
+          let userTasks = tasksData.tasks.filter((t: any) =>
+            t.assignee && (t.assignee.toLowerCase() === user.email.toLowerCase() || t.assignee.toLowerCase() === user.name.toLowerCase())
+          );
+
+          // If no tasks are found, seed the mock ones in the DB for the user!
+          if (userTasks.length === 0) {
+            const initialMockTasks = [
+              {
+                title: 'Update media assets for Nova Retail',
+                description: 'Compress and upload all high-resolution promotional materials, print sequences, and brand videos for the Nova Retail Summer campaign.',
+                stage: 'In Progress',
+                priority: 'High',
+                progress: 65,
+                assignee: user.email,
+                tags: ['Asset Management', 'Nova Retail'],
+                subtasks: [
+                  { title: 'Compress high-res promotional sequence assets', done: true },
+                  { title: 'Validate asset scaling ratios', done: true },
+                  { title: 'Upload bundle sequences to CDN bucket', done: false }
+                ],
+                logs: [
+                  { time: '09:12 AM', author: user.name, note: 'Configured cloud bucket CDN parameters with cache headers.' },
+                  { time: '11:30 AM', author: user.name, note: 'Compressed raw summer visuals by 45%.' }
+                ]
+              },
+              {
+                title: 'Draft weekly performance overview',
+                description: 'Generate weekly analytical report outlining logistics bottlenecks, R2 migration node status, and yield ratios across active nodes.',
+                stage: 'Backlog',
+                priority: 'Medium',
+                progress: 0,
+                assignee: user.email,
+                tags: ['Reporting', 'Analytics'],
+                subtasks: [
+                  { title: 'Gather bandwidth consumption telemetry', done: false },
+                  { title: 'Calculate personnel output parameters', done: false }
+                ],
+                logs: []
+              },
+              {
+                title: 'Validate cloud storage bandwidth',
+                description: 'Verify load speeds, transfer yield, and potential egress congestion during peak hours for server cluster APAC-West.',
+                stage: 'Review',
+                priority: 'Critical',
+                progress: 95,
+                assignee: user.email,
+                tags: ['Infrastructure', 'APAC'],
+                subtasks: [
+                  { title: 'Initiate load simulation nodes', done: true },
+                  { title: 'Identify cache bypass bottlenecks', done: true },
+                  { title: 'Compile visual telemetry report', done: true }
+                ],
+                logs: [
+                  { time: 'Yesterday', author: user.name, note: 'Initiated active load simulation tests with 10k concurrent virtual users.' },
+                  { time: 'Today 08:00 AM', author: user.name, note: 'Telemetry logged. Node APAC-West is holding stable at 99.4% egress yield.' }
+                ]
+              }
+            ];
+
+            const createdTasks = [];
+            for (const mockT of initialMockTasks) {
+              const createRes = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+                body: JSON.stringify(mockT)
+              });
+              const createData = await createRes.json();
+              if (createData.success) {
+                createdTasks.push(createData.task);
+              }
+            }
+            userTasks = createdTasks;
+          }
+
+          const mappedTasks = userTasks.map((t: any) => ({
+            _id: t._id,
+            id: t.code || t._id,
+            title: t.title,
+            desc: t.description || '',
+            due: t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No Due Date',
+            priority: t.priority === 'Normal' ? 'Medium' : t.priority,
+            status: t.stage === 'Backlog' ? 'To Do' : t.stage === 'Review' ? 'Under Review' : t.stage,
+            progress: t.progress || 0,
+            estimatedHours: t.estimatedHours || 8,
+            completed: t.stage === 'Done',
+            subtasks: t.subtasks || [],
+            attachments: t.attachments || [],
+            logs: t.logs || []
+          }));
+          setTasks(mappedTasks);
+        }
+      } catch (err) {
+        console.error('Failed to load user tasks:', err);
+      } finally {
+        setLoadingTasks(false);
+      }
+    }
+    loadUserData();
+  }, [router]);
 
   // Selected Task for Details Modal
   const [selectedTask, setSelectedTask] = useState<EmployeeTask | null>(null);
@@ -598,12 +656,31 @@ function EmployeeDashboard() {
     const doneCount = updatedSub.filter(s => s.done).length;
     const computedProgress = Math.round((doneCount / updatedSub.length) * 100);
 
-    setSelectedTask({
+    const updatedTask = {
       ...selectedTask,
       subtasks: updatedSub,
       progress: computedProgress
-    });
+    };
+
+    setSelectedTask(updatedTask);
     setEditProgress(computedProgress);
+
+    // Save state locally first so UI updates immediately
+    setTasks(tasks.map(t => t._id === selectedTask._id ? {
+      ...t,
+      subtasks: updatedSub,
+      progress: computedProgress
+    } : t));
+
+    // Persist subtask checklist to database
+    fetch(`/api/tasks/${selectedTask._id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+      body: JSON.stringify({
+        progress: computedProgress,
+        subtasks: updatedSub
+      })
+    }).catch(err => console.error('Failed to auto-save subtask toggle:', err));
   };
 
   const handleSaveProgress = () => {
@@ -615,7 +692,7 @@ function EmployeeDashboard() {
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + now.toLocaleDateString([], { month: 'short', day: 'numeric' });
       updatedLogs.push({
         time: timeStr,
-        author: 'Priya Patel',
+        author: currentUser?.name || 'Staff User',
         note: newLogNote.trim()
       });
     }
@@ -632,14 +709,44 @@ function EmployeeDashboard() {
       logs: updatedLogs
     };
 
-    setTasks(tasks.map(t => t.id === selectedTask.id ? updatedTask : t));
+    setTasks(tasks.map(t => t._id === selectedTask._id ? updatedTask : t));
     setSelectedTask(null);
     showToast(`Task "${selectedTask.title}" successfully updated to ${finalProgress}% [${finalStatus}]`, 'success');
-    triggerActivityLog('task_update', `Task "${selectedTask.title}" successfully updated to ${finalProgress}% [${finalStatus}]`, {
-      taskId: selectedTask.id,
-      progress: finalProgress,
-      status: finalStatus
-    }).catch(console.error);
+
+    // Map status string back to database stage enum
+    let mappedStage = 'Backlog';
+    if (finalStatus === 'In Progress') mappedStage = 'In Progress';
+    else if (finalStatus === 'Under Review') mappedStage = 'Review';
+    else if (finalStatus === 'Done') mappedStage = 'Done';
+
+    // Persist changes to database
+    fetch(`/api/tasks/${selectedTask._id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+      body: JSON.stringify({
+        stage: mappedStage,
+        progress: finalProgress,
+        subtasks: selectedTask.subtasks,
+        logs: updatedLogs
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showToast('Task updated in database!', 'success');
+        triggerActivityLog('task_update', `Task "${selectedTask.title}" successfully updated to ${finalProgress}% [${finalStatus}]`, {
+          taskId: selectedTask._id,
+          progress: finalProgress,
+          status: finalStatus
+        }).catch(console.error);
+      } else {
+        showToast(data.error || 'Failed to save task to database', 'error');
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      showToast('Network error saving task', 'error');
+    });
   };
 
   // Settings tab gets full-page layout bypassing the two-column grid
@@ -979,3 +1086,4 @@ export default function EmployeePage() {
     </Suspense>
   );
 }
+

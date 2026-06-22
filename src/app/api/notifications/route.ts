@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Notification } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/notifications — return only the current user's notifications
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
@@ -23,9 +26,18 @@ export async function GET(req: NextRequest) {
 
     const hasMore = notifications.length > limit;
     if (hasMore) notifications.pop();
-    return NextResponse.json({ success: true, notifications, hasMore: hasMore || false });
+    return NextResponse.json({ success: true, notifications, hasMore: hasMore || false }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }
 

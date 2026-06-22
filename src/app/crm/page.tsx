@@ -501,7 +501,7 @@ export default function CRM() {
   const fetchProposals = async (leadId: string) => {
     setProposalLoading(true);
     try {
-      const res = await fetch(`/api/proposals?leadId=${leadId}`);
+      const res = await fetch(`/api/proposals?leadId=${leadId}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setProposals(data.proposals || []);
@@ -637,7 +637,7 @@ export default function CRM() {
 
   const fetchLeads = async () => {
     try {
-      const res = await fetch('/api/leads');
+      const res = await fetch('/api/leads', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setLeads(data.leads);
@@ -656,7 +656,7 @@ export default function CRM() {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch('/api/email/templates');
+      const res = await fetch('/api/email/templates', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) setTemplates(data.templates);
     } catch (err) {
@@ -667,7 +667,7 @@ export default function CRM() {
   const fetchWorkflowLog = async (leadId: string) => {
     setLoadingLog(true);
     try {
-      const res = await fetch(`/api/leads/workflow-log?leadId=${leadId}`);
+      const res = await fetch(`/api/leads/workflow-log?leadId=${leadId}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) setWorkflowLog(data.logs || []);
     } catch (err) {
@@ -679,7 +679,7 @@ export default function CRM() {
 
   const fetchFunnelData = async () => {
     try {
-      const res = await fetch('/api/leads/workflow-log?analytics=funnel');
+      const res = await fetch('/api/leads/workflow-log?analytics=funnel', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) setFunnelData(data.funnelData || []);
     } catch (err) {

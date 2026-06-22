@@ -7,6 +7,9 @@ import { requireAuth } from '@/lib/require-auth';
  * Returns performance metrics for the authenticated user.
  * Admins/Managers can pass ?userId= to view any user's stats.
  */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
@@ -68,8 +71,17 @@ export async function GET(req: NextRequest) {
       emails: { sentThisMonth: emailsSentMonth, activityByType },
       recentActivity,
       generatedAt: new Date().toISOString(),
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }

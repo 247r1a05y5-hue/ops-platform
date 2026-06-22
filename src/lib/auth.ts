@@ -5,8 +5,8 @@ import { cookies } from 'next/headers';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const SESSION_COOKIE = 'ops_session';
-const JWT_EXPIRY = '8h'; // 8-hour sessions
-const COOKIE_MAX_AGE = 8 * 60 * 60; // seconds
+const DEFAULT_JWT_EXPIRY = '8h'; // default 8-hour sessions
+const DEFAULT_COOKIE_MAX_AGE = 8 * 60 * 60; // seconds
 
 // ─── Secret ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export const DB_TO_ROUTE: Record<string, string> = {
   Manager:  '/manager',
   Staff:    '/employee',
   Employee: '/employee',   // alias for Staff in UI
-  User:     '/marketing',
+  User:     '/mr',         // Marketing Representative (legacy 'User' role → Media Desk)
   MR:       '/mr',         // Marketing Representative
 };
 
@@ -54,11 +54,15 @@ export interface SessionPayload {
 
 // ─── Create / Verify ─────────────────────────────────────────────────────────
 
-export async function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'exp'>): Promise<string> {
+export async function createSessionToken(
+  payload: Omit<SessionPayload, 'iat' | 'exp'>,
+  expiryMinutes?: number
+): Promise<string> {
+  const expiry = expiryMinutes ? `${expiryMinutes}m` : DEFAULT_JWT_EXPIRY;
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime(JWT_EXPIRY)
+    .setExpirationTime(expiry)
     .sign(getSecret());
 }
 
@@ -73,12 +77,13 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 // ─── Cookie Helpers ───────────────────────────────────────────────────────────
 
-export function buildSessionCookie(token: string): string {
+export function buildSessionCookie(token: string, maxAgeSeconds?: number): string {
   const isProd = process.env.NODE_ENV === 'production';
+  const age = maxAgeSeconds ?? DEFAULT_COOKIE_MAX_AGE;
   const parts = [
     `${SESSION_COOKIE}=${token}`,
     `Path=/`,
-    `Max-Age=${COOKIE_MAX_AGE}`,
+    `Max-Age=${age}`,
     `HttpOnly`,
     `SameSite=Lax`,
   ];
@@ -90,8 +95,8 @@ export function buildClearCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`;
 }
 
-export function setSessionCookie(res: NextResponse, token: string): void {
-  res.headers.set('Set-Cookie', buildSessionCookie(token));
+export function setSessionCookie(res: NextResponse, token: string, maxAgeSeconds?: number): void {
+  res.headers.set('Set-Cookie', buildSessionCookie(token, maxAgeSeconds));
 }
 
 export function clearSessionCookie(res: NextResponse): void {

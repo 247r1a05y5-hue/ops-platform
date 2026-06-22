@@ -20,6 +20,7 @@ export const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain', 'text/csv',
+  'application/zip', 'application/x-zip-compressed',
 ]);
 
 // ─── Upload ──────────────────────────────────────────────────────────────────

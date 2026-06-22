@@ -15,7 +15,7 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, twoFactorToken?: string, userId?: string) => Promise<{ success: boolean; requires2FA?: boolean; userId?: string; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -36,7 +36,7 @@ const DB_TO_ROUTE: Record<string, string> = {
   Manager:  '/manager',
   Staff:    '/employee',
   Employee: '/employee',   // alias for Staff in UI
-  User:     '/marketing',
+  User:     '/mr',         // Marketing Representative (legacy 'User' role → Media Desk)
   MR:       '/mr',         // Marketing Representative
 };
 
@@ -74,19 +74,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   // ── Login ────────────────────────────────────────────────────────────────
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, twoFactorToken?: string, userId?: string) => {
     try {
+      const body: any = {};
+      if (userId && twoFactorToken) {
+        body.userId = userId;
+        body.twoFactorToken = twoFactorToken;
+      } else {
+        body.email = email;
+        body.password = password;
+      }
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
 
       if (!data.success) {
         return { success: false, error: data.error ?? 'Authentication failed' };
+      }
+
+      if (data.requires2FA) {
+        return { success: true, requires2FA: true, userId: data.userId };
       }
 
       const u = data.user;

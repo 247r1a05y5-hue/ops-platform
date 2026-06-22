@@ -5,6 +5,25 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { executeStageWorkflow, type CRMStage, type UserRole } from '@/lib/stageWorkflow';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// ── Workspace isolation helper ──────────────────────────────────────────────────
+// Lead schema has no workspaceId. We scope by filtering on assignedTo (ObjectId ref
+// to User) being within the same workspace. Unassigned leads are also included.
+// Existing documents need no migration for single-workspace deployments.
+async function getWorkspaceMemberIds(userId: string): Promise<string[] | null> {
+  try {
+    const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
+    if (!currentUser?.workspaceId) return null;
+    const members = await User.find({ workspaceId: currentUser.workspaceId })
+      .select('_id').lean() as any[];
+    return members.map((m: any) => String(m._id));
+  } catch {
+    return null;
+  }
+}
+
 // GET all leads
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
@@ -22,14 +41,30 @@ export async function GET(req: NextRequest) {
     if (id) {
       const lead = await Lead.findById(id);
       if (!lead) {
-        return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+        return NextResponse.json({ success: false, error: 'Lead not found' }, {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+        });
       }
-      return NextResponse.json({ success: true, lead });
+      return NextResponse.json({ success: true, lead }, {
+        headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+      });
     }
+
+    // ── Workspace isolation ──────────────────────────────────────────────────
+    const memberIds = await getWorkspaceMemberIds(session.sub);
 
     const filter: any = {};
     if (stage) filter.stage = stage;
     if (status) filter.status = status;
+    if (memberIds) {
+      // Include leads assigned to workspace members OR unassigned leads
+      filter.$or = [
+        { assignedTo: { $in: memberIds } },
+        { assignedTo: null },
+        { assignedTo: { $exists: false } },
+      ];
+    }
 
     let query = Lead.find(filter).sort({ createdAt: -1 });
 
@@ -44,10 +79,15 @@ export async function GET(req: NextRequest) {
       success: true,
       leads,
       metadata: { total, page, limit, pages: limit > 0 ? Math.ceil(total / limit) : 1 }
+    }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+    });
   }
 }
 
@@ -56,7 +96,7 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
   try {
@@ -135,6 +175,50 @@ export async function POST(req: NextRequest) {
     const waResult = await sendWhatsAppMessage(adminPhone, waMessage);
     if (!waResult.success) {
       console.warn('[leads] WhatsApp notification skipped:', waResult.error);
+    }
+
+    // Trigger Zapier webhook for new lead notification automation
+    try {
+      const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+      if (!webhookUrl) {
+        console.warn('[leads] ZAPIER_WEBHOOK_URL is not set — skipping Zapier notification.');
+      } else {
+        console.log('Sending new lead data to Zapier:', {
+          name: lead.name,
+          email: lead.email,
+          company: lead.company,
+          value: lead.value,
+          stage: lead.stage,
+          status: lead.status,
+          assignedTo: lead.assignedToName
+        });
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            event: 'new_lead',
+            name: (lead.name || '').trim(),
+            email: (lead.email || '').trim().toLowerCase(),
+            company: (lead.company || '').trim(),
+            value: (lead.value || '').trim(),
+            stage: (lead.stage || '').trim(),
+            status: (lead.status || '').trim(),
+            assignedTo: (lead.assignedToName || '').trim(),
+            createdBy: (session.name || '').trim(),
+            leadId: lead._id.toString()
+          })
+        });
+
+        console.log('Zapier new lead webhook status:', response.status);
+        if (!response.ok) {
+          console.error('Zapier new lead webhook failed:', response.statusText);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to trigger Zapier new lead webhook:', err);
     }
 
     await logActivity({

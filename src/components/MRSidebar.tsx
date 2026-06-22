@@ -4,7 +4,7 @@ import { useSearchParams, usePathname } from 'next/navigation';
 import {
   Target, Mail, CreditCard, Folder,
   Settings2, LogOut, Megaphone,
-  BarChart3, CheckCircle, Lock, Settings
+  BarChart3, CheckCircle, Lock, Settings, X, CheckSquare
 } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
@@ -17,11 +17,12 @@ function getInitials(name: string) {
 export default function MRSidebar() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { showToast } = useUI();
+  const { showToast, setSidebarOpen } = useUI();
   const { user, logout } = useAuth();
 
   const isMarketing = pathname?.includes('/marketing');
   const currentTab = searchParams?.get('tab') || (isMarketing ? 'campaigns' : 'leads');
+  const showSecurity = user && ['Admin', 'Manager'].includes(user.role);
 
   const campaignItems = [
     { name: 'Campaign Desk',       href: '/marketing?tab=campaigns', icon: Megaphone,   tabId: 'campaigns' },
@@ -33,6 +34,7 @@ export default function MRSidebar() {
     { name: 'Outreach Hub',   href: '/mr?tab=email',     icon: Mail,      tabId: 'email' },
     { name: 'Financials',     href: '/mr?tab=finance',   icon: CreditCard,tabId: 'finance' },
     { name: 'Media Desk',     href: '/mr?tab=resources', icon: Folder,    tabId: 'resources' },
+    { name: 'Tasks & Alerts', href: '/mr?tab=tasks',     icon: CheckSquare,tabId: 'tasks' },
   ];
   const securityItems = [
     { name: 'Restricted Systems', href: '/marketing?tab=restricted', icon: Lock, tabId: 'restricted' },
@@ -42,6 +44,7 @@ export default function MRSidebar() {
   ];
 
   const handleLogout = async () => {
+    setSidebarOpen(false);
     showToast('Security session ended', 'info');
     await logout();
   };
@@ -51,7 +54,11 @@ export default function MRSidebar() {
     const isActive = item.tabId === currentTab && pathname === itemPath;
     return (
       <motion.div key={item.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + (i * 0.05) }}>
-        <Link href={item.href} className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200 group relative ${isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border'}`}>
+        <Link
+          href={item.href}
+          onClick={() => setSidebarOpen(false)}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200 group relative ${isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border'}`}
+        >
           <item.icon size={18} className={`${isActive ? 'text-white' : 'text-secondary group-hover:text-accent'} transition-colors`} />
           {item.name}
           {isActive && <motion.span layoutId={`activeNavMR_${sectionName}`} className="absolute right-3 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
@@ -62,7 +69,7 @@ export default function MRSidebar() {
 
   return (
     <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-64 bg-base border-r border-border h-screen flex flex-col shrink-0 transition-all duration-300">
-      <div className="h-20 flex items-center px-6 border-b border-border bg-base/50 backdrop-blur-md">
+      <div className="h-20 flex items-center justify-between px-6 border-b border-border bg-base/50 backdrop-blur-md">
         <div className="flex items-center gap-3 font-black text-lg tracking-tight text-primary">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-accent rounded-2xl flex items-center justify-center shadow-lg shadow-accent/20">
             <Settings2 size={20} className="text-white" />
@@ -72,6 +79,15 @@ export default function MRSidebar() {
             <span className="text-[9px] font-black text-accent uppercase tracking-[0.3em] mt-1">Marketing Rep</span>
           </div>
         </div>
+
+        {/* Mobile Close Button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+          aria-label="Close sidebar"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto space-y-6 custom-scrollbar">
@@ -83,10 +99,12 @@ export default function MRSidebar() {
           <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Media & Pipeline</div>
           <nav className="space-y-1">{operationsItems.map((item, i) => renderNavItem(item, i + 3, 'ops'))}</nav>
         </div>
-        <div>
-          <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Security</div>
-          <nav className="space-y-1">{securityItems.map((item, i) => renderNavItem(item, i + 7, 'security'))}</nav>
-        </div>
+        {showSecurity && (
+          <div>
+            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Security</div>
+            <nav className="space-y-1">{securityItems.map((item, i) => renderNavItem(item, i + 7, 'security'))}</nav>
+          </div>
+        )}
         <div>
           <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Account</div>
           <nav className="space-y-1">{accountItems.map((item, i) => renderNavItem(item, i + 8, 'account'))}</nav>

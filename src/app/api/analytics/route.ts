@@ -20,8 +20,20 @@ function change(curr: number, prev: number) {
   return (diff >= 0 ? '+' : '') + diff + '%';
 }
 
+/** Parse any currency string (₹1,000 / $5,000.00 / 1500) → number */
+function parseAmount(raw: string | number | undefined | null): number {
+  if (raw === null || raw === undefined) return 0;
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+  const cleaned = String(raw).replace(/[₹$€£¥,\s]/g, '').trim();
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
-  const { session, error } = await requireAuth(req, ['Admin', 'Manager']);
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'Staff', 'User', 'MR']);
   if (error) return error;
 
   const period = (new URL(req.url).searchParams.get('period') ?? 'month') as Period;
@@ -33,13 +45,12 @@ export async function GET(req: NextRequest) {
     await connectDB();
     const { from, prevFrom, prevTo } = dateRange(period);
 
-    // ── All aggregations run in parallel via pipelines (no full-collection RAM loads) ──
+    // ── Run all DB queries in parallel ───────────────────────────────────────
     const [
       taskCountsCurr, taskCountsPrev,
       leadCountsCurr, leadCountsPrev,
-      invoiceSumCurr, invoiceSumPrev,
       taskStages, leadStages,
-      invoiceAllStatus,
+      invoicesCurr, invoicesPrev, invoicesAll,
       userList,
       workflowLogs,
     ] = await Promise.all([
@@ -63,32 +74,19 @@ export async function GET(req: NextRequest) {
         { $match: { createdAt: { $gte: prevFrom, $lt: prevTo } } },
         { $group: { _id: null, count: { $sum: 1 } } },
       ]),
-      // Invoice sums current period (safe numeric parse inside pipeline)
-      Invoice.aggregate([
-        { $match: { createdAt: { $gte: from } } },
-        { $addFields: { numericAmount: { $toDouble: { $replaceAll: { input: { $replaceAll: { input: { $ifNull: ['$amount', '0'] }, find: '$', replacement: '' } }, find: ',', replacement: '' } } } } },
-        { $group: { _id: '$status', total: { $sum: '$numericAmount' }, count: { $sum: 1 } } },
-      ]),
-      // Invoice sums previous period
-      Invoice.aggregate([
-        { $match: { createdAt: { $gte: prevFrom, $lt: prevTo } } },
-        { $addFields: { numericAmount: { $toDouble: { $replaceAll: { input: { $replaceAll: { input: { $ifNull: ['$amount', '0'] }, find: '$', replacement: '' } }, find: ',', replacement: '' } } } } },
-        { $group: { _id: null, total: { $sum: '$numericAmount' }, count: { $sum: 1 } } },
-      ]),
-      // All tasks by stage (for totals panel)
+      // All tasks by stage
       Task.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]),
-      // All leads by stage (for funnel)
+      // All leads by stage
       Lead.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]),
-      // All invoices by status (for invoice summary)
-      Invoice.aggregate([
-        { $addFields: { numericAmount: { $toDouble: { $replaceAll: { input: { $replaceAll: { input: { $ifNull: ['$amount', '0'] }, find: '$', replacement: '' } }, find: ',', replacement: '' } } } } },
-        { $group: { _id: '$status', total: { $sum: '$numericAmount' }, count: { $sum: 1 } } },
-      ]),
-      // Users (lightweight — just name + role)
+      // Invoices — fetch raw docs, parse amount in JS (avoids $replaceAll/$convert issues)
+      Invoice.find({ createdAt: { $gte: from } }).select('status amount').lean(),
+      Invoice.find({ createdAt: { $gte: prevFrom, $lt: prevTo } }).select('status amount').lean(),
+      Invoice.find({}).select('status amount').lean(),
+      // Users
       User.find({}).select('name role').lean(),
-      // Workflow logs for avg time-in-stage
+      // Workflow logs
       StageWorkflowLog.aggregate([
-        { $match: { createdAt: { $gte: from } } },
+        { $match: { timestamp: { $gte: from } } },
         { $group: { _id: '$toStage', avgDuration: { $avg: '$durationInStageMs' }, count: { $sum: 1 } } },
       ]),
     ]);
@@ -113,26 +111,39 @@ export async function GET(req: NextRequest) {
     const leadsClosing   = leadStageMap['Closing'] || 0;
     const conversionRate = pct(leadsClosing, leadsTotal);
 
-    // ── Invoice / Revenue metrics ─────────────────────────────────────────
-    const invoiceCurrMap  = Object.fromEntries(invoiceSumCurr.map((g: any) => [g._id, { total: g.total, count: g.count }]));
-    const revenueCurr = invoiceSumCurr.reduce((s: number, g: any) => s + (g.total || 0), 0);
-    const revenuePrev = invoiceSumPrev[0]?.total || 0;
-    const invoiceAllMap   = Object.fromEntries(invoiceAllStatus.map((g: any) => [g._id, { total: g.total, count: g.count }]));
+    // ── Invoice / Revenue metrics (JS-side parsing) ───────────────────────
+    type InvMap = Record<string, { total: number; count: number }>;
+
+    const buildInvoiceMap = (docs: any[]): InvMap => {
+      const map: InvMap = {};
+      for (const inv of docs) {
+        const s = inv.status || 'Unknown';
+        if (!map[s]) map[s] = { total: 0, count: 0 };
+        map[s].total += parseAmount(inv.amount);
+        map[s].count += 1;
+      }
+      return map;
+    };
+
+    const invoiceCurrMap  = buildInvoiceMap(invoicesCurr);
+    const invoiceAllMap   = buildInvoiceMap(invoicesAll);
+    const revenueCurr = Object.values(invoiceCurrMap).reduce((s, v) => s + v.total, 0);
+    const revenuePrev = invoicesPrev.reduce((s: number, inv: any) => s + parseAmount(inv.amount), 0);
 
     // ── CRM Funnel ────────────────────────────────────────────────────────
-    const crmStages    = ['Discovery', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closing'];
-    const stageColors  = ['bg-blue-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-orange-500', 'bg-rose-500'];
-    const stageCounts  = crmStages.map(s => ({ stage: s, count: leadStageMap[s] || 0 }));
+    const crmStages   = ['Discovery', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closing'];
+    const stageColors = ['bg-blue-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-orange-500', 'bg-rose-500'];
+    const stageCounts = crmStages.map(s => ({ stage: s, count: leadStageMap[s] || 0 }));
 
     const funnelData = crmStages.map((s, i) => {
       const current  = stageCounts[i].count;
       const previous = i > 0 ? stageCounts[i - 1].count : (leadsTotal || 1);
-      const conversionRate = previous > 0 ? Math.round((current / previous) * 100) : 0;
-      return { stage: s, count: current, conversionRate, dropOff: Math.max(0, 100 - conversionRate), color: stageColors[i] };
+      const conv = previous > 0 ? Math.round((current / previous) * 100) : 0;
+      return { stage: s, count: current, conversionRate: conv, dropOff: Math.max(0, 100 - conv), color: stageColors[i] };
     });
 
     // ── Team utilisation ──────────────────────────────────────────────────
-    const teamSize       = (userList as any[]).length;
+    const teamSize        = (userList as any[]).length;
     const teamUtilisation = Math.min(100, pct(tasksCurrTotal, teamSize * 5));
 
     // ── Avg time-in-stage ─────────────────────────────────────────────────
@@ -179,9 +190,14 @@ export async function GET(req: NextRequest) {
         invoiceAllMap['Paid']?.count || 0,
         (invoiceAllMap['Paid']?.count || 0) + (invoiceAllMap['Pending']?.count || 0) + (invoiceAllMap['Overdue']?.count || 0)
       ),
+    }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' },
     });
   } catch (err) {
     console.error('[Analytics]', err);
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' },
+    });
   }
 }

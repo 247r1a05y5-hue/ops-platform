@@ -42,6 +42,9 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [twoFactorToken, setTwoFactorToken] = useState('');
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,10 +90,27 @@ export default function Login() {
       } finally {
         setLoading(false);
       }
+    } else if (requires2FA) {
+      // ── 2FA Code Verification ─────────────────────────────────────────────
+      if (!twoFactorToken || twoFactorToken.length !== 6) {
+        setError('Please enter a valid 6-digit verification code.');
+        setLoading(false);
+        return;
+      }
+
+      const result = await login('', '', twoFactorToken, userId);
+      if (!result.success) {
+        setError(result.error ?? '2FA Verification failed.');
+        setLoading(false);
+      }
     } else {
       // ── Login via AuthContext (sets cookie, navigates) ───────────────────
       const result = await login(email, password);
-      if (!result.success) {
+      if (result.success && result.requires2FA) {
+        setRequires2FA(true);
+        setUserId(result.userId ?? '');
+        setLoading(false);
+      } else if (!result.success) {
         setError(result.error ?? 'Authentication failed');
         setLoading(false);
       }
@@ -132,14 +152,9 @@ export default function Login() {
       </Link>
 
       {/* ── CARD ── */}
-      <div style={{
-        background: 'white',
-        borderRadius: 24,
-        padding: '44px 48px 36px',
-        width: '100%',
-        maxWidth: 500,
-        boxShadow: '0 8px 40px rgba(79,70,229,0.12)',
-      }}>
+      <div 
+        className="w-full max-w-[500px] bg-white rounded-[24px] shadow-[0_8px_40px_rgba(79,70,229,0.12)] p-6 sm:p-11"
+      >
 
         <h1 style={{ fontSize: 30, fontWeight: 800, color: '#1e1b4b', textAlign: 'center', marginBottom: 8, letterSpacing: '-0.02em' }}>
           {isRegister ? 'Create Account' : 'Welcome back'}
@@ -149,34 +164,41 @@ export default function Login() {
         </p>
 
         {error && (
-          <div style={{
-            padding: '12px 16px',
-            background: error.includes('created') ? '#ecfdf5' : '#fef2f2',
-            border: `1px solid ${error.includes('created') ? '#10b981' : '#ef4444'}`,
-            borderRadius: 12,
-            color: error.includes('created') ? '#065f46' : '#991b1b',
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 24,
-            textAlign: 'center',
-          }}>
+          <div
+            role="alert"
+            aria-live="polite"
+            style={{
+              padding: '12px 16px',
+              background: error.includes('created') ? '#ecfdf5' : '#fef2f2',
+              border: `1px solid ${error.includes('created') ? '#10b981' : '#ef4444'}`,
+              borderRadius: 12,
+              color: error.includes('created') ? '#065f46' : '#991b1b',
+              fontSize: 13,
+              fontWeight: 600,
+              marginBottom: 24,
+              textAlign: 'center',
+            }}>
             {error}
           </div>
         )}
 
         {/* ── FORGOT PASSWORD FORM ── */}
         {forgotMode && (
-          <form onSubmit={handleForgotPassword}>
+          <form onSubmit={handleForgotPassword} aria-label="Password reset form">
             <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20, lineHeight: 1.5 }}>
               Enter your account email and we'll send a password reset link.
             </p>
+            <label htmlFor="forgot-email" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Email</label>
             <input
+              id="forgot-email"
               type="email" required value={forgotEmail}
               onChange={e => setForgotEmail(e.target.value)}
               placeholder="name@company.com"
+              autoComplete="email"
+              aria-label="Email address for password reset"
               style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, marginBottom: 16, outline: 'none' }}
             />
-            <button type="submit" disabled={loading} style={{
+            <button type="submit" disabled={loading} aria-label="Send password reset link" style={{
               width: '100%', padding: '13px 0', background: 'linear-gradient(135deg, #3730a3, #4f46e5)',
               color: 'white', fontWeight: 700, fontSize: 15, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -185,6 +207,7 @@ export default function Login() {
             </button>
             <p style={{ textAlign: 'center', fontSize: 13, color: '#6b7280', marginTop: 20 }}>
               <button onClick={() => { setForgotMode(false); setError(null); }} type="button"
+                aria-label="Back to sign in"
                 style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }}>
                 Back to Sign In
               </button>
@@ -195,147 +218,212 @@ export default function Login() {
         {/* ── ROLE SELECTOR ── */}
         {!forgotMode && (
           <>
-            <div style={{ marginBottom: 28 }}>
-              <label style={{
-                display: 'block', fontSize: 11, fontWeight: 700,
-                color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10,
-              }}>
-                Select {isRegister ? 'Target Role' : 'Workspace Role'}
-              </label>
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-                border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden',
-              }}>
-                {ROLES.map(({ id, label, Icon }, i) => {
-                  const active = role === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setRole(id)}
-                      style={{
-                        padding: '14px 8px',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        background: active ? 'rgba(79,70,229,0.06)' : 'white',
-                        border: 'none',
-                        borderLeft: i > 0 ? '1.5px solid #e5e7eb' : 'none',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <Icon
-                        size={20}
-                        color={active ? '#4f46e5' : '#9ca3af'}
-                        strokeWidth={active ? 2.2 : 1.8}
-                      />
-                      <span style={{
-                        fontSize: 12, fontWeight: active ? 700 : 500,
-                        color: active ? '#4f46e5' : '#6b7280',
-                      }}>
-                        {label}
-                      </span>
-                    </button>
-                  );
-                })}
+            {!requires2FA && (
+              <div style={{ marginBottom: 28 }}>
+                <label
+                  htmlFor="role-selector"
+                  style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10 }}
+                >
+                  Select {isRegister ? 'Target Role' : 'Workspace Role'}
+                </label>
+                <div id="role-selector" className="grid grid-cols-2 sm:grid-cols-4 gap-2.5" role="radiogroup" aria-label="Select workspace role">
+                  {ROLES.map(({ id, label, Icon }, i) => {
+                    const active = role === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        aria-label={`Select role: ${label}`}
+                        onClick={() => setRole(id)}
+                        style={{
+                          padding: '12px 6px',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          background: active ? 'rgba(79,70,229,0.06)' : '#fafafa',
+                          border: active ? '1.5px solid #4f46e5' : '1.5px solid #e5e7eb',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <Icon
+                          size={20}
+                          color={active ? '#4f46e5' : '#9ca3af'}
+                          strokeWidth={active ? 2.2 : 1.8}
+                          aria-hidden="true"
+                        />
+                        <span style={{
+                          fontSize: 12, fontWeight: active ? 700 : 500,
+                          color: active ? '#4f46e5' : '#6b7280',
+                        }}>
+                          {label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* ── FORM ── */}
             <form onSubmit={handleSubmit}>
 
-          {isRegister && (
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-                Full Name
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Users size={16} color="#9ca3af" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="John Doe"
-                  style={{
-                    width: '100%', boxSizing: 'border-box', padding: '12px 14px 12px 42px',
-                    border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
-                  }}
-                />
-              </div>
-            </div>
-          )}
+              {requires2FA ? (
+                <div style={{ marginBottom: 20 }}>
+                  <label htmlFor="totp-code" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Two-Factor Authentication Code
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Shield size={16} color="#9ca3af" aria-hidden="true" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <input
+                      id="totp-code"
+                      type="text"
+                      required
+                      maxLength={6}
+                      pattern="\d{6}"
+                      value={twoFactorToken}
+                      onChange={e => setTwoFactorToken(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      autoComplete="one-time-code"
+                      aria-label="6-digit TOTP verification code"
+                      inputMode="numeric"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', padding: '12px 14px 12px 42px',
+                        border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 16, color: '#1e1b4b', outline: 'none',
+                        letterSpacing: '0.3em', fontWeight: 'bold', textAlign: 'center'
+                      }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 12.5, color: '#6b7280', marginTop: 8, lineHeight: 1.4 }}>
+                    Enter the 6-digit verification code generated by your authenticator application.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {isRegister && (
+                    <div style={{ marginBottom: 20 }}>
+                      <label htmlFor="reg-name" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                        Full Name
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <Users size={16} color="#9ca3af" aria-hidden="true" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                        <input
+                          id="reg-name"
+                          type="text"
+                          required
+                          value={name}
+                          onChange={e => setName(e.target.value)}
+                          placeholder="John Doe"
+                          autoComplete="name"
+                          aria-label="Full name"
+                          style={{
+                            width: '100%', boxSizing: 'border-box', padding: '12px 14px 12px 42px',
+                            border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
-          {/* Email */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-              Email Address
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Mail size={16} color="#9ca3af" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '12px 14px 12px 42px',
-                  border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
-                }}
-              />
-            </div>
-          </div>
+                  {/* Email */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label htmlFor="login-email" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      Email Address
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Mail size={16} color="#9ca3af" aria-hidden="true" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                      <input
+                        id="login-email"
+                        type="email"
+                        required
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="name@company.com"
+                        autoComplete="email"
+                        aria-label="Email address"
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '12px 14px 12px 42px',
+                          border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
+                        }}
+                      />
+                    </div>
+                  </div>
 
-          {/* Password */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-              Password
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Lock size={16} color="#9ca3af" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input
-                type={showPass ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
+                  {/* Password */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label htmlFor="login-password" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                      Password
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Lock size={16} color="#9ca3af" aria-hidden="true" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                      <input
+                        id="login-password"
+                        type={showPass ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete={isRegister ? 'new-password' : 'current-password'}
+                        aria-label="Password"
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '12px 44px 12px 42px',
+                          border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
+                        }}
+                      />
+                      <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        {showPass ? <EyeOff size={17} color="#9ca3af" aria-hidden="true" /> : <Eye size={17} color="#9ca3af" aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
                 style={{
-                  width: '100%', boxSizing: 'border-box', padding: '12px 44px 12px 42px',
-                  border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: '#1e1b4b', outline: 'none'
+                  width: '100%', padding: '14px 0', background: 'linear-gradient(135deg, #3730a3, #4f46e5)',
+                  color: 'white', fontWeight: 700, fontSize: 15.5, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 6px 20px rgba(79,70,229,0.4)', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
                 }}
-              />
-              <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                {showPass ? <EyeOff size={17} color="#9ca3af" /> : <Eye size={17} color="#9ca3af" />}
+              >
+                {loading ? <Loader2 size={20} className="animate-spin" /> : (requires2FA ? 'Verify & Sign In' : isRegister ? 'Create Account' : 'Sign In')}
               </button>
-            </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%', padding: '14px 0', background: 'linear-gradient(135deg, #3730a3, #4f46e5)',
-              color: 'white', fontWeight: 700, fontSize: 15.5, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-              boxShadow: '0 6px 20px rgba(79,70,229,0.4)', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
-            }}
-          >
-            {loading ? <Loader2 size={20} className="animate-spin" /> : (isRegister ? 'Create Account' : 'Sign In')}
-          </button>
-        </form>
-
+              {requires2FA && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRequires2FA(false);
+                    setTwoFactorToken('');
+                    setError(null);
+                  }}
+                  style={{
+                    width: '100%', padding: '12px 0', background: 'transparent',
+                    color: '#4f46e5', fontWeight: 700, fontSize: 14, borderRadius: 12, border: '1.5px solid #e5e7eb', cursor: 'pointer',
+                    marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </form>
           </>
         )}
 
-        <p style={{ textAlign: 'center', fontSize: 13.5, color: '#6b7280', marginTop: 28 }}>
-          {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button
-            onClick={() => { setIsRegister(!isRegister); setError(null); setRole('Marketing Representative'); }}
-            style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 'inherit' }}
-          >
-            {isRegister ? 'Sign In' : 'Request access / Sign Up'}
-          </button>
-        </p>
-        {!isRegister && !forgotMode && (
+        {!requires2FA && (
+          <p style={{ textAlign: 'center', fontSize: 13.5, color: '#6b7280', marginTop: 28 }}>
+            {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button
+              onClick={() => { setIsRegister(!isRegister); setError(null); setRole('Marketing Representative'); }}
+              style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 'inherit' }}
+            >
+              {isRegister ? 'Sign In' : 'Request access / Sign Up'}
+            </button>
+          </p>
+        )}
+        {!isRegister && !forgotMode && !requires2FA && (
           <p style={{ textAlign: 'center', fontSize: 13, color: '#9ca3af', marginTop: 8 }}>
             <button onClick={() => { setForgotMode(true); setError(null); }} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' }}>
               Forgot password?

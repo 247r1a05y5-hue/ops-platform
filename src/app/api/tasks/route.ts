@@ -5,6 +5,24 @@ import { sendEmail, sendDualNotification, isValidEmail } from '@/lib/email';
 import { logActivity } from '@/lib/activity';
 import mongoose from 'mongoose';
 
+// ── Workspace isolation helper ─────────────────────────────────────────────────
+// Resolves the workspaceId of the current session user from DB.
+// Tasks have no workspaceId field, so we scope them by restricting to assignees
+// who belong to the same workspace. When no workspace is found, no filter is applied
+// (single-tenant safe).
+async function getWorkspaceMemberNames(userId: string): Promise<string[] | null> {
+  try {
+    const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
+    if (!currentUser?.workspaceId) return null; // single workspace — no filter needed
+    const members = await User.find({ workspaceId: currentUser.workspaceId })
+      .select('name email').lean() as any[];
+    // Return both names and emails so assignee field (which can be either) is matched
+    return members.flatMap((m: any) => [m.name, m.email].filter(Boolean));
+  } catch {
+    return null;
+  }
+}
+
 const STAGES    = ['Backlog', 'In Progress', 'Review', 'Done'];
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
 
@@ -13,19 +31,45 @@ function stagePrefix(stage: string) {
   return map[stage] ?? 'T';
 }
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
-  const { error } = await requireAuth(req);
+  const { session, error } = await requireAuth(req);
   if (error) return error;
 
   try {
     await connectDB();
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get('projectId');
-    const query = projectId ? { projectId } : {};
+
+    // ── Workspace isolation ──────────────────────────────────────────────────
+    // Scope tasks to assignees within the same workspace as the requester.
+    // Tasks have no workspaceId column (existing data needs no migration for
+    // single-workspace deployments — all users share ops-main).
+    const memberIdentifiers = await getWorkspaceMemberNames(session.sub);
+
+    const query: Record<string, any> = {};
+    if (projectId) query.projectId = projectId;
+    if (memberIdentifiers) {
+      // Filter to tasks where assignee matches a name or email in this workspace.
+      // Tasks with empty assignee are also included (they belong to this workspace).
+      query.$or = [
+        { assignee: { $in: memberIdentifiers } },
+        { assignee: '' },
+        { assignee: { $exists: false } },
+      ];
+    }
+
     const tasks = await Task.find(query).sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, tasks });
+    return NextResponse.json({ success: true, tasks }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+    });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: String(err) }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
+    });
   }
 }
 

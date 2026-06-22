@@ -16,6 +16,17 @@
 *.pfx
 *.cert
 
+# Temporary test/diagnostic tools and backups
+check-emails.js
+check-emails.cjs
+query-tasks.cjs
+test-nodemailer.cjs
+test-send.cjs
+ops-socketio-fixed.zip
+scratch/
+scripts/find_domain.mjs
+
+
 # ========================================
 # Dependencies & Package managers
 # ========================================

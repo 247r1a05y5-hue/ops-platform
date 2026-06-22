@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard, CheckSquare, Clock, MessageSquare,
-  Settings, LogOut, Settings2, BarChart3
+  Settings, LogOut, Settings2, BarChart3, X
 } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
@@ -16,7 +16,7 @@ function getInitials(name: string) {
 
 export default function EmployeeSidebar() {
   const searchParams = useSearchParams();
-  const { showToast } = useUI();
+  const { showToast, setSidebarOpen } = useUI();
   const { user, logout } = useAuth();
   const currentTab = searchParams?.get('tab') || 'workspace';
   const unread = useUnreadCount();
@@ -31,13 +31,14 @@ export default function EmployeeSidebar() {
   ];
 
   const handleLogout = async () => {
+    setSidebarOpen(false);
     showToast('Security session ended', 'info');
     await logout();
   };
 
   return (
     <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-64 bg-base border-r border-border h-screen flex flex-col shrink-0 transition-all duration-300">
-      <div className="h-20 flex items-center px-6 border-b border-border bg-base/50 backdrop-blur-md">
+      <div className="h-20 flex items-center justify-between px-6 border-b border-border bg-base/50 backdrop-blur-md">
         <div className="flex items-center gap-3 font-black text-lg tracking-tight text-primary">
           <div className="w-10 h-10 bg-gradient-to-br from-accent to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-accent/20">
             <Settings2 size={20} className="text-white" />
@@ -47,6 +48,15 @@ export default function EmployeeSidebar() {
             <span className="text-[9px] font-black text-accent uppercase tracking-[0.3em] mt-1">Staff</span>
           </div>
         </div>
+
+        {/* Mobile Close Button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+          aria-label="Close sidebar"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto space-y-8">
@@ -58,7 +68,11 @@ export default function EmployeeSidebar() {
               const badge = (item as any).badge;
               return (
                 <motion.div key={item.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + (i * 0.05) }}>
-                  <Link href={item.href} className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200 group relative ${isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border'}`}>
+                  <Link
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200 group relative ${isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border'}`}
+                  >
                     <item.icon size={18} className={`${isActive ? 'text-white' : 'text-secondary group-hover:text-accent'} transition-colors`} />
                     <span className="flex-1">{item.name}</span>
                     {badge > 0 && (

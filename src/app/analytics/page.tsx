@@ -17,7 +17,7 @@ export default function Analytics() {
   const fetchAnalytics = useCallback(async (period: string) => {
     setAnalyticsLoading(true);
     try {
-      const res = await fetch(`/api/analytics?period=${period}`, { credentials: 'include' });
+      const res = await fetch(`/api/analytics?period=${period}`, { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       if (data.success) setAnalyticsData(data);
     } catch (err) {

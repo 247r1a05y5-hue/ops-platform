@@ -55,6 +55,7 @@ function createSocket(): Socket {
   const socketOpts = {
     path: '/api/socketio',
     transports: ['websocket', 'polling'] as ['websocket', 'polling'],
+    autoConnect: false,         // Prevents automatic connection until auth token is fetched
     reconnection: true,
     reconnectionDelay: 1_000,
     reconnectionDelayMax: 30_000,
@@ -64,15 +65,16 @@ function createSocket(): Socket {
     auth: token ? { token } : undefined,  // explicit token for cross-origin auth
   };
 
+  const targetUrl = socketUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+  console.log('[CLIENT] socket created', { target: targetUrl });
+
   console.info('[Socket] connecting to realtime server', {
-    target: socketUrl || window.location.origin,
+    target: targetUrl,
     hasToken: Boolean(token),
     transports: socketOpts.transports,
   });
 
-  return socketUrl
-    ? io(socketUrl, socketOpts)
-    : io(socketOpts);            // connect to current origin
+  return io(targetUrl, socketOpts);
 }
 
 function getSharedSocket(): Socket {
@@ -95,6 +97,7 @@ export function useSocket() {
     socketRef.current = socket;
 
     const onConnect = () => {
+      console.log('[CLIENT] socket connected', { id: socket.id });
       console.info('[Socket] connected', {
         id: socket.id,
         transport: socket.io?.engine?.transport?.name || 'unknown',
@@ -111,6 +114,25 @@ export function useSocket() {
 
     socket.on('connect',    onConnect);
     socket.on('disconnect', onDisconnect);
+
+    // Fetch raw token from HTTP endpoint and connect the socket explicitly
+    const initSocket = async () => {
+      try {
+        const res = await fetch('/api/chat/send');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            socket.auth = { token: data.token };
+          }
+        }
+      } catch (err) {
+        console.warn('[Socket] Failed to fetch session token from endpoint, falling back to headers', err);
+      }
+      if (!socket.connected) {
+        socket.connect();
+      }
+    };
+    initSocket();
 
     // ── Heartbeat ──────────────────────────────────────────────────────────
     const sendHB = () => { if (socket.connected) socket.emit('heartbeat'); };
@@ -139,9 +161,15 @@ export function useSocket() {
 
       _refCount--;
       if (_refCount <= 0 && _sharedSocket) {
-        _sharedSocket.disconnect();
-        _sharedSocket = null;
-        _refCount = 0;
+        const socketToDisconnect = _sharedSocket;
+        setTimeout(() => {
+          if (_refCount <= 0 && _sharedSocket === socketToDisconnect) {
+            console.info('[Socket] Disconnecting shared socket (idle)');
+            socketToDisconnect.disconnect();
+            _sharedSocket = null;
+            _refCount = 0;
+          }
+        }, 2000);
       }
     };
   }, []);
@@ -149,6 +177,7 @@ export function useSocket() {
   // ── Emit helpers ──────────────────────────────────────────────────────────
 
   const joinConversation = useCallback((conversationId: string) => {
+    console.log('[CLIENT] room joined', { conversationId });
     socketRef.current?.emit('join_conversation', conversationId);
   }, []);
 

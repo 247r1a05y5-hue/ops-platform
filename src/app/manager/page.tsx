@@ -47,16 +47,18 @@ const Badge = ({ text, type = "default" }: { text: string, type?: 'default' | 's
 // --- Interfaces & Mock Data Types ---
 
 interface ManagerEmployee {
-  name: string;
-  email: string;
-  role: string;
-  status: 'Online' | 'Away' | 'Offline';
-  performance: string;
-  workload: string;
-  attendance: string;
-  color: string;
-  avatar: string;
-  activeTasks: number;
+  id: string;          // mapped from member._id — used for PATCH /api/settings/team
+  name: string;        // member.name  (DB: UserSchema.name)
+  email: string;       // member.email (DB: UserSchema.email)
+  role: string;        // member.role  (DB: UserSchema.role)
+  status: 'Online' | 'Away' | 'Offline'; // member.status (DB: UserSchema.status)
+  // ── Derived from task data (not stored on User doc) ──
+  performance: string; // computed: % of tasks Done  e.g. '87%'
+  workload: string;    // computed: 'High' | 'Optimal' | 'Balanced' | 'Low'
+  attendance: string;  // computed: deterministic hash off name, '95%–99%'
+  color: string;       // computed: CSS class e.g. 'bg-indigo-500'
+  avatar: string;      // computed: initials e.g. 'SB'
+  activeTasks: number; // computed: tasks.filter(stage !== 'Done').length
 }
 
 interface TaskLog {
@@ -97,6 +99,18 @@ interface InvoiceItem {
   due: string;
   status: 'Paid' | 'Pending' | 'Overdue';
   remindersSent: number;
+  clientEmail?: string;
+}
+
+// Mapped approval shape (derived from ApprovalRequest + populated Lead)
+interface ApprovalItem {
+  id: string;       // req._id
+  user: string;     // req.requestedByName  or req.requestedBy.name
+  type: string;     // req.reason  e.g. 'Close deal'
+  detail: string;   // constructed from req.leadId.name / company / dealValue
+  date: string;     // req.createdAt formatted
+  priority: string; // derived from dealValue: Critical | High | Medium | Low
+  status: string;   // 'Authorized' | 'Denied' | 'Pending' (mapped from approved|rejected|pending)
 }
 
 // --- Sub-Modules ---
@@ -141,12 +155,27 @@ const TeamModule = ({ employees, onToggleStatus, onManageRoles }: { employees: M
               </div>
               <div className="flex justify-between items-center pt-3 border-t border-border mt-3">
                  <span className="text-[10px] font-bold text-secondary uppercase">Workload: <span className="text-primary">{emp.workload}</span></span>
-                 <span className="text-[10px] font-bold text-secondary uppercase">Attendance: <span className="text-emerald-500 font-extrabold">{emp.attendance}</span></span>
+                 <span className="text-[10px] font-bold text-secondary uppercase">Attendance: <span className="text-tertiary font-medium normal-case">Not tracked</span></span>
               </div>
            </div>
         </Card>
       ))}
     </div>
+  </div>
+);
+
+const SectionSpinner = ({ message }: { message: string }) => (
+  <div className="flex items-center justify-center p-8 text-primary">
+     <div className="flex flex-col items-center gap-2">
+        <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+        <div className="text-[10px] font-bold uppercase tracking-widest animate-pulse">{message}</div>
+     </div>
+  </div>
+);
+
+const SectionError = ({ message }: { message: string }) => (
+  <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold text-center">
+     {message}
   </div>
 );
 
@@ -158,6 +187,351 @@ function ManagerDashboard() {
   const { showToast } = useUI();
   
   const [activeTab, setActiveTab] = useState<'team' | 'tasks' | 'approvals' | 'progress' | 'crm' | 'invoices' | 'directory' | 'communication' | 'reports' | 'settings'>('team');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Section specific loading and error states
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  const [loadingApprovals, setLoadingApprovals] = useState(false);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
+
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [leadsError, setLeadsError] = useState<string | null>(null);
+
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
+
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
+  const [loadingDirectives, setLoadingDirectives] = useState(false);
+  const [directivesError, setDirectivesError] = useState<string | null>(null);
+
+  // Database persistent states
+  const [employees, setEmployees] = useState<ManagerEmployee[]>([]);
+  const [tasks, setTasks] = useState<ManagerTask[]>([]);
+  const [approvals, setApprovals] = useState<any[]>([]);
+  const [leads, setLeads] = useState<LeadItem[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [directives, setDirectives] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+
+  // Filter & search states
+  const [filterOwner, setFilterOwner] = useState<string>('All');
+  const [filterPriority, setFilterPriority] = useState<string>('All');
+  const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Modals & form states
+  const [selectedTask, setSelectedTask] = useState<ManagerTask | null>(null);
+  const [editOwner, setEditOwner] = useState<string>('');
+  const [editPriority, setEditPriority] = useState<ManagerTask['priority']>('Medium');
+  const [editStatus, setEditStatus] = useState<ManagerTask['status']>('In Progress');
+  const [editDeadline, setEditDeadline] = useState<string>('');
+
+  const [selectedLead, setSelectedLead] = useState<LeadItem | null>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showRolesModal, setShowRolesModal] = useState(false);
+  const [editingEmployees, setEditingEmployees] = useState<ManagerEmployee[]>([]);
+  const [showBriefingModal, setShowBriefingModal] = useState(false);
+  const [isBriefingLoading, setIsBriefingLoading] = useState(false);
+  const [briefingStep, setBriefingStep] = useState(0);
+
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
+  const [newTaskOwner, setNewTaskOwner] = useState('');
+  const [newTaskDeadline, setNewTaskDeadline] = useState('');
+
+  const [newDirSubject, setNewDirSubject] = useState('');
+  const [newDirMsg, setNewDirMsg] = useState('');
+  const [newDirPriority, setNewDirPriority] = useState('Normal');
+
+  const [chatMessages, setChatMessages] = useState([
+     { user: 'Sarah Chen', msg: 'Cloudflare R2 sync completed. Yield rate is operating optimally.', time: '10:42 AM', isSelf: false },
+     { user: 'Priya Patel', msg: 'Updated raw visual files compressed by 45%. Uploading to Nova now.', time: '11:15 AM', isSelf: false },
+     { user: 'Maya Thompson', msg: 'Outstanding. Please ensure Mateo is looped in for the validation.', time: '11:20 AM', isSelf: true },
+     { user: 'Mateo Rivera', msg: 'Acknowledged. Standing by.', time: '11:22 AM', isSelf: false }
+  ]);
+  const [newChatMsg, setNewChatMsg] = useState('');
+
+  // getVelocityData returns normalised heights for the chart bars.
+  // Returns fallback bars when no task data exists.
+  const getVelocityData = (): number[] => {
+    if (tasks.length === 0) return Array(12).fill(15); // flat baseline bars
+    const buckets = Array(12).fill(0);
+    tasks.forEach(t => {
+      const idx = t.id ? (t.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 12) : 0;
+      buckets[idx] += t.progress || 0;
+    });
+    const maxVal = Math.max(...buckets, 1);
+    return buckets.map(val => Math.min(100, Math.max(15, Math.round((val / maxVal) * 80) + 15)));
+  };
+
+  // ── DATA FETCHING ENGINE ───────────────────────────────────────────────────
+  
+  const fetchDashboardData = async () => {
+    setLoadingTeam(true);
+    setLoadingTasks(true);
+    setTeamError(null);
+    setTasksError(null);
+    try {
+      const teamRes = await fetch('/api/settings/team', { credentials: 'include' });
+      if (!teamRes.ok) throw new Error(`HTTP error! status: ${teamRes.status}`);
+      const teamData = await teamRes.json();
+      if (!teamData.success) throw new Error(teamData.error);
+      
+      const tasksRes = await fetch('/api/tasks', { credentials: 'include' });
+      if (!tasksRes.ok) throw new Error(`HTTP error! status: ${tasksRes.status}`);
+      const tasksData = await tasksRes.json();
+      if (!tasksData.success) throw new Error(tasksData.error);
+      
+      const mappedEmployees: ManagerEmployee[] = teamData.members.map((member: any) => {
+        const initials = member.name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2);
+        
+        const userTasks = tasksData.tasks.filter((t: any) => 
+          t.assignee && (t.assignee.toLowerCase() === member.name.toLowerCase() || t.assignee.toLowerCase() === member.email.toLowerCase())
+        );
+        const activeTasksCount = userTasks.filter((t: any) => t.stage !== 'Done').length;
+        const doneTasks = userTasks.filter((t: any) => t.stage === 'Done').length;
+        const totalTasks = userTasks.length;
+        
+        const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-accent', 'bg-orange-500', 'bg-rose-500', 'bg-purple-500', 'bg-pink-500'];
+        const colorIdx = member.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % colors.length;
+        const color = colors[colorIdx];
+        
+        const performanceVal = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 85;
+        
+        let workload = 'Low';
+        if (activeTasksCount > 3) workload = 'High';
+        else if (activeTasksCount > 1) workload = 'Optimal';
+        else if (activeTasksCount === 1) workload = 'Balanced';
+        
+        const attendanceVal = 95 + (member.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % 5);
+        
+        return {
+          id: member._id,
+          name: member.name,
+          email: member.email,
+          role: member.role,
+          status: member.status || 'Offline',
+          performance: `${performanceVal}%`,
+          workload,
+          attendance: `${attendanceVal}%`,
+          color,
+          avatar: initials,
+          activeTasks: activeTasksCount
+        };
+      });
+      setEmployees(mappedEmployees);
+
+      // Default new task owner to first employee if not set
+      if (mappedEmployees.length > 0 && !newTaskOwner) {
+        setNewTaskOwner(mappedEmployees[0].name);
+      }
+      
+      const mappedTasks: ManagerTask[] = tasksData.tasks.map((t: any) => {
+        return {
+          id: t._id,
+          title: t.title,
+          desc: t.description || 'Strategic operational directive.',
+          priority: t.priority || 'Medium',
+          owner: t.assignee || 'Unassigned',
+          deadline: t.dueDate ? new Date(t.dueDate).toISOString().substring(0, 10) : '',
+          status: t.stage,
+          progress: t.progress || (t.stage === 'Done' ? 100 : 0),
+          subtasks: t.subtasks || [],
+          logs: t.logs || []
+        };
+      });
+      setTasks(mappedTasks);
+      
+    } catch (err: any) {
+      console.error('Error fetching dashboard data:', err);
+      const msg = err.message || 'Failed to load dashboard data from database';
+      setTeamError(msg);
+      setTasksError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setLoadingTeam(false);
+      setLoadingTasks(false);
+    }
+  };
+
+  const fetchApprovals = async () => {
+    setLoadingApprovals(true);
+    setApprovalsError(null);
+    try {
+      const res = await fetch('/api/leads/approval', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      const mappedApprovals = data.requests.map((req: any) => {
+        const valStr = req.dealValue || req.leadId?.value || '0';
+        const valNumeric = parseFloat(valStr.replace(/[^0-9.]/g, '')) || 0;
+        let calculatedPriority = 'Low';
+        if (valNumeric >= 100000) calculatedPriority = 'Critical';
+        else if (valNumeric >= 25000) calculatedPriority = 'High';
+        else if (valNumeric >= 5000) calculatedPriority = 'Medium';
+
+        return {
+          id: req._id,
+          user: req.requestedByName || req.requestedBy?.name || 'Unknown',
+          type: req.reason || 'Deal Approval Request',
+          detail: `Requested approval for lead "${req.leadId?.name || 'Unknown'}" (${req.leadId?.company || 'No Company'}). Value: ${req.dealValue || req.leadId?.value || '$0'}`,
+          date: new Date(req.createdAt).toLocaleDateString() + ' ' + new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          priority: calculatedPriority,
+          status: req.status === 'approved' ? 'Authorized' : req.status === 'rejected' ? 'Denied' : 'Pending'
+        };
+      });
+      setApprovals(mappedApprovals);
+    } catch (err: any) {
+      console.error('Error fetching approvals:', err);
+      setApprovalsError(err.message || 'Failed to load approvals');
+    } finally {
+      setLoadingApprovals(false);
+    }
+  };
+
+  const fetchLeads = async () => {
+    setLoadingLeads(true);
+    setLeadsError(null);
+    try {
+      const res = await fetch('/api/leads?limit=20', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      const mappedLeads = data.leads.map((lead: any) => {
+        return {
+          id: lead._id,
+          name: lead.name,
+          company: lead.company || 'Acme Corp',
+          value: lead.value || '$0',
+          status: lead.status || 'Warm',
+          stage: lead.stage || 'Discovery',
+          source: lead.leadSource || 'Manual Entry',
+          email: lead.email,
+          communications: (lead.emails || []).map((email: any) => ({
+            date: email.sentAt ? new Date(email.sentAt).toLocaleDateString() : 'Just now',
+            subject: email.subject || 'No Subject',
+            sender: email.sender || 'System'
+          }))
+        };
+      });
+      setLeads(mappedLeads);
+    } catch (err: any) {
+      console.error('Error fetching leads:', err);
+      setLeadsError(err.message || 'Failed to load leads');
+    } finally {
+      setLoadingLeads(false);
+    }
+  };
+
+  const fetchInvoices = async () => {
+    setLoadingInvoices(true);
+    setInvoicesError(null);
+    try {
+      const res = await fetch('/api/invoices', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      const mappedInvoices = data.invoices.map((inv: any) => {
+        return {
+          id: inv._id,
+          client: inv.client,
+          amount: inv.amount.startsWith('$') || inv.amount.startsWith('₹') ? inv.amount : `$${inv.amount}`,
+          due: inv.due,
+          status: inv.status,
+          remindersSent: inv.remindersCount || 0,
+          clientEmail: inv.clientEmail || ''
+        };
+      });
+      setInvoices(mappedInvoices);
+    } catch (err: any) {
+      console.error('Error fetching invoices:', err);
+      setInvoicesError(err.message || 'Failed to load invoices');
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    setLoadingAnalytics(true);
+    setAnalyticsError(null);
+    try {
+      const res = await fetch('/api/analytics?period=month', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        setAnalytics(data);
+      } else {
+        throw new Error(data.error || 'Failed to load analytics');
+      }
+    } catch (err: any) {
+      console.error('Error fetching analytics:', err);
+      setAnalyticsError((err as any).message || 'Failed to load analytics');
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const fetchDirectives = async () => {
+    setLoadingDirectives(true);
+    setDirectivesError(null);
+    try {
+      const res = await fetch('/api/notifications?limit=10', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      const mappedDirectives = data.notifications.map((n: any) => {
+        return {
+          id: n._id,
+          user: 'System Bot',
+          msg: `[${n.title}] ${n.message}`,
+          time: new Date(n.createdAt).toLocaleDateString() + ' ' + new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          priority: n.read ? 'Normal' : 'High'
+        };
+      });
+
+      // No fallback — show real empty state when DB has no notifications
+      setDirectives(mappedDirectives);
+    } catch (err: any) {
+      console.error('Error fetching notifications/directives:', err);
+      setDirectivesError(err.message || 'Failed to load notifications');
+    } finally {
+      setLoadingDirectives(false);
+    }
+  };
+
+  const loadAllData = async () => {
+    setIsLoading(true);
+    try {
+      await Promise.all([
+        fetchDashboardData(),
+        fetchApprovals(),
+        fetchLeads(),
+        fetchInvoices(),
+        fetchAnalytics(),
+        fetchDirectives()
+      ]);
+    } catch (err) {
+      console.error('Error loading all data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
   useEffect(() => {
     const tab = searchParams?.get('tab');
@@ -166,107 +540,103 @@ function ManagerDashboard() {
     }
   }, [searchParams]);
 
-  // Personnel State
-  const [employees, setEmployees] = useState<ManagerEmployee[]>([
-    { name: 'Mateo Rivera', email: 'mateo@opsplatform.io', role: 'Sr. Logistics Lead', status: 'Online', performance: '94%', workload: 'High', attendance: '98%', color: 'bg-indigo-500', avatar: 'MR', activeTasks: 2 },
-    { name: 'Sarah Chen', email: 'sarah@opsplatform.io', role: 'Ops Architect', status: 'Away', performance: '88%', workload: 'Optimal', attendance: '96%', color: 'bg-emerald-500', avatar: 'SC', activeTasks: 1 },
-    { name: 'Priya Patel', email: 'priya@opsplatform.io', role: 'Operations Staff', status: 'Online', performance: '98%', workload: 'Balanced', attendance: '99%', color: 'bg-accent', avatar: 'PP', activeTasks: 2 },
-    { name: 'Jordan Lee', email: 'jordan@opsplatform.io', role: 'Marketing Representative', status: 'Online', performance: '91%', workload: 'Optimal', attendance: '95%', color: 'bg-orange-500', avatar: 'JL', activeTasks: 1 },
-    { name: 'Elena Rodriguez', email: 'elena@opsplatform.io', role: 'Compliance Officer', status: 'Offline', performance: '97%', workload: 'Low', attendance: '99%', color: 'bg-rose-500', avatar: 'ER', activeTasks: 0 },
-  ]);
+  useEffect(() => {
+    if (showRolesModal) {
+      setEditingEmployees(JSON.parse(JSON.stringify(employees)));
+    }
+  }, [showRolesModal, employees]);
 
-  const toggleStatus = (idx: number) => {
+  // ── WORKFLOW MUTATIONS (DATABASE CONNECTED) ────────────────────────────────
+  
+  const toggleStatus = async (idx: number) => {
     const emp = employees[idx];
-    setEmployees(employees.map((e, i) => i === idx ? { ...e, status: e.status === 'Online' ? 'Offline' : 'Online' } : e));
-    showToast('Employee check-in status toggled', 'info');
-    triggerActivityLog('workflow_action', `Toggled check-in status for employee ${emp.name} to ${emp.status === 'Online' ? 'Offline' : 'Online'}`).catch(console.error);
+    const newStatus = emp.status === 'Online' ? 'Offline' : emp.status === 'Offline' ? 'Away' : 'Online';
+    try {
+      const res = await fetch('/api/settings/team', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ userId: (emp as any).id, status: newStatus })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`Status of ${emp.name} updated to ${newStatus}`, 'success');
+      await fetchDashboardData();
+      triggerActivityLog('workflow_action', `Toggled check-in status for employee ${emp.name} to ${newStatus}`).catch(console.error);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update status', 'error');
+    }
   };
 
-  // Strategic Tasks / Initiatives State
-  const [tasks, setTasks] = useState<ManagerTask[]>([
-    { 
-      id: 'SYS-442', 
-      title: 'Q3 Inventory Recalibration', 
-      desc: 'Formulate, validate, and audit Q3 operational logs and warehouse distribution bypass maps.',
-      priority: 'High', 
-      owner: 'Mateo Rivera', 
-      deadline: 'May 15', 
-      progress: 65, 
-      status: 'In Progress',
-      subtasks: [
-        { title: 'Bypass map design outlines', done: true },
-        { title: 'Live load simulation validation', done: false }
-      ],
-      logs: [
-        { time: '09:00 AM', author: 'Mateo Rivera', note: 'Outline bypass configurations finalized.' }
-      ]
-    },
-    { 
-      id: 'SYS-501', 
-      title: 'Cloudflare R2 Migration', 
-      desc: 'Migrate active video pipelines and sequence assets to cloud flare R2 storage buckets to improve throughput SLA.',
-      priority: 'Critical', 
-      owner: 'Sarah Chen', 
-      deadline: 'May 12', 
-      progress: 88, 
-      status: 'Under Review',
-      subtasks: [
-        { title: 'Provision AWS cross-bucket nodes', done: true },
-        { title: 'Configure CDN cache settings', done: true },
-        { title: 'Final egress verification sprint', done: false }
-      ],
-      logs: [
-        { time: 'Yesterday', author: 'Sarah Chen', note: 'Provisioned cross-bucket nodes. Average latency dropped by 45ms.' }
-      ]
-    },
-    { 
-      id: 'SYS-392', 
-      title: 'Automated Lead Scoring V2', 
-      desc: 'Deploy predictive sequence rating matrices inside campaign lead modules.',
-      priority: 'Medium', 
-      owner: 'Jordan Lee', 
-      deadline: 'May 20', 
-      progress: 42, 
-      status: 'In Progress',
-      subtasks: [
-        { title: 'Draft scoring algorithms', done: true },
-        { title: 'Test routing endpoints', done: false }
-      ],
-      logs: []
-    },
-    { 
-      id: 'SYS-101', 
-      title: 'Update media assets for Nova Retail', 
-      desc: 'Compress and upload all high-resolution promotional materials for Nova Retail campaign.',
-      priority: 'High', 
-      owner: 'Priya Patel', 
-      deadline: 'Today', 
-      progress: 65, 
-      status: 'In Progress',
-      subtasks: [
-        { title: 'Compress sequences', done: true },
-        { title: 'CDNs cache verify', done: false }
-      ],
-      logs: [
-        { time: 'Today 09:30 AM', author: 'Priya Patel', note: 'Compressed raw 4K visual sequences successfully.' }
-      ]
+  const handleUpdateRoles = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      for (const emp of editingEmployees) {
+        const original = employees.find(originalEmp => (originalEmp as any).id === (emp as any).id);
+        if (original && original.role !== emp.role) {
+          const res = await fetch('/api/settings/team', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+            credentials: 'include',
+            body: JSON.stringify({ userId: (emp as any).id, role: emp.role })
+          });
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error);
+        }
+      }
+      showToast('Personnel roles and structural ranks updated successfully!', 'success');
+      await fetchDashboardData();
+      triggerActivityLog('workflow_action', 'Updated personnel roles and structural ranks').catch(console.error);
+      setShowRolesModal(false);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update roles', 'error');
     }
-  ]);
+  };
 
-  // Task Filter State
-  const [filterOwner, setFilterOwner] = useState<string>('All');
-  const [filterPriority, setFilterPriority] = useState<string>('All');
-  const [filterStatus, setFilterStatus] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-
-  // Selected Task to View/Edit details
-  const [selectedTask, setSelectedTask] = useState<ManagerTask | null>(null);
-  
-  // Edit Form State inside modal
-  const [editOwner, setEditOwner] = useState<string>('');
-  const [editPriority, setEditPriority] = useState<ManagerTask['priority']>('Medium');
-  const [editStatus, setEditStatus] = useState<ManagerTask['status']>('In Progress');
-  const [editDeadline, setEditDeadline] = useState<string>('');
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle || !newTaskDeadline) {
+      showToast('Please fill out all task details', 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: newTaskTitle,
+          description: newTaskDesc || 'Strategic operational directive.',
+          priority: newTaskPriority,
+          assignee: newTaskOwner,
+          dueDate: new Date(newTaskDeadline),
+          stage: 'To Do',
+          tags: ['Manager Initiative']
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`New Initiative "${newTaskTitle}" deployed!`, 'success');
+      await fetchDashboardData();
+      triggerActivityLog('task_creation', `Deployed new strategic initiative "${newTaskTitle}" assigned to ${newTaskOwner}`, {
+        taskId: data.task._id,
+        owner: newTaskOwner,
+        priority: newTaskPriority
+      }).catch(console.error);
+      
+      setNewTaskTitle('');
+      setNewTaskDesc('');
+      setNewTaskDeadline('');
+      setShowTaskModal(false);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to deploy initiative', 'error');
+    }
+  };
 
   const handleOpenTask = (task: ManagerTask) => {
     setSelectedTask(task);
@@ -276,239 +646,176 @@ function ManagerDashboard() {
     setEditDeadline(task.deadline);
   };
 
-  const handleSaveTaskDetails = () => {
+  const handleSaveTaskDetails = async () => {
     if (!selectedTask) return;
     const isCompleted = editStatus === 'Done';
     const computedProgress = isCompleted ? 100 : selectedTask.progress;
     
-    const updated: ManagerTask = {
-      ...selectedTask,
-      owner: editOwner,
-      priority: editPriority,
-      status: editStatus,
-      deadline: editDeadline,
-      progress: computedProgress
-    };
+    try {
+      const res = await fetch(`/api/tasks/${selectedTask.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({
+          assignee: editOwner,
+          priority: editPriority,
+          stage: editStatus,
+          dueDate: editDeadline ? new Date(editDeadline) : undefined,
+          progress: computedProgress
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
 
-    setTasks(tasks.map(t => t.id === selectedTask.id ? updated : t));
-    setSelectedTask(null);
-    showToast(`Task ${selectedTask.id} parameters successfully synced!`, 'success');
-    triggerActivityLog('task_update', `Updated initiative parameters for task ${selectedTask.id} (${editStatus})`, {
-      taskId: selectedTask.id,
-      status: editStatus,
-      priority: editPriority
-    }).catch(console.error);
-  };
-
-  // Leads State
-  const [leads, setLeads] = useState<LeadItem[]>([
-    { 
-      id: 'L-9201', 
-      name: 'Arthur Pendragon', 
-      company: 'Camelot Retail', 
-      value: '$24,500', 
-      status: 'Hot', 
-      stage: 'Proposal Sent', 
-      source: 'Direct Outreach', 
-      email: 'arthur@camelot.co',
-      communications: [
-        { date: 'May 10', subject: 'Camelot Integration Proposal V2', sender: 'Jordan Lee (MR)' },
-        { date: 'May 08', subject: 'Inbound Request for R2 Storage Metrics', sender: 'Arthur Pendragon' }
-      ]
-    },
-    { 
-      id: 'L-8832', 
-      name: 'Morgana Le Fay', 
-      company: 'Avalon Tech', 
-      value: '$18,000', 
-      status: 'Warm', 
-      stage: 'Sequence Active', 
-      source: 'Cold Sequence', 
-      email: 'morgana@avalon.io',
-      communications: [
-        { date: 'May 09', subject: 'Automating your operational pipelines', sender: 'Jordan Lee (MR)' }
-      ]
-    },
-    { 
-      id: 'L-7741', 
-      name: 'Lancelot du Lac', 
-      company: 'Logres Logistics', 
-      value: '$45,000', 
-      status: 'Hot', 
-      stage: 'Qualified', 
-      source: 'Direct Inbound', 
-      email: 'lancelot@logres.com',
-      communications: []
+      setSelectedTask(null);
+      showToast(`Task parameters successfully synced!`, 'success');
+      await fetchDashboardData();
+      triggerActivityLog('task_update', `Updated initiative parameters for task ${selectedTask.id} (${editStatus})`, {
+        taskId: selectedTask.id,
+        status: editStatus,
+        priority: editPriority
+      }).catch(console.error);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save task details', 'error');
     }
-  ]);
-
-  const [selectedLead, setSelectedLead] = useState<LeadItem | null>(null);
-
-  // Invoices State
-  const [invoices, setInvoices] = useState<InvoiceItem[]>([
-    { id: 'INV-8820', client: 'Camelot Retail', amount: '$12,250.00', due: 'May 20, 2026', status: 'Pending', remindersSent: 0 },
-    { id: 'INV-8819', client: 'Nova Retail Corp', amount: '$8,400.00', due: 'May 14, 2026', status: 'Overdue', remindersSent: 1 },
-    { id: 'INV-8818', client: 'Goliath Logistics', amount: '$34,500.00', due: 'May 08, 2026', status: 'Paid', remindersSent: 0 },
-  ]);
-
-  const handleApproveInvoice = (id: string) => {
-    setInvoices(invoices.map(inv => inv.id === id ? { ...inv, status: 'Paid' } : inv));
-    showToast(`Invoice ${id} approved and routed for processing!`, 'success');
-    triggerActivityLog('workflow_action', `Approved invoice ${id} and routed for processing`).catch(console.error);
   };
 
-  const handleSendReminder = (id: string) => {
-    setInvoices(invoices.map(inv => inv.id === id ? { ...inv, remindersSent: inv.remindersSent + 1 } : inv));
-    showToast(`WhatsApp & Email reminder dispatched for invoice ${id}`, 'info');
-    triggerActivityLog('workflow_action', `Dispatched billing reminder for invoice ${id}`).catch(console.error);
-  };
+  const handleDeleteTask = async () => {
+    if (!selectedTask) return;
+    if (!confirm('Are you sure you want to delete this initiative?')) return;
+    try {
+      const res = await fetch(`/api/tasks/${selectedTask.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
 
-  // Task creation Modal state
-  const [showTaskModal, setShowTaskModal] = useState(false);
-  const [showRolesModal, setShowRolesModal] = useState(false);
-  const [editingEmployees, setEditingEmployees] = useState<ManagerEmployee[]>([]);
-  const [showBriefingModal, setShowBriefingModal] = useState(false);
-  const [isBriefingLoading, setIsBriefingLoading] = useState(false);
-  const [briefingStep, setBriefingStep] = useState(0);
-
-  const handleGenerateBriefing = () => {
-    setIsBriefingLoading(true);
-    setShowBriefingModal(true);
-    setBriefingStep(0);
-    setTimeout(() => setBriefingStep(1), 600);
-    setTimeout(() => setBriefingStep(2), 1200);
-    setTimeout(() => setIsBriefingLoading(false), 1800);
-  };
-
-  const handleApplyBriefingDirective = () => {
-    setDirectives(prev => [
-      { user: 'Executive System', msg: '[APAC Cloudflare Sync] Reallocate Alex Johnson to assist Sarah Chen on APAC-West migration nodes.', time: 'Just now', priority: 'High' },
-      ...prev
-    ]);
-    showToast('Briefing directive broadcasted to Department Hub!', 'success');
-    triggerActivityLog('workflow_action', 'Broadcasted executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
-    setShowBriefingModal(false);
-  };
-
-  useEffect(() => {
-    if (showRolesModal) {
-      setEditingEmployees(JSON.parse(JSON.stringify(employees)));
+      setSelectedTask(null);
+      showToast(`Initiative successfully deleted!`, 'success');
+      await fetchDashboardData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete task', 'error');
     }
-  }, [showRolesModal, employees]);
-
-  const handleUpdateRoles = (e: React.FormEvent) => {
-    e.preventDefault();
-    setEmployees(editingEmployees);
-    showToast('Personnel roles and structural ranks updated successfully!', 'success');
-    triggerActivityLog('workflow_action', 'Updated personnel roles and structural ranks').catch(console.error);
-    setShowRolesModal(false);
   };
 
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
-  const [newTaskOwner, setNewTaskOwner] = useState('Priya Patel');
-  const [newTaskDeadline, setNewTaskDeadline] = useState('');
-
-  const handleCreateTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle || !newTaskDeadline) {
-      showToast('Please fill out all task details', 'warning');
-      return;
+  const handleAuthorizeApproval = async (id: string) => {
+    try {
+      const res = await fetch('/api/leads/approval', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ requestId: id, action: 'approve', reviewNote: 'Authorized by Manager via Dashboard' })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`Request authorized successfully!`, 'success');
+      await fetchApprovals();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to authorize approval', 'error');
     }
-    const nextId = `SYS-${Math.floor(100 + Math.random() * 900)}`;
-    const newT: ManagerTask = {
-      id: nextId,
-      title: newTaskTitle,
-      desc: newTaskDesc || 'Strategic operational directive.',
-      priority: newTaskPriority,
-      owner: newTaskOwner,
-      deadline: newTaskDeadline,
-      progress: 0,
-      status: 'To Do',
-      subtasks: [],
-      logs: []
-    };
-    setTasks([newT, ...tasks]);
-    
-    // Increment assignee active tasks count
-    setEmployees(employees.map(emp => emp.name === newTaskOwner ? { ...emp, activeTasks: emp.activeTasks + 1 } : emp));
-
-    showToast(`New Initiative "${newTaskTitle}" deployed!`, 'success');
-    triggerActivityLog('task_creation', `Deployed new strategic initiative "${newTaskTitle}" assigned to ${newTaskOwner}`, {
-      taskId: nextId,
-      owner: newTaskOwner,
-      priority: newTaskPriority
-    }).catch(console.error);
-    
-    setNewTaskTitle('');
-    setNewTaskDesc('');
-    setNewTaskDeadline('');
-    setShowTaskModal(false);
   };
 
-  // Approvals workflow State
-  const [approvals, setApprovals] = useState([
-    { id: 'REQ-1092', user: 'Mateo Rivera', type: 'Resource Allocation', detail: 'Requesting 40GB R2 Storage for Nova Retail media assets.', date: '2 hours ago', priority: 'High', status: 'Pending' },
-    { id: 'REQ-1088', user: 'Priya Patel', type: 'System Access Override', detail: 'Elevated authorization requested to test bandwidth API parameters.', date: '3 hours ago', priority: 'Critical', status: 'Pending' },
-    { id: 'REQ-1085', user: 'Sarah Chen', type: 'API Key Access', detail: 'Production access for Razorpay webhook integration.', date: '1 day ago', priority: 'Critical', status: 'Pending' },
-  ]);
-
-  const handleAuthorizeApproval = (id: string) => {
-    const reqItem = approvals.find(a => a.id === id);
-    setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'Authorized' } : a));
-    showToast(`Request ${id} authorized successfully!`, 'success');
-    triggerActivityLog('approval_approved', `Authorized request ${id} (${reqItem?.type || 'General Resource'})`).catch(console.error);
+  const handleDenyApproval = async (id: string) => {
+    try {
+      const res = await fetch('/api/leads/approval', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ requestId: id, action: 'reject', reviewNote: 'Denied by Manager via Dashboard' })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`Request denied`, 'error');
+      await fetchApprovals();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to deny approval', 'error');
+    }
   };
 
-  const handleDenyApproval = (id: string) => {
-    const reqItem = approvals.find(a => a.id === id);
-    setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'Denied' } : a));
-    showToast(`Request ${id} denied`, 'error');
-    triggerActivityLog('approval_rejected', `Denied request ${id} (${reqItem?.type || 'General Resource'})`).catch(console.error);
+  const handleApproveInvoice = async (id: string) => {
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ id, action: 'approve' })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`Invoice approved and marked as Paid!`, 'success');
+      await fetchInvoices();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to approve invoice', 'error');
+    }
   };
 
-  // Directives and Announcements State
-  const [directives, setDirectives] = useState([
-    { user: 'Maya Thompson', msg: 'The Q3 strategic roadmap has been uploaded to the shared repository. Please review by EOD.', time: '10 min ago', priority: 'High' },
-    { user: 'System Bot', msg: 'Weekly performance reports are now available for all logistics leads.', time: '2 hours ago', priority: 'Normal' },
-    { user: 'Elena Rodriguez', msg: 'Compliance audit for the Beacon project starts tomorrow. Ensure all documents are signed.', time: '5 hours ago', priority: 'Critical' },
-  ]);
+  const handleSendReminder = async (id: string) => {
+    const inv = invoices.find((i: any) => i.id === id);
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ id, action: 'send_reminder', clientEmail: inv?.clientEmail })
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      showToast(`WhatsApp & Email reminder dispatched!`, 'info');
+      await fetchInvoices();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to send reminder', 'error');
+    }
+  };
 
-  const [newDirSubject, setNewDirSubject] = useState('');
-  const [newDirMsg, setNewDirMsg] = useState('');
-  const [newDirPriority, setNewDirPriority] = useState('Normal');
-
-  const handleAddDirective = (e: React.FormEvent) => {
+  const handleAddDirective = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDirSubject || !newDirMsg) {
       showToast('Please enter both subject and message', 'warning');
       return;
     }
     const fullMsg = `[${newDirSubject}] ${newDirMsg}`;
+    
+    // Broadcast locally for now but log in system activity
     setDirectives(prev => [
       { user: 'Maya Thompson', msg: fullMsg, time: 'Just now', priority: newDirPriority },
       ...prev
     ]);
+    
     showToast('Directive broadcasted successfully!', 'success');
     triggerActivityLog('workflow_action', `Broadcasted new operational directive: [${newDirSubject}]`).catch(console.error);
     setNewDirSubject('');
     setNewDirMsg('');
   };
 
-  const handleAcknowledgeDirective = (index: number) => {
+  const handleAcknowledgeDirective = async (index: number) => {
+    const dir = directives[index];
+    if (dir.id) {
+      try {
+        const res = await fetch('/api/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+          credentials: 'include',
+          body: JSON.stringify({ id: dir.id })
+        });
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      } catch (e) {
+        console.error('Failed to mark notification as read:', e);
+      }
+    }
     setDirectives(prev => prev.filter((_, i) => i !== index));
     showToast('Directive archived', 'success');
   };
-
-  // Simulated Live Team Chat State
-  const [chatMessages, setChatMessages] = useState([
-     { user: 'Sarah Chen', msg: 'Cloudflare R2 sync completed. Yield rate is operating optimally.', time: '10:42 AM', isSelf: false },
-     { user: 'Priya Patel', msg: 'Updated raw visual files compressed by 45%. Uploading to Nova now.', time: '11:15 AM', isSelf: false },
-     { user: 'Maya Thompson', msg: 'Outstanding. Please ensure Mateo is looped in for the validation.', time: '11:20 AM', isSelf: true },
-     { user: 'Mateo Rivera', msg: 'Acknowledged. Standing by.', time: '11:22 AM', isSelf: false }
-  ]);
-  const [newChatMsg, setNewChatMsg] = useState('');
 
   const handleSendChatMsg = (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,6 +845,25 @@ function ManagerDashboard() {
        ]);
        showToast(`New message from ${randName}`, 'info');
     }, 1200);
+  };
+
+  const handleGenerateBriefing = () => {
+    setIsBriefingLoading(true);
+    setShowBriefingModal(true);
+    setBriefingStep(0);
+    setTimeout(() => setBriefingStep(1), 600);
+    setTimeout(() => setBriefingStep(2), 1200);
+    setTimeout(() => setIsBriefingLoading(false), 1800);
+  };
+
+  const handleApplyBriefingDirective = () => {
+    setDirectives(prev => [
+      { user: 'Executive System', msg: '[APAC Cloudflare Sync] Reallocate Alex Johnson to assist Sarah Chen on APAC-West migration nodes.', time: 'Just now', priority: 'High' },
+      ...prev
+    ]);
+    showToast('Briefing directive broadcasted to Department Hub!', 'success');
+    triggerActivityLog('workflow_action', 'Broadcasted executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
+    setShowBriefingModal(false);
   };
 
   const handleDownloadCSV = (reportTitle: string) => {
@@ -580,6 +906,17 @@ function ManagerDashboard() {
       task.owner.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesOwner && matchesPriority && matchesStatus && matchesQuery;
   });
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh] text-primary">
+         <div className="flex flex-col items-center gap-4">
+           <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+           <div className="text-xs font-bold uppercase tracking-widest animate-pulse">Loading Command Console...</div>
+         </div>
+      </div>
+    );
+  }
 
   // Settings tab gets a full-page layout bypassing the two-column grid
   if (activeTab === 'settings') {
@@ -632,7 +969,13 @@ function ManagerDashboard() {
            <AnimatePresence mode="wait">
               {activeTab === 'team' && (
                 <motion.div key="team" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                   <TeamModule employees={employees} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
+                   {loadingTeam ? (
+                     <SectionSpinner message="Fetching Team Analytics..." />
+                   ) : teamError ? (
+                     <SectionError message={teamError} />
+                   ) : (
+                     <TeamModule employees={employees} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
+                   )}
                 </motion.div>
               )}
               
@@ -647,6 +990,13 @@ function ManagerDashboard() {
                         <Plus size={14}/> Deploy Initiative
                      </button>
                   </div>
+
+                  {loadingTasks ? (
+                    <SectionSpinner message="Loading Initiatives..." />
+                  ) : tasksError ? (
+                    <SectionError message={tasksError} />
+                  ) : (
+                    <>
 
                   {/* Task Filter Controls */}
                   <div className="p-4 bg-surface border border-border rounded-2xl grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
@@ -706,9 +1056,9 @@ function ManagerDashboard() {
                        <div key={t.id} onClick={() => handleOpenTask(t)} className="p-5 bg-surface border border-border rounded-2xl hover:border-accent/40 group cursor-pointer transition-all">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                              <div className="flex items-start gap-5">
-                                <div className="w-12 h-12 rounded-xl bg-base border border-border flex flex-col items-center justify-center shrink-0 group-hover:bg-accent/5 transition-colors">
-                                   <span className="text-[7px] font-bold text-tertiary uppercase">SYS</span>
-                                   <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 leading-none mt-0.5">{t.id}</span>
+                                <div className="w-12 h-12 rounded-xl bg-base border border-border flex flex-col items-center justify-center shrink-0 group-hover:bg-accent/5 transition-colors overflow-hidden">
+                                    <span className="text-[7px] font-bold text-tertiary uppercase">SYS</span>
+                                    <span className="text-[8px] font-extrabold text-indigo-600 dark:text-indigo-400 leading-none mt-0.5 w-full text-center px-0.5 truncate">{String(t.id).slice(-6).toUpperCase()}</span>
                                 </div>
                                 <div>
                                    <h4 className="text-sm font-bold text-primary mb-2 group-hover:text-accent transition-colors">{t.title}</h4>
@@ -736,6 +1086,8 @@ function ManagerDashboard() {
                        </div>
                      )}
                   </div>
+                    </>
+                  )}
                 </motion.div>
               )}
 
@@ -747,7 +1099,17 @@ function ManagerDashboard() {
                    </div>
                    
                    <div className="space-y-4">
-                      {approvals.map((req, i) => (
+                       {loadingApprovals ? (
+                         <SectionSpinner message="Loading Decisions..." />
+                       ) : approvalsError ? (
+                         <SectionError message={approvalsError} />
+                       ) : approvals.length === 0 ? (
+                         <div className="p-12 text-center border border-dashed border-border rounded-3xl bg-surface/30">
+                           <Shield size={32} className="text-accent/30 mx-auto mb-4" />
+                           <p className="text-sm font-bold text-secondary mb-1">All Clear</p>
+                           <p className="text-xs text-tertiary">No pending approval requests. All decisions are resolved.</p>
+                         </div>
+                       ) : approvals.map((req, i) => (
                         <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/30 transition-all group">
                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                               <div className="flex items-start gap-4">
@@ -788,6 +1150,13 @@ function ManagerDashboard() {
                         <h2 className="text-xl font-bold text-primary">Performance Velocity</h2>
                         <p className="text-secondary text-xs">Deep analytics and trend projections for active departments.</p>
                      </div>
+
+                     {loadingAnalytics ? (
+                       <SectionSpinner message="Fetching Performance Analytics..." />
+                     ) : analyticsError ? (
+                       <SectionError message={analyticsError} />
+                     ) : (
+                       <>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <Card className="md:col-span-2">
                            <div className="flex items-center justify-between mb-6">
@@ -795,7 +1164,7 @@ function ManagerDashboard() {
                               <Badge text="Last 30 Days" type="info" />
                            </div>
                            <div className="h-64 flex items-end gap-2 px-2 pb-2">
-                              {[60, 80, 45, 90, 70, 85, 55, 95, 80, 75, 90, 88].map((h, i) => (
+                              {getVelocityData().map((h, i) => (
                                 <div key={i} className="flex-1 h-full flex flex-col justify-end items-center">
                                    <div className="w-full h-48 flex items-end">
                                       <motion.div 
@@ -820,10 +1189,14 @@ function ManagerDashboard() {
                               <div className="relative z-10">
                                  <div className="flex items-center gap-3 mb-4">
                                     <Sparkles size={20} className="text-accent" />
-                                    <h4 className="text-sm font-bold text-primary">Velocity Rating</h4>
+                                    <h4 className="text-sm font-bold text-primary">Completion Rate</h4>
                                  </div>
-                                 <div className="text-5xl font-black mb-2 tracking-tighter text-accent">94.2</div>
-                                 <p className="text-[11px] text-secondary font-medium leading-relaxed">+4.8% from last quarter. Team efficiency is operating at peak target.</p>
+                                 <div className="text-5xl font-black mb-2 tracking-tighter text-accent">
+                                    {analytics ? `${analytics.tasks.completionRate}%` : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                                  </div>
+                                  <p className="text-[11px] text-secondary font-medium leading-relaxed">
+                                    {analytics ? `Tasks: ${analytics.tasks.change} vs last period. ${analytics.tasks.total} total initiatives tracked.` : `${tasks.filter(t => t.status === 'Done').length} of ${tasks.length} tasks completed this period.`}
+                                  </p>
                               </div>
                            </Card>
                            <Card>
@@ -847,6 +1220,8 @@ function ManagerDashboard() {
                            </Card>
                         </div>
                      </div>
+                       </>
+                     )}
                   </div>
                 </motion.div>
               )}
@@ -861,7 +1236,13 @@ function ManagerDashboard() {
                       <Badge text="Telemetry Connected" type="success" />
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                   {loadingLeads ? (
+                     <SectionSpinner message="Fetching CRM Lead Streams..." />
+                   ) : leadsError ? (
+                     <SectionError message={leadsError} />
+                   ) : (
+                     <>
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                      {['Hot', 'Warm', 'Cold'].map(level => (
                        <div key={level} className="p-4 bg-base/20 rounded-2xl border border-border/50 space-y-4">
                          <h3 className="text-[10px] font-bold uppercase tracking-widest px-1 flex items-center justify-between">
@@ -890,6 +1271,8 @@ function ManagerDashboard() {
                        </div>
                      ))}
                    </div>
+                     </>
+                   )}
                 </motion.div>
               )}
 
@@ -904,7 +1287,17 @@ function ManagerDashboard() {
                    </div>
 
                    <div className="space-y-4">
-                     {invoices.map(inv => (
+                      {loadingInvoices ? (
+                        <SectionSpinner message="Loading Invoices..." />
+                      ) : invoicesError ? (
+                        <SectionError message={invoicesError} />
+                      ) : invoices.length === 0 ? (
+                        <div className="p-12 text-center border border-dashed border-border rounded-3xl bg-surface/30">
+                          <DollarSign size={32} className="text-accent/30 mx-auto mb-4" />
+                          <p className="text-sm font-bold text-secondary mb-1">No Invoices</p>
+                          <p className="text-xs text-tertiary">No invoices found in the billing system. Create one from the Admin panel.</p>
+                        </div>
+                      ) : invoices.map(inv => (
                        <Card key={inv.id} className="p-5 hover:border-accent/20 group transition-all">
                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                            <div className="flex items-center gap-4">
@@ -947,7 +1340,12 @@ function ManagerDashboard() {
                       <Badge text={`${employees.length} Accounts Active`} type="success" />
                    </div>
 
-                   <Card className="p-0 overflow-hidden">
+                   {loadingTeam ? (
+                     <SectionSpinner message="Loading Workspace Personnel..." />
+                   ) : teamError ? (
+                     <SectionError message={teamError} />
+                   ) : (
+                     <Card className="p-0 overflow-hidden">
                      <table className="w-full text-left text-xs border-collapse">
                        <thead className="bg-base/80 border-b border-border text-[9px] font-bold text-tertiary uppercase tracking-wider">
                          <tr>
@@ -981,6 +1379,7 @@ function ManagerDashboard() {
                        </tbody>
                      </table>
                    </Card>
+                   )}
                 </motion.div>
               )}
 
@@ -993,7 +1392,11 @@ function ManagerDashboard() {
                       </div>
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                          <div className="lg:col-span-2 space-y-4">
-                            {directives.length === 0 ? (
+                            {loadingDirectives ? (
+                               <SectionSpinner message="Fetching Directives..." />
+                            ) : directivesError ? (
+                               <SectionError message={directivesError} />
+                            ) : directives.length === 0 ? (
                                <div className="p-12 text-center border-2 border-dashed border-border rounded-3xl bg-surface/30">
                                   <p className="text-xs text-secondary font-medium">All directives acknowledged! Team hub is clear.</p>
                                </div>
@@ -1104,7 +1507,7 @@ function ManagerDashboard() {
                  <div>
                     <div className="flex justify-between items-center mb-2">
                        <span className="text-xs font-bold text-secondary">Global Performance</span>
-                       <span className="text-xs font-bold text-emerald-500">+12.5%</span>
+                       <span className="text-xs font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
                     </div>
                     <div className="h-10 flex items-end gap-1 px-1">
                        {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
@@ -1117,12 +1520,20 @@ function ManagerDashboard() {
                  
                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
                     <div className="p-4 bg-base border border-border rounded-xl">
-                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Invoices</div>
-                       <div className="text-lg font-bold text-primary">$124.5K</div>
+                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Revenue</div>
+                       <div className="text-lg font-bold text-primary">
+                          {analytics?.revenue?.current
+                            ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                            : `${invoices.filter(i => i.status === 'Paid').length} paid`}
+                        </div>
                     </div>
                     <div className="p-4 bg-base border border-border rounded-xl">
-                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Velocity</div>
-                       <div className="text-lg font-bold text-primary">0.94x</div>
+                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Task Rate</div>
+                       <div className="text-lg font-bold text-primary">
+                          {analytics
+                            ? `${analytics.tasks.completionRate}%`
+                            : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                        </div>
                     </div>
                  </div>
               </div>
@@ -1200,20 +1611,28 @@ function ManagerDashboard() {
                   </div>
 
                   <div className="space-y-4 text-xs">
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="p-3 bg-base border border-border rounded-xl text-center">
-                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Velocity</div>
-                        <div className="text-xs font-bold text-primary">0.94x</div>
-                      </div>
-                      <div className="p-3 bg-base border border-border rounded-xl text-center">
-                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Efficiency</div>
-                        <div className="text-xs font-bold text-emerald-500">92.5%</div>
-                      </div>
-                      <div className="p-3 bg-base border border-border rounded-xl text-center">
-                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Yield</div>
-                        <div className="text-xs font-bold text-accent">$124.5K</div>
-                      </div>
-                    </div>
+                     <div className="grid grid-cols-3 gap-3">
+                       <div className="p-3 bg-base border border-border rounded-xl text-center">
+                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Utilisation</div>
+                         <div className="text-xs font-bold text-primary">
+                           {analytics ? `${(analytics.team.utilisation / 100).toFixed(2)}x` : '—'}
+                         </div>
+                       </div>
+                       <div className="p-3 bg-base border border-border rounded-xl text-center">
+                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Completion</div>
+                         <div className="text-xs font-bold text-emerald-500">
+                           {analytics ? `${analytics.tasks.completionRate}%` : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                         </div>
+                       </div>
+                       <div className="p-3 bg-base border border-border rounded-xl text-center">
+                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Revenue</div>
+                         <div className="text-xs font-bold text-accent">
+                           {analytics?.revenue?.current
+                             ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                             : `${invoices.filter(i => i.status === 'Paid').length} inv. paid`}
+                         </div>
+                       </div>
+                     </div>
 
                     <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl space-y-2">
                       <div className="flex items-center gap-2 text-xs font-bold text-accent">
@@ -1284,9 +1703,7 @@ function ManagerDashboard() {
                       </div>
                       
                       <div className="w-1/2">
-                        <input 
-                          type="text" 
-                          required
+                        <select
                           value={emp.role}
                           onChange={e => {
                             const updated = [...editingEmployees];
@@ -1294,7 +1711,13 @@ function ManagerDashboard() {
                             setEditingEmployees(updated);
                           }}
                           className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                        />
+                        >
+                          <option value="Employee">Employee</option>
+                          <option value="Staff">Staff</option>
+                          <option value="MR">MR</option>
+                          <option value="User">User</option>
+                          <option value="Manager">Manager</option>
+                        </select>
                       </div>
                     </div>
                   ))}
@@ -1388,11 +1811,10 @@ function ManagerDashboard() {
                 <div>
                   <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Deadline</label>
                   <input 
-                    type="text" 
+                    type="date" 
                     required
                     value={newTaskDeadline}
                     onChange={e => setNewTaskDeadline(e.target.value)}
-                    placeholder="e.g. May 24" 
                     className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
                   />
                 </div>
@@ -1492,7 +1914,7 @@ function ManagerDashboard() {
                   <div>
                     <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Target Deadline</label>
                     <input 
-                      type="text" 
+                      type="date" 
                       value={editDeadline}
                       onChange={e => setEditDeadline(e.target.value)}
                       className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
@@ -1538,21 +1960,30 @@ function ManagerDashboard() {
                 </div>
               </div>
 
-              <div className="border-t border-border pt-4 mt-4 flex justify-end gap-3 shrink-0">
+              <div className="border-t border-border pt-4 mt-4 flex justify-between gap-3 shrink-0">
                 <button 
                   type="button" 
-                  onClick={() => setSelectedTask(null)}
-                  className="px-4 py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
+                  onClick={handleDeleteTask}
+                  className="px-4 py-2.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center gap-1.5"
                 >
-                  Cancel
+                  <Trash2 size={14} /> Delete Initiative
                 </button>
-                <button 
-                  type="button" 
-                  onClick={handleSaveTaskDetails}
-                  className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"
-                >
-                  Apply Sync Changes
-                </button>
+                <div className="flex gap-3">
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedTask(null)}
+                    className="px-4 py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={handleSaveTaskDetails}
+                    className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"
+                  >
+                    Apply Sync Changes
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -1651,3 +2082,4 @@ export default function ManagerPage() {
     </Suspense>
   );
 }
+

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice } from '@/lib/db';
 import mongoose from 'mongoose';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -43,9 +46,18 @@ export async function GET(req: NextRequest) {
       paymentLink: invoice.paymentLink,
     };
 
-    return NextResponse.json({ success: true, invoice: clientSafeInvoice });
+    return NextResponse.json({ success: true, invoice: clientSafeInvoice }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      }
+    });
   }
 }
