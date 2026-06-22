@@ -91,41 +91,59 @@ export async function proxy(req: NextRequest) {
   }
 
   // ── Maintenance Mode Check ────────────────────────────────────────────────
+  // IMPORTANT: Never use fetch() to call our own API from middleware.
+  // In Railway/container environments the server cannot HTTP-call itself
+  // (causes ECONNREFUSED). Read DB directly with a strict 2-second timeout
+  // so Railway health checks are never blocked.
+  let maintenanceEnabled = false;
   try {
-    const origin = req.nextUrl.origin;
-    const res = await fetch(`${origin}/api/admin/maintenance`, {
-      next: { revalidate: 5 } // cache for 5 seconds to reduce DB load
+    const maintenanceCheck = new Promise<boolean>(async (resolve) => {
+      try {
+        const { connectDB, SystemConfig } = await import('@/lib/db');
+        await connectDB();
+        const config = await SystemConfig.findOne({ key: 'maintenance_mode' }).lean();
+        resolve(config ? !!(config as any).value : false);
+      } catch {
+        resolve(false); // DB unavailable → treat as maintenance OFF
+      }
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.enabled) {
-        // Maintenance is active, check if user is Admin
-        const token = req.cookies.get(SESSION_COOKIE)?.value;
-        let isAdmin = false;
-        
-        if (token) {
-          try {
-            const { jwtVerify } = await import('jose');
-            const key = new TextEncoder().encode(process.env.JWT_SECRET || 'ops_platform_change_this_to_a_long_random_secret_min_32_chars_acfd4fe2ac7c04ecbd640f445f1cdd7d');
-            const { payload } = await jwtVerify(token, key);
-            if (payload && payload.role === 'Admin') {
-              isAdmin = true;
-            }
-          } catch (e) {
-            // Invalid token
-          }
-        }
+    const timeout = new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(false), 2000)
+    );
 
-        if (!isAdmin) {
-          const mUrl = req.nextUrl.clone();
-          mUrl.pathname = '/maintenance';
-          return NextResponse.redirect(mUrl);
+    maintenanceEnabled = await Promise.race([maintenanceCheck, timeout]);
+  } catch {
+    // Any unexpected error → default maintenance OFF, never crash middleware
+    maintenanceEnabled = false;
+  }
+
+  if (maintenanceEnabled) {
+    // Maintenance is active — check if user is Admin
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    let isAdmin = false;
+
+    if (token) {
+      try {
+        const { jwtVerify } = await import('jose');
+        const key = new TextEncoder().encode(
+          process.env.JWT_SECRET ||
+          'ops_platform_change_this_to_a_long_random_secret_min_32_chars_acfd4fe2ac7c04ecbd640f445f1cdd7d'
+        );
+        const { payload } = await jwtVerify(token, key);
+        if (payload && payload.role === 'Admin') {
+          isAdmin = true;
         }
+      } catch {
+        // Invalid token — treat as non-admin
       }
     }
-  } catch (err) {
-    console.error('[Proxy Middleware] Maintenance mode validation error:', err);
+
+    if (!isAdmin) {
+      const mUrl = req.nextUrl.clone();
+      mUrl.pathname = '/maintenance';
+      return NextResponse.redirect(mUrl);
+    }
   }
 
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some(p => pathname.startsWith(p));
