@@ -39,7 +39,7 @@
     "socket.io-client": "4.8.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.3.1",
     "@types/json2csv": "^5.0.7",
     "@types/node": "^20",
     "@types/react": "^19",
