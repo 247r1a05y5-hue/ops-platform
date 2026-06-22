@@ -45,21 +45,27 @@ const PROTECTED_API_PREFIXES = [
 // Role-based page access
 const ROLE_PAGE_MAP: Record<string, string[]> = {
   '/dashboard': ['Admin'],
-  '/admin':     ['Admin'],
-  '/manager':   ['Admin', 'Manager'],
-  '/employee':  ['Admin', 'Manager', 'Staff'],
+  '/admin': ['Admin'],
+  '/manager': ['Admin', 'Manager'],
+  '/employee': ['Admin', 'Manager', 'Staff'],
   '/marketing': ['Admin', 'Manager', 'User', 'MR'],
-  '/mr':        ['Admin', 'Manager', 'User', 'MR'],
-  '/crm':       ['Admin', 'Manager'],
-  '/tasks':     ['Admin', 'Manager'],
+  '/mr': ['Admin', 'Manager', 'User', 'MR'],
+  '/crm': ['Admin', 'Manager'],
+  '/tasks': ['Admin', 'Manager'],
   '/analytics': ['Admin', 'Manager'],
-  '/settings':  ['Admin', 'Manager'],
+  '/settings': ['Admin', 'Manager'],
 };
 
 // Public routes (always accessible)
 const PUBLIC_PATHS = new Set([
-  '/login', '/landing', '/', '/reset-password',
-  '/api/auth/login', '/api/auth/signup', '/api/auth/me',
+  '/health',
+  '/login',
+  '/landing',
+  '/',
+  '/reset-password',
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/me',
   '/api/auth/password-reset',
   '/api/payment/webhook',
 ]);
@@ -69,9 +75,13 @@ const PUBLIC_PATHS = new Set([
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Railway healthcheck bypass
+  if (pathname === '/health') {
+    return NextResponse.next();
+  }
+
   // Always allow public paths
   if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
-
   // Allow static assets and Next.js internals
   if (
     pathname.startsWith('/_next') ||
@@ -147,7 +157,7 @@ export async function proxy(req: NextRequest) {
   }
 
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some(p => pathname.startsWith(p));
-  const isProtectedApi  = PROTECTED_API_PREFIXES.some(p => pathname.startsWith(p));
+  const isProtectedApi = PROTECTED_API_PREFIXES.some(p => pathname.startsWith(p));
 
   if (!isProtectedPage && !isProtectedApi) return NextResponse.next();
 
@@ -179,10 +189,10 @@ export async function proxy(req: NextRequest) {
 
   // ── Inject user info into request headers for API routes ─────────────────
   const reqHeaders = new Headers(req.headers);
-  reqHeaders.set('x-user-id',    session.sub);
+  reqHeaders.set('x-user-id', session.sub);
   reqHeaders.set('x-user-email', session.email);
-  reqHeaders.set('x-user-name',  session.name);
-  reqHeaders.set('x-user-role',  session.role);
+  reqHeaders.set('x-user-name', session.name);
+  reqHeaders.set('x-user-role', session.role);
 
   return NextResponse.next({ request: { headers: reqHeaders } });
 }
