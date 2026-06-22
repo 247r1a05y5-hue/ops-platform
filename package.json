@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
+    "@tailwindcss/postcss": "^4.3.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/mongoose": "^5.11.96",
     "@types/nodemailer": "^8.0.0",
@@ -36,17 +37,16 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "socket.io": "4.8.1",
-    "socket.io-client": "4.8.1"
+    "socket.io-client": "4.8.1",
+    "tailwindcss": "^4"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.1",
     "@types/json2csv": "^5.0.7",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",
-    "tailwindcss": "^4",
     "typescript": "^5"
   }
 }
