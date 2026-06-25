@@ -9,7 +9,7 @@ import {
   FileText, CornerDownRight, MessageCircle, Loader2,
   AlertCircle, PhoneCall, PhoneOff, PhoneIncoming,
   MicOff, VideoOff, CheckCheck, Check, Mic, Camera,
-  ArrowLeft,
+  ArrowLeft, MonitorPlay,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -275,6 +275,10 @@ export default function ChatModule() {
   const [activeCallPeer, setActiveCallPeer]     = useState<{ id: string; name: string } | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
 
+  // ── Instant Jitsi Meet State (header button — no signaling) ──────────────────
+  const [showInstantJitsi, setShowInstantJitsi] = useState(false);
+  const [instantJitsiRoom, setInstantJitsiRoom] = useState<string>('');
+
   const callTargetRef       = useRef<string | null>(null);  // userId we're calling
   const callStateRef        = useRef<CallState>('idle');
   const activeCallConvIdRef = useRef<string | null>(null);
@@ -537,6 +541,25 @@ export default function ChatModule() {
       setCallError('Could not reach the other user. Please check your connection and try again.');
     }
   }, [activeConvId, conversations, sendSignal, hangupLocal]);
+
+  // ── Instant Jitsi Meet (header button) ──────────────────────────────────────
+  // Generates a deterministic room name from the conversation/workspace ID and
+  // opens an instant Jitsi meeting. No ring/answer signaling — just a shared room.
+  const handleJitsiInstantMeet = useCallback(() => {
+    if (!activeConvId) return;
+    const conv = conversations.find(c => c._id === activeConvId);
+    // Permission check: all roles may start an instant Jitsi call
+    const allowedRoles = ['Admin', 'Manager', 'Staff', 'Employee', 'User', 'MR'];
+    if (user?.role && !allowedRoles.includes(user.role)) {
+      alert('You do not have permission to start a video call.');
+      return;
+    }
+    const workspaceId = conv?.workspaceId || 'ops-main';
+    // Deterministic room: stable across participants, unique per conversation
+    const room = `ops-${workspaceId}-${activeConvId}`.replace(/[^a-zA-Z0-9-]/g, '-');
+    setInstantJitsiRoom(room);
+    setShowInstantJitsi(true);
+  }, [activeConvId, conversations, user]);
 
   // ── Google Meet creation ──────────────────────────────────────────────────
   const handleCreateGoogleMeetDirect = useCallback(async () => {
@@ -1797,6 +1820,40 @@ export default function ChatModule() {
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:2 }}>
+                  {/* ── Jitsi Instant Meet Button (header) ── */}
+                  <button
+                    className="cm-ibtn"
+                    onClick={handleJitsiInstantMeet}
+                    title="Start Instant Jitsi Video Call"
+                    style={{
+                      position: 'relative',
+                      background: 'rgba(99,102,241,0.10)',
+                      border: '1px solid rgba(99,102,241,0.22)',
+                      borderRadius: 8,
+                      padding: '5px 9px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      color: '#818cf8',
+                      fontSize: 11,
+                      fontWeight: 650,
+                      cursor: 'pointer',
+                      transition: 'background 0.15s, border-color 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'rgba(99,102,241,0.20)';
+                      e.currentTarget.style.borderColor = 'rgba(99,102,241,0.45)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'rgba(99,102,241,0.10)';
+                      e.currentTarget.style.borderColor = 'rgba(99,102,241,0.22)';
+                    }}
+                  >
+                    <MonitorPlay size={14}/>
+                    <span className="hidden sm:inline">Jitsi</span>
+                  </button>
+
+                  {/* ── Google Meet Button (existing — unchanged) ── */}
                   <button
                     className="cm-ibtn"
                     onClick={handleStartMeetClick}
@@ -2438,6 +2495,39 @@ export default function ChatModule() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ INSTANT JITSI MEET MODAL ══ */}
+        {showInstantJitsi && instantJitsiRoom && (
+          <div
+            className="cm-fadeIn"
+            style={{
+              position: 'absolute', inset: 0, zIndex: 100,
+              background: 'rgba(0,0,0,0.80)',
+              backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16, borderRadius: 16,
+            }}
+          >
+            <div
+              style={{
+                width: '100%', height: '100%',
+                maxWidth: 1200, maxHeight: 800,
+                borderRadius: 16, overflow: 'hidden',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              {/* JitsiCall has its own header bar (room name, fullscreen, close).
+                  Pass onEnd so the close button dismisses the modal. */}
+              <JitsiCall
+                roomName={instantJitsiRoom}
+                userName={user?.name || 'User'}
+                userEmail={user?.email || ''}
+                onEnd={() => setShowInstantJitsi(false)}
+              />
             </div>
           </div>
         )}
