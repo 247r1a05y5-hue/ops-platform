@@ -292,11 +292,16 @@ export default function ChatModule() {
   const markConversationReadRef = useRef<(id: string) => Promise<void>>(async () => {});
   // BroadcastChannel ref for unread badge updates to sidebar (avoids duplicate SSE)
   const unreadChannelRef = useRef<BroadcastChannel | null>(null);
+  // Stable ref for sendSignal — avoids stale closures when socket reconnects during a call
+  const sendSignalRef = useRef<(type: string, targetUserId: string, extra?: Record<string, any>) => Promise<{ ok: boolean }>>(
+    async () => ({ ok: false }),
+  );
 
   useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
   useEffect(() => { activeThreadParentRef.current = activeThreadParent; }, [activeThreadParent]);
   // Keep call refs in sync so SSE handler always reads current values
   useEffect(() => { callStateRef.current = callState; }, [callState]);
+  useEffect(() => { activeCallConvIdRef.current = activeCallConvId; }, [activeCallConvId]);
   // Check Google connection status for the current user
   const checkGoogleConnection = useCallback(async () => {
     setCheckingGoogle(true);
@@ -498,7 +503,7 @@ export default function ChatModule() {
     }
     if (sendSignalToRemote && callTargetRef.current) {
       // Use ref so we always read the current conversationId, not the stale closure value
-      sendSignal('hangup', callTargetRef.current, {
+      sendSignalRef.current('hangup', callTargetRef.current, {
         conversationId: activeCallConvIdRef.current,
       });
     }
@@ -508,7 +513,12 @@ export default function ChatModule() {
     setActiveCallPeer(null);
     setCallError(null);
     setActiveCallRoomName(null);
-  }, [sendSignal]);
+  // hangupLocal intentionally has empty deps — it reads everything via refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep sendSignalRef fresh so hangupLocal (which has stable identity) always uses latest socket
+  useEffect(() => { sendSignalRef.current = sendSignal; }, [sendSignal]);
 
   // ── Initiate call ─────────────────────────────────────────────────────────
 
@@ -2197,33 +2207,30 @@ export default function ChatModule() {
                 </button>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display:'none' }}/>
                 
-                {/* 🎥 Video Call Button */}
+                {/* 🎥 Jitsi Video Call Button (input bar) */}
                 <button
                   className="cm-ibtn accent"
-                  onClick={handleCreateGoogleMeet}
-                  disabled={creatingMeet}
-                  title="Start Google Meet Video Call"
+                  onClick={handleVideoCall}
+                  disabled={callState !== 'idle'}
+                  title={callState !== 'idle' ? 'Call in progress' : 'Start Video Call'}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    background: 'rgba(99, 102, 241, 0.12)',
+                    background: callState !== 'idle' ? 'rgba(99, 102, 241, 0.05)' : 'rgba(99, 102, 241, 0.12)',
                     border: '1px solid rgba(99, 102, 241, 0.2)',
-                    color: 'var(--accent-primary)',
+                    color: callState !== 'idle' ? 'rgba(129, 140, 248, 0.5)' : 'var(--accent-primary)',
                     fontWeight: 600,
                     fontSize: '12px',
-                    cursor: 'pointer',
+                    cursor: callState !== 'idle' ? 'not-allowed' : 'pointer',
+                    opacity: callState !== 'idle' ? 0.6 : 1,
+                    transition: 'all 0.15s',
                   }}
                 >
-                  {creatingMeet ? (
-                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' } as any} />
-                  ) : (
-                    <>
-                      <span>🎥</span> Video Call
-                    </>
-                  )}
+                  <MonitorPlay size={14} />
+                  <span className="hidden sm:inline">Video Call</span>
                 </button>
                 <input
                   type="text"
