@@ -344,7 +344,7 @@ export default function ClientProposalPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-200">Proposal Declined</h3>
-                    <p className="text-[10px] text-rose-400/80 mt-1">Declined: "{proposal.rejectionReason || 'No reason provided.'}"</p>
+                    <p className="text-[10px] text-rose-400/80 mt-1">Declined: &quot;{proposal.rejectionReason || 'No reason provided.'}&quot;</p>
                   </div>
                 </div>
               ) : (

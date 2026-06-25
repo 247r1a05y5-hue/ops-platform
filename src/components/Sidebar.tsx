@@ -24,18 +24,6 @@ export default function Sidebar() {
   const unread = useUnreadCount();
   const { favorites, recents, toggleFavorite, addRecent, isFavorite } = useFavoritesAndRecents();
 
-  useEffect(() => {
-    const currentItem = adminNavItems.find(item => 
-      pathname === item.href || 
-      (item.href.includes('?') && pathname + '?tab=chat' === item.href)
-    );
-    if (currentItem) {
-      addRecent({ name: currentItem.name, href: currentItem.href });
-    }
-  }, [pathname]);
-
-  if (pathname === '/landing' || pathname === '/login' || pathname === '/') return null;
-
   const adminNavItems = [
     { name: 'Dashboard',    href: '/dashboard',   icon: LayoutDashboard },
     { name: 'Tasks',        href: '/tasks',        icon: CheckSquare },
@@ -49,11 +37,23 @@ export default function Sidebar() {
     { name: 'Audit Log',    href: '/admin/audit',  icon: Shield },
   ];
 
+  useEffect(() => {
+    const currentItem = adminNavItems.find(item => 
+      pathname === item.href || 
+      (item.href.includes('?') && pathname + '?tab=chat' === item.href)
+    );
+    if (currentItem) {
+      addRecent({ name: currentItem.name, href: currentItem.href });
+    }
+  }, [pathname]);
+
   const handleLogout = async () => {
     setSidebarOpen(false);
     showToast('Security session ended', 'info');
     await logout();
   };
+
+  if (pathname === '/landing' || pathname === '/login' || pathname === '/') return null;
 
   return (
     <motion.div

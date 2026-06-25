@@ -141,6 +141,15 @@ export default function CommandPalette() {
     item.category.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleSelect = (item: PaletteItem) => {
+    if (item.action) {
+      item.action();
+    } else if (item.href) {
+      router.push(item.href);
+      setIsOpen(false);
+    }
+  };
+
   // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
@@ -172,15 +181,6 @@ export default function CommandPalette() {
       }
     }
   }, [selectedIndex]);
-
-  const handleSelect = (item: PaletteItem) => {
-    if (item.action) {
-      item.action();
-    } else if (item.href) {
-      router.push(item.href);
-      setIsOpen(false);
-    }
-  };
 
   return (
     <>
@@ -256,7 +256,7 @@ export default function CommandPalette() {
 
                 {filtered.length === 0 && (
                   <div className="p-8 text-center text-secondary text-xs font-semibold">
-                    No results found for "{search}"
+                    No results found for &quot;{search}&quot;
                   </div>
                 )}
               </div>

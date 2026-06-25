@@ -373,15 +373,6 @@ export function CRMWorkspace() {
   const [pageSize, setPageSize] = useState(10);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
 
-  // Command Palette deep linking trigger
-  useEffect(() => {
-    if (searchParams) {
-      if (searchParams.get('openModal') === 'true') {
-        setIsAddModalOpen(true);
-      }
-    }
-  }, [searchParams]);
-
   // Modals & Dynamic State
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -393,6 +384,15 @@ export function CRMWorkspace() {
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [creatingLead, setCreatingLead] = useState(false);
+
+  // Command Palette deep linking trigger
+  useEffect(() => {
+    if (searchParams) {
+      if (searchParams.get('openModal') === 'true') {
+        setIsAddModalOpen(true);
+      }
+    }
+  }, [searchParams]);
 
   // Workflow log
   const [workflowLog, setWorkflowLog] = useState<any[]>([]);
@@ -2272,7 +2272,7 @@ export function CRMWorkspace() {
                                     {propServices.length === 0 && (
                                       <tr>
                                         <td colSpan={6} className="text-center p-6 text-secondary text-xs font-medium italic">
-                                          No services added. Click "+ Add Row" to begin.
+                                          No services added. Click &quot;+ Add Row&quot; to begin.
                                         </td>
                                       </tr>
                                     )}
@@ -2413,7 +2413,7 @@ export function CRMWorkspace() {
                                 ))}
                                 {propMilestones.length === 0 && (
                                   <div className="text-center p-6 bg-base/10 border border-dashed border-border rounded-2xl text-secondary text-xs font-medium italic">
-                                    No milestones added. Click "+ Add Milestone" to outline project steps.
+                                    No milestones added. Click &quot;+ Add Milestone&quot; to outline project steps.
                                   </div>
                                 )}
                               </div>

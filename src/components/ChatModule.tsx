@@ -2310,7 +2310,7 @@ export default function ChatModule() {
                 <span style={{ fontSize:11, fontWeight:700, color:'var(--text-primary)' }}>{activeThreadParent.senderName}</span>
                 <span style={{ fontSize:10, color:'var(--text-tertiary)', marginLeft:'auto' }}>{formatTime(activeThreadParent.createdAt)}</span>
               </div>
-              <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0, lineHeight:1.5, fontStyle:'italic' }}>"{activeThreadParent.body}"</p>
+              <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0, lineHeight:1.5, fontStyle:'italic' }}>&quot;{activeThreadParent.body}&quot;</p>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:8 }} className="custom-scrollbar">
               {loadingThread ? (

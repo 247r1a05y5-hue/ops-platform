@@ -35,6 +35,9 @@ export default function MRSidebar() {
     { name: 'Settings', href: '/mr?tab=settings', icon: Settings }
   ];
 
+  const isMarketing = pathname?.includes('/marketing');
+  const currentTab = searchParams?.get('tab') || (isMarketing ? 'campaigns' : 'leads');
+
   useEffect(() => {
     const currentItem = allMRNavItems.find(item => {
       const itemPath = item.href.split('?')[0];
@@ -45,9 +48,6 @@ export default function MRSidebar() {
       addRecent({ name: currentItem.name, href: currentItem.href });
     }
   }, [pathname, searchParams]);
-
-  const isMarketing = pathname?.includes('/marketing');
-  const currentTab = searchParams?.get('tab') || (isMarketing ? 'campaigns' : 'leads');
 
   const campaignItems = [
     { name: 'Campaign Desk',       href: '/marketing?tab=campaigns', icon: Megaphone,   tabId: 'campaigns' },

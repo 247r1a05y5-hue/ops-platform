@@ -186,7 +186,7 @@ export default function Login() {
         {forgotMode && (
           <form onSubmit={handleForgotPassword} aria-label="Password reset form">
             <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20, lineHeight: 1.5 }}>
-              Enter your account email and we'll send a password reset link.
+              Enter your account email and we&apos;ll send a password reset link.
             </p>
             <label htmlFor="forgot-email" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Email</label>
             <input

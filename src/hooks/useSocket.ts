@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 /**
  * hooks/useSocket.ts
  *
@@ -209,6 +210,7 @@ export function useSocket(enabled = true) {
     if (data.type === 'offer') socket.emit('offer', data);
   }, []);
 
+  // eslint-disable-next-line react-hooks/refs
   return {
     socket: socketRef.current,
     connected,

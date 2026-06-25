@@ -23,13 +23,6 @@ export default function ManagerSidebar() {
   const currentTab = searchParams?.get('tab') || 'team';
   const { favorites, recents, toggleFavorite, addRecent, isFavorite } = useFavoritesAndRecents();
 
-  useEffect(() => {
-    const currentItem = managerNavItems.find(item => item.isActive);
-    if (currentItem) {
-      addRecent({ name: currentItem.name, href: currentItem.href });
-    }
-  }, [pathname, currentTab]);
-
   const managerNavItems = [
     { name: 'Team Overview',         href: '/manager?tab=team',          icon: Users,         isActive: pathname === '/manager' && (currentTab === 'team' || !searchParams?.get('tab')) },
     { name: 'Strategic Allocations', href: '/tasks',                     icon: CheckSquare,   isActive: pathname.startsWith('/tasks') },
@@ -41,6 +34,13 @@ export default function ManagerSidebar() {
     { name: 'Intelligence Reports',  href: '/manager?tab=reports',       icon: BarChart3,     isActive: pathname === '/manager' && currentTab === 'reports' },
     { name: 'Settings',              href: '/manager?tab=settings',      icon: Settings,      isActive: pathname === '/manager' && currentTab === 'settings' },
   ];
+
+  useEffect(() => {
+    const currentItem = managerNavItems.find(item => item.isActive);
+    if (currentItem) {
+      addRecent({ name: currentItem.name, href: currentItem.href });
+    }
+  }, [pathname, currentTab]);
 
   const handleLogout = async () => {
     setSidebarOpen(false);

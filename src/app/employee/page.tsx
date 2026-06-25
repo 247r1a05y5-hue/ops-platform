@@ -719,7 +719,7 @@ function EmployeeDashboard() {
   const handleSaveProgress = () => {
     if (!selectedTask) return;
 
-    let updatedLogs = [...selectedTask.logs];
+    const updatedLogs = [...selectedTask.logs];
     if (newLogNote.trim()) {
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + now.toLocaleDateString([], { month: 'short', day: 'numeric' });

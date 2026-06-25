@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     console.info(`  Initiating User: ID=${session.sub}, Email=${session.email}, Name=${session.name}, Role=${session.role}`);
 
     // ── Step 1: Find the initiating user's GmailToken ────────────────────────
-    let userAccessToken = await getGmailAccessToken(session.sub);
-    let tokenRecord = await GmailToken.findOne({ userId: session.sub }).lean();
+    const userAccessToken = await getGmailAccessToken(session.sub);
+    const tokenRecord = await GmailToken.findOne({ userId: session.sub }).lean();
 
     if (!userAccessToken) {
       console.error(`[Video Meet] No Google account token found for user ${session.sub} (${session.email}).`);

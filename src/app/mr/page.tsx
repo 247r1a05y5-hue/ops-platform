@@ -1175,24 +1175,6 @@ function MRDashboard() {
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab');
 
-  useEffect(() => {
-    if (tab && ['leads', 'email', 'finance', 'resources', 'tasks', 'settings'].includes(tab)) {
-      setActiveTab(tab as any);
-    } else {
-      setActiveTab('leads');
-    }
-  }, [tab]);
-
-  useEffect(() => {
-    // Only fetch data for non-settings tabs
-    if (tab !== 'settings') {
-      fetchData();
-    } else {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const fetchData = async () => {
     setFetchError(null);
     try {
@@ -1227,6 +1209,24 @@ function MRDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (tab && ['leads', 'email', 'finance', 'resources', 'tasks', 'settings'].includes(tab)) {
+      setActiveTab(tab as any);
+    } else {
+      setActiveTab('leads');
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    // Only fetch data for non-settings tabs
+    if (tab !== 'settings') {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Settings tab: full-page layout bypassing the dashboard grid
   if (activeTab === 'settings') {

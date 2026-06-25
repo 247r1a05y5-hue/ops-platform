@@ -25,13 +25,6 @@ export default function EmployeeSidebar() {
   const unread = useUnreadCount();
   const { favorites, recents, toggleFavorite, addRecent, isFavorite } = useFavoritesAndRecents();
 
-  useEffect(() => {
-    const currentItem = navItems.find(item => item.tabId === currentTab);
-    if (currentItem) {
-      addRecent({ name: currentItem.name, href: currentItem.href });
-    }
-  }, [pathname, currentTab]);
-
   const navItems = [
     { name: 'My Workspace', href: '/employee',               icon: LayoutDashboard, tabId: 'workspace' },
     { name: 'Assignments',  href: '/employee?tab=tasks',     icon: CheckSquare,     tabId: 'tasks' },
@@ -40,6 +33,13 @@ export default function EmployeeSidebar() {
     { name: 'Performance',  href: '/employee?tab=performance',icon: BarChart3,      tabId: 'performance' },
     { name: 'My Settings',  href: '/employee?tab=settings',  icon: Settings,        tabId: 'settings' },
   ];
+
+  useEffect(() => {
+    const currentItem = navItems.find(item => item.tabId === currentTab);
+    if (currentItem) {
+      addRecent({ name: currentItem.name, href: currentItem.href });
+    }
+  }, [pathname, currentTab]);
 
   const handleLogout = async () => {
     setSidebarOpen(false);
