@@ -6,7 +6,7 @@ import { useUI } from '@/context/UIContext';
 import { 
   CheckSquare, Clock, MessageSquare, Star, CheckCircle, 
   Pause, Play, RotateCcw, Save, BarChart3, 
-  ChevronRight, X, Paperclip, Check, ListChecks,
+  ChevronRight, ChevronDown, X, Paperclip, Check, ListChecks,
   Search, Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,13 +20,14 @@ import { useSocket } from '@/hooks/useSocket';
 
 const Card = ({ children, className = "", delay = 0, onClick }: { children: React.ReactNode, className?: string, delay?: number, onClick?: () => void }) => {
   const hasBg = className.split(' ').some(c => c.startsWith('bg-'));
+  const hasPadding = className.split(' ').some(c => c.startsWith('p-') || c.startsWith('px-') || c.startsWith('py-'));
   return (
     <motion.div 
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: "easeOut" }}
       onClick={onClick}
-      className={`${hasBg ? "" : "bg-surface"} border border-border rounded-2xl shadow-sm p-6 hover:shadow-md transition-all ${className} ${onClick ? 'cursor-pointer' : ''}`}
+      className={`card-enterprise ${hasBg ? "" : "bg-surface"} ${hasPadding ? "" : ""} ${className} ${onClick ? 'cursor-pointer' : ''}`}
     >
       {children}
     </motion.div>
@@ -370,7 +371,7 @@ const TimeModule = () => {
           </div>
           <button 
              onClick={handleCompleteSession}
-             className="w-48 mt-6 py-2.5 bg-emerald-500 text-white rounded-xl text-[10px] font-bold uppercase hover:bg-emerald-600 transition-all active:scale-95 shadow-md shadow-emerald-500/10 z-10"
+             className="btn-enterprise-primary w-48 mt-6 text-[10px] font-bold uppercase"
           >
              Log Current Shift
           </button>
@@ -392,7 +393,7 @@ const TimeModule = () => {
                 </div>
              ))}
           </div>
-          <button onClick={handleExportLogs} className="w-full mt-6 py-2.5 border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-base transition-colors">Export Time Logs</button>
+          <button onClick={handleExportLogs} className="btn-enterprise-secondary w-full mt-6 text-[10px] font-bold uppercase">Export Time Logs</button>
        </Card>
     </div>
   );
@@ -492,6 +493,10 @@ function EmployeeDashboard() {
   const [previewSearchQuery, setPreviewSearchQuery] = useState('');
   const [drawerSearchQuery, setDrawerSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
+
+  // Collapse states for sidebar cards
+  const [isPerformerCollapsed, setIsPerformerCollapsed] = useState(false);
+  const [isActiveTeamCollapsed, setIsActiveTeamCollapsed] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -868,96 +873,127 @@ function EmployeeDashboard() {
               )}
               {activeTab === 'performance' && (
                 <motion.div key="performance" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
-                   <PerformanceModule />
+                 <PerformanceModule />
                 </motion.div>
               )}
 
            </AnimatePresence>
-        </div>
+         </div>
 
-        {/* Persistence Sidebar */}
-        <div className="space-y-8">
-            <Card className="relative group overflow-hidden border-border/80 bg-surface">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/10 transition-colors"></div>
-               <h3 className="text-xs font-bold mb-4 flex items-center gap-2 relative z-10 text-orange-500 uppercase tracking-wider"><Star size={14} className="fill-orange-400 text-orange-400"/> Top Performer</h3>
-               <p className="text-xs text-secondary leading-relaxed mb-6 relative z-10 font-medium font-sans">Congratulations {currentUser?.name || 'User'}! You&apos;ve maintained a 98% efficiency rate this week. Keep up the great work!</p>
-               <div className="flex items-center gap-3 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center font-black text-2xl border border-accent/20">🏆</div>
-                  <div>
-                     <div className="text-[9px] font-bold uppercase tracking-widest text-tertiary leading-none mb-1">Current Streak</div>
-                     <div className="text-lg font-extrabold leading-none text-indigo-600 dark:text-indigo-400">14 Days</div>
-                  </div>
-               </div>
-            </Card>
+         {/* Persistence Sidebar */}
+         <div className="space-y-6">
+             <Card className="relative group overflow-hidden border-border/80 bg-surface p-0">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/10 transition-colors pointer-events-none"></div>
+                <div className="relative z-10">
+                   <div 
+                      className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors"
+                      onClick={() => setIsPerformerCollapsed(!isPerformerCollapsed)}
+                   >
+                      <h3 className="text-xs font-bold flex items-center gap-2 text-orange-500 uppercase tracking-wider">
+                         <Star size={14} className="fill-orange-400 text-orange-400"/> Top Performer
+                      </h3>
+                      <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPerformerCollapsed ? '-rotate-90' : ''}`} />
+                   </div>
+                   <motion.div
+                      initial={false}
+                      animate={{ height: isPerformerCollapsed ? 0 : 'auto', opacity: isPerformerCollapsed ? 0 : 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                   >
+                      <div className="px-5 md:px-6 pb-6">
+                         <p className="text-xs text-secondary leading-relaxed mb-6 font-medium font-sans">Congratulations {currentUser?.name || 'User'}! You&apos;ve maintained a 98% efficiency rate this week. Keep up the great work!</p>
+                         <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center font-black text-2xl border border-accent/20">🏆</div>
+                            <div>
+                               <div className="text-[9px] font-bold uppercase tracking-widest text-tertiary leading-none mb-1">Current Streak</div>
+                               <div className="text-lg font-extrabold leading-none text-indigo-600 dark:text-indigo-400">14 Days</div>
+                            </div>
+                         </div>
+                      </div>
+                   </motion.div>
+                </div>
+             </Card>
 
-            <Card>
-               <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest leading-none">Active Team</h3>
-                  <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                     {teamMembers.filter(m => onlineUsers.has(m._id) || m.status === 'Online' || m.isOnline).length} Online
-                  </span>
-               </div>
-               
-               <div className="relative mb-4">
-                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-                  <input 
-                    type="text" 
-                    value={previewSearchQuery}
-                    onChange={(e) => setPreviewSearchQuery(e.target.value)}
-                    placeholder="Search online teammates..." 
-                    className="w-full bg-base border border-border rounded-xl pl-8 pr-3 py-1.5 text-[10px] focus:outline-none focus:border-accent text-primary font-medium"
-                  />
-               </div>
+             <Card className="p-0 overflow-hidden">
+                <div 
+                   className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors"
+                   onClick={() => setIsActiveTeamCollapsed(!isActiveTeamCollapsed)}
+                >
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest leading-none">Active Team</h3>
+                   <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                         {teamMembers.filter(m => onlineUsers.has(m._id) || m.status === 'Online' || m.isOnline).length} Online
+                      </span>
+                      <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isActiveTeamCollapsed ? '-rotate-90' : ''}`} />
+                   </div>
+                </div>
+                <motion.div
+                   initial={false}
+                   animate={{ height: isActiveTeamCollapsed ? 0 : 'auto', opacity: isActiveTeamCollapsed ? 0 : 1 }}
+                   transition={{ duration: 0.2 }}
+                   className="overflow-hidden"
+                >
+                   <div className="px-5 md:px-6 pb-6">
+                      <div className="relative mb-4">
+                         <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+                         <input 
+                           type="text" 
+                           value={previewSearchQuery}
+                           onChange={(e) => setPreviewSearchQuery(e.target.value)}
+                           placeholder="Search online teammates..." 
+                           className="w-full bg-base border border-border rounded-xl pl-8 pr-3 py-1.5 text-[10px] focus:outline-none focus:border-accent text-primary font-medium"
+                         />
+                      </div>
 
-               <div className="space-y-3">
-                  {(() => {
-                     const onlineTeammates = teamMembers.filter(member => {
-                       const isOnline = onlineUsers.has(member._id) || member.status === 'Online' || member.isOnline;
-                       const matchesSearch = member.name.toLowerCase().includes(previewSearchQuery.toLowerCase());
-                       return isOnline && matchesSearch;
-                     });
-                     const previewList = onlineTeammates.slice(0, 5);
+                      <div className="space-y-3">
+                         {(() => {
+                            const onlineTeammates = teamMembers.filter(member => {
+                              const isOnline = onlineUsers.has(member._id) || member.status === 'Online' || member.isOnline;
+                              const matchesSearch = member.name.toLowerCase().includes(previewSearchQuery.toLowerCase());
+                              return isOnline && matchesSearch;
+                            });
+                            const previewList = onlineTeammates.slice(0, 5);
 
-                     if (previewList.length > 0) {
-                       return previewList.map((user, i) => {
-                         const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
-                         const color = colors[i % colors.length];
-                         const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-                         return (
-                           <div 
-                             key={user._id || i} 
-                             onClick={() => router.push(`/employee?tab=chat&dmUserId=${user._id}`)}
-                             className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group"
-                           >
-                              <div className="flex items-center gap-3">
-                                 <div className={`w-8 h-8 rounded-full ${color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>
-                                   {initials}
-                                 </div>
-                                 <div>
-                                   <span className="text-xs font-bold text-primary block leading-none">{user.name}</span>
-                                   <span className="text-[9px] text-tertiary font-bold mt-1 block">{user.role || 'Teammate'}</span>
-                                 </div>
-                              </div>
-                              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                           </div>
-                         );
-                       });
-                     } else {
-                       return <p className="text-[10px] text-secondary italic p-2">No online teammates found.</p>;
-                     }
-                  })()}
-               </div>
+                            if (previewList.length > 0) {
+                              return previewList.map((user, i) => {
+                                const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
+                                const color = colors[i % colors.length];
+                                const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+                                return (
+                                  <div 
+                                    key={user._id || i} 
+                                    onClick={() => router.push(`/employee?tab=chat&dmUserId=${user._id}`)}
+                                    className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group"
+                                  >
+                                     <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full ${color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>
+                                          {initials}
+                                        </div>
+                                        <div>
+                                          <span className="text-xs font-bold text-primary block leading-none">{user.name}</span>
+                                          <span className="text-[9px] text-tertiary font-bold mt-1 block">{user.role || 'Teammate'}</span>
+                                        </div>
+                                     </div>
+                                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                  </div>
+                                );
+                              });
+                            } else {
+                              return <p className="text-[10px] text-secondary italic p-2">No online teammates found.</p>;
+                            }
+                         })()}
+                      </div>
 
-               <button 
-                 onClick={() => { setIsTeamDrawerOpen(true); setVisibleCount(20); }} 
-                 className="w-full mt-4 py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all flex items-center justify-center gap-2"
-               >
-                  <Users size={12}/> View All Team Members
-               </button>
-            </Card>
-
-
-        </div>
+                      <button 
+                        onClick={() => { setIsTeamDrawerOpen(true); setVisibleCount(20); }} 
+                        className="w-full mt-4 py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all flex items-center justify-center gap-2"
+                      >
+                         <Users size={12}/> View All Team Members
+                      </button>
+                   </div>
+                </motion.div>
+             </Card>
+         </div>
       </div>
 
       {/* Task Detail Modal */}
@@ -1120,14 +1156,14 @@ function EmployeeDashboard() {
                 <button 
                   type="button" 
                   onClick={() => setSelectedTask(null)}
-                  className="px-4 py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
+                  className="btn-enterprise-secondary px-4 py-2 text-xs font-bold"
                 >
                   Discard Changes
                 </button>
                 <button 
                   type="button" 
                   onClick={handleSaveProgress}
-                  className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95 flex items-center gap-1.5"
+                  className="btn-enterprise-primary px-5 py-2 text-xs font-bold"
                 >
                   <Save size={14} /> Save Progress Changes
                 </button>

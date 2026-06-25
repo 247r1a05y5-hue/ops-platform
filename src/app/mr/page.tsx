@@ -41,7 +41,7 @@ const Card = ({
       initial={{ opacity: 0, y: 20 }} 
       animate={{ opacity: 1, y: 0 }} 
       transition={{ duration: 0.5, delay, ease: "circOut" }} 
-      className={`${hasBg ? "" : "bg-surface"} border border-border rounded-2xl shadow-sm p-6 hover:shadow-md transition-all ${className}`} 
+      className={`card-enterprise ${hasBg ? "" : "bg-surface"} ${className}`} 
       onClick={onClick}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -531,7 +531,7 @@ const EmailModule = ({
                 <select 
                   value={selectedLeadId}
                   onChange={e => setSelectedLeadId(e.target.value)}
-                  className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs font-bold text-primary focus:ring-1 focus:ring-accent outline-none"
+                  className="input-enterprise w-full text-xs px-4 py-2.5 font-bold text-primary"
                 >
                   <option value="">Select Target Lead</option>
                   {(leads || []).map(l => (
@@ -546,7 +546,7 @@ const EmailModule = ({
                   value={emailSubject}
                   onChange={e => setEmailSubject(e.target.value)}
                   placeholder="Media Proposal..." 
-                  className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-1 focus:ring-accent outline-none text-primary" 
+                  className="input-enterprise w-full text-xs px-4 py-2.5 font-bold text-primary" 
                 />
               </div>
            </div>
@@ -569,9 +569,9 @@ const EmailModule = ({
            </div>
            <div className="flex items-center justify-between pt-4 border-t border-border">
               <div className="flex gap-2">
-                <button onClick={() => setIsComposerOpen(false)} className="px-4 py-2 text-[10px] font-bold text-secondary uppercase hover:text-primary transition-colors">Discard</button>
+                <button onClick={() => setIsComposerOpen(false)} className="btn-enterprise-secondary px-4 py-2 text-[10px] font-bold uppercase">Discard</button>
               </div>
-              <button onClick={handleSend} className="px-8 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95">Send Outreach Now</button>
+              <button onClick={handleSend} className="btn-enterprise-primary px-8 py-2 text-xs">Send Outreach Now</button>
            </div>
         </div>
       </Modal>
@@ -779,7 +779,7 @@ const TasksModule = ({
                   value={remTitle}
                   onChange={e => setRemTitle(e.target.value)}
                   placeholder="e.g. Call client back"
-                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
+                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary"
                 />
               </div>
               <div>
@@ -789,7 +789,7 @@ const TasksModule = ({
                   onChange={e => setRemDesc(e.target.value)}
                   placeholder="e.g. Discuss Q3 proposal details"
                   rows={2}
-                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent resize-none"
+                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary resize-none"
                 />
               </div>
               <div>
@@ -798,10 +798,10 @@ const TasksModule = ({
                   type="datetime-local"
                   value={remDueAt}
                   onChange={e => setRemDueAt(e.target.value)}
-                  className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-primary outline-none focus:border-accent"
+                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary"
                 />
               </div>
-              <button type="submit" className="w-full py-3 bg-accent text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-accent/20">
+              <button type="submit" className="btn-enterprise-primary w-full py-2.5 text-xs">
                 <Plus size={14} /> Add Reminder
               </button>
             </form>
@@ -965,24 +965,24 @@ const FinanceModule = ({
            <h4 className="font-bold text-base text-primary">Payment Link Generated Successfully!</h4>
            <p className="text-xs text-secondary leading-relaxed font-medium">Forward this Razorpay payment link to your client. They can complete payment securely using UPI, credit/debit card, or net banking.</p>
            <input 
-             type="text" 
-             readOnly 
-             value={generatedLink} 
-             className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs font-bold text-center text-accent focus:outline-none" 
-           />
-           <div className="flex gap-3 pt-4 justify-center">
-              <button 
-                onClick={() => { navigator.clipboard.writeText(generatedLink); showToast('Link copied to clipboard!', 'success'); }}
-                className="px-6 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-600 transition-all active:scale-95"
-              >
-                Copy Link
-              </button>
-              <button 
-                onClick={() => setIsLinkModalOpen(false)}
-                className="px-6 py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:text-primary transition-all"
-              >
-                Done
-              </button>
+              type="text" 
+              readOnly 
+              value={generatedLink} 
+              className="input-enterprise w-full text-center text-accent" 
+            />
+            <div className="flex gap-3 pt-4 justify-center">
+               <button 
+                 onClick={() => { navigator.clipboard.writeText(generatedLink); showToast('Link copied to clipboard!', 'success'); }}
+                 className="btn-enterprise-primary px-6 py-2"
+               >
+                 Copy Link
+               </button>
+               <button 
+                 onClick={() => setIsLinkModalOpen(false)}
+                 className="btn-enterprise-secondary px-6 py-2"
+               >
+                 Done
+               </button>
            </div>
         </div>
       </Modal>
@@ -1112,7 +1112,7 @@ const ResourceModule = ({
                 <select 
                   value={selectedLeadId}
                   onChange={e => setSelectedLeadId(e.target.value)}
-                  className="bg-base border border-border rounded-xl px-4 py-2 text-xs font-bold text-primary focus:outline-none"
+                  className="input-enterprise px-4 py-2 text-xs font-bold text-primary max-w-xs"
                 >
                   <option value="">Attach upload to Lead</option>
                   {leads.map(l => (
@@ -1124,7 +1124,7 @@ const ResourceModule = ({
                     if (!selectedLeadId) { showToast('Please select a lead first to attach document', 'warning'); return; }
                     docInputRef.current?.click();
                   }}
-                  className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap"
+                  className="btn-enterprise-primary flex items-center gap-2 whitespace-nowrap"
                 >
                    <Upload size={16} /> Upload Asset
                 </button>

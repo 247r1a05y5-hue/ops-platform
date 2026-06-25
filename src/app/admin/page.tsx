@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import {
   Users,
   Settings,
@@ -21,7 +22,8 @@ import {
   AlertCircle,
   Clock,
   Shield,
-  Key
+  Key,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -64,6 +66,12 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userError, setUserError] = useState('');
+
+  // Collapse states for widgets
+  const [isMaintenanceCollapsed, setIsMaintenanceCollapsed] = useState(false);
+  const [isCacheCollapsed, setIsCacheCollapsed] = useState(false);
+  const [isAuditCollapsed, setIsAuditCollapsed] = useState(false);
+  const [isHealthCollapsed, setIsHealthCollapsed] = useState(false);
 
   // Maintenance & System state
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
@@ -373,7 +381,7 @@ export default function AdminPage() {
                   placeholder="Search name or email..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-base border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full pl-9 pr-3 py-2 text-sm"
                 />
               </div>
 
@@ -381,7 +389,7 @@ export default function AdminPage() {
               <select
                 value={userRoleFilter}
                 onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="px-3 py-2 bg-base border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                className="input-enterprise px-3 py-2 text-sm max-w-xs"
               >
                 <option value="">All Roles</option>
                 <option value="Admin">Admin</option>
@@ -401,7 +409,7 @@ export default function AdminPage() {
 
             <button
               onClick={openAddModal}
-              className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white font-medium text-sm rounded-lg hover:opacity-90 transition-opacity"
+              className="btn-enterprise-primary flex items-center gap-1.5 px-4 py-2 text-sm"
             >
               <Plus className="w-4 h-4" />
               Create User
@@ -416,55 +424,55 @@ export default function AdminPage() {
           )}
 
           {/* User Table Card */}
-          <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
+          <div className="card-enterprise p-0 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="border-b border-border bg-base text-secondary font-medium">
-                    <th className="px-6 py-3.5">User</th>
-                    <th className="px-6 py-3.5">Role</th>
-                    <th className="px-6 py-3.5">Created</th>
-                    <th className="px-6 py-3.5">Last Login</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5 text-right">Actions</th>
+                    <th className="px-4 py-2.5">User</th>
+                    <th className="px-4 py-2.5">Role</th>
+                    <th className="px-4 py-2.5">Created</th>
+                    <th className="px-4 py-2.5">Last Login</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {loadingUsers ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-36" /></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-16" /></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-24" /></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-24" /></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-12" /></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-base rounded w-16 ml-auto" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-36" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-16" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-24" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-24" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-12" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-base rounded w-16 ml-auto" /></td>
                       </tr>
                     ))
                   ) : users.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-secondary">
+                      <td colSpan={6} className="px-4 py-10 text-center text-secondary">
                         No workspace users found matching the filter.
                       </td>
                     </tr>
                   ) : (
                     users.map((u) => (
                       <tr key={u._id} className="hover:bg-base/30 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div className="font-semibold text-primary">{u.name}</div>
                           <div className="text-xs text-secondary flex items-center gap-1">
                             <Mail className="w-3 h-3" />
                             {u.email}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
                             {u.role}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-xs text-secondary">{fmt(u.createdAt)}</td>
-                        <td className="px-6 py-4 text-xs text-secondary">{fmt(u.lastLogin)}</td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3 text-xs text-secondary">{fmt(u.createdAt)}</td>
+                        <td className="px-4 py-3 text-xs text-secondary">{fmt(u.lastLogin)}</td>
+                        <td className="px-4 py-3">
                           {u.suspended ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20">
                               <UserMinus className="w-3.5 h-3.5" /> Suspended
@@ -479,18 +487,18 @@ export default function AdminPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 py-3 text-right">
                           <div className="flex justify-end gap-1.5">
                             <button
                               onClick={() => openEditModal(u)}
-                              className="p-1.5 rounded-lg border border-border hover:bg-base text-secondary hover:text-primary transition-all"
+                              className="btn-enterprise-secondary p-1.5"
                               title="Edit user details"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u._id)}
-                              className="p-1.5 rounded-lg border border-border hover:bg-red-500/10 text-secondary hover:text-red-500 transition-all"
+                              className="btn-enterprise-secondary p-1.5 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
                               title="Delete user"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -513,225 +521,265 @@ export default function AdminPage() {
           {/* Controls Column */}
           <div className="lg:col-span-8 space-y-6">
             {/* Global Settings Card */}
-            <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
-              <h3 className="text-lg font-bold mb-5 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-indigo-500" />
-                Global Configurations
-              </h3>
-
-              <div className="divide-y divide-border/50">
-                {/* Maintenance Mode Row */}
-                <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-semibold text-primary">System Maintenance Mode</div>
-                    <div className="text-xs text-secondary mt-0.5">
-                      Prevents non-admin accounts from loading any views, redirecting them to a splash page instantly.
-                    </div>
-                  </div>
-                  <button
-                    disabled={maintenanceLoading}
-                    onClick={toggleMaintenance}
-                    className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-                      maintenanceEnabled
-                        ? 'bg-red-500 text-white hover:bg-red-600'
-                        : 'bg-base border border-border hover:bg-surface text-primary'
-                    }`}
-                  >
-                    <Power className="w-4 h-4" />
-                    {maintenanceEnabled ? 'Disable' : 'Enable'}
-                  </button>
-                </div>
-
-                {/* Cache Clearing Row */}
-                <div className="py-4 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-semibold text-primary">Clear System Cache</div>
-                    <div className="text-xs text-secondary mt-0.5">
-                      Purge all server-side revalidations and force layout reload for all connected nodes.
-                    </div>
-                    {cacheMessage && (
-                      <div className="text-xs font-semibold text-accent mt-2">{cacheMessage}</div>
-                    )}
-                  </div>
-                  <button
-                    disabled={cacheClearing}
-                    onClick={handleClearCache}
-                    className="flex items-center gap-2 px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 transition-opacity"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${cacheClearing ? 'animate-spin' : ''}`} />
-                    Clear Cache
-                  </button>
-                </div>
+            <div className="card-enterprise p-0 overflow-hidden shadow-sm">
+              <div 
+                className="flex justify-between items-center p-5 md:p-6 border-b border-border bg-base/30 cursor-pointer select-none hover:bg-base/20 transition-colors"
+                onClick={() => setIsMaintenanceCollapsed(!isMaintenanceCollapsed)}
+              >
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-indigo-500" />
+                  Global Configurations
+                </h3>
+                <ChevronDown size={18} className={`text-secondary transition-transform duration-200 ${isMaintenanceCollapsed ? '-rotate-90' : ''}`} />
               </div>
+              <motion.div
+                initial={false}
+                animate={{ height: isMaintenanceCollapsed ? 0 : 'auto', opacity: isMaintenanceCollapsed ? 0 : 1 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="p-6 divide-y divide-border/50">
+                  {/* Maintenance Mode Row */}
+                  <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-primary">System Maintenance Mode</div>
+                      <div className="text-xs text-secondary mt-0.5">
+                        Prevents non-admin accounts from loading any views, redirecting them to a splash page instantly.
+                      </div>
+                    </div>
+                    <button
+                      disabled={maintenanceLoading}
+                      onClick={toggleMaintenance}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all active:scale-98 ${
+                        maintenanceEnabled
+                          ? 'bg-red-500 text-white hover:bg-red-600'
+                          : 'bg-base border border-border hover:bg-surface text-primary'
+                      }`}
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                      {maintenanceEnabled ? 'Disable' : 'Enable'}
+                    </button>
+                  </div>
+
+                  {/* Cache Clearing Row */}
+                  <div className="py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-primary">Clear System Cache</div>
+                      <div className="text-xs text-secondary mt-0.5">
+                        Purge all server-side revalidations and force layout reload for all connected nodes.
+                      </div>
+                      {cacheMessage && (
+                        <div className="text-xs font-semibold text-accent mt-2">{cacheMessage}</div>
+                      )}
+                    </div>
+                    <button
+                      disabled={cacheClearing}
+                      onClick={handleClearCache}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 active:scale-98 transition-all"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${cacheClearing ? 'animate-spin' : ''}`} />
+                      Clear Cache
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
             </div>
 
             {/* Audit Log Query Card */}
-            <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
+            <div className="card-enterprise p-0 overflow-hidden shadow-sm">
+              <div 
+                className="flex justify-between items-center p-5 md:p-6 border-b border-border bg-base/30 cursor-pointer select-none hover:bg-base/20 transition-colors"
+                onClick={() => setIsAuditCollapsed(!isAuditCollapsed)}
+              >
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <Activity className="w-5 h-5 text-indigo-500" />
                   Quick Audit Search
                 </h3>
-                <Link
-                  href="/admin/audit"
-                  className="text-xs text-accent hover:underline flex items-center gap-1"
-                >
-                  Go to Full Audit Logs &rarr;
-                </Link>
-              </div>
-
-              <form onSubmit={handleSearchAudit} className="flex gap-2 mb-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-secondary" />
-                  <input
-                    type="text"
-                    placeholder="Search action, user email, module..."
-                    value={auditQuery}
-                    onChange={(e) => setAuditQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-base border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
+                <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                  <Link
+                    href="/admin/audit"
+                    className="text-xs text-accent hover:underline flex items-center gap-1 mr-1"
+                  >
+                    Go to Full Logs &rarr;
+                  </Link>
+                  <ChevronDown size={18} className={`text-secondary transition-transform duration-200 ${isAuditCollapsed ? '-rotate-90' : ''}`} onClick={() => setIsAuditCollapsed(!isAuditCollapsed)} />
                 </div>
-                <button
-                  type="submit"
-                  disabled={loadingAudit}
-                  className="px-4 py-2 bg-indigo-500 text-white text-sm font-semibold rounded-lg hover:bg-indigo-600 transition-colors"
-                >
-                  Run Query
-                </button>
-              </form>
-
-              {/* Logs Results */}
-              <div className="space-y-3">
-                {loadingAudit ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-12 bg-base rounded-lg animate-pulse" />
-                  ))
-                ) : auditLogs.length === 0 ? (
-                  <div className="text-sm text-secondary py-6 text-center">
-                    No matching audit records found.
-                  </div>
-                ) : (
-                  <div className="border border-border/50 rounded-lg divide-y divide-border/50 overflow-hidden">
-                    {auditLogs.map((log) => (
-                      <div key={log._id} className="p-3 hover:bg-base/30 text-xs flex justify-between gap-4">
-                        <div>
-                          <div className="font-semibold text-primary flex items-center gap-2">
-                            <span>{log.actionType}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-base text-[10px] font-normal text-secondary">
-                              {log.module}
-                            </span>
-                          </div>
-                          <div className="text-secondary mt-1">{log.description}</div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="font-medium text-secondary">{log.name}</div>
-                          <div className="text-secondary/70 mt-1 flex items-center gap-1 justify-end">
-                            <Clock className="w-3 h-3" />
-                            {fmt(log.timestamp)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
+              <motion.div
+                initial={false}
+                animate={{ height: isAuditCollapsed ? 0 : 'auto', opacity: isAuditCollapsed ? 0 : 1 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="p-6">
+                  <form onSubmit={handleSearchAudit} className="flex gap-2 mb-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-secondary" />
+                      <input
+                        type="text"
+                        placeholder="Search action, user email, module..."
+                        value={auditQuery}
+                        onChange={(e) => setAuditQuery(e.target.value)}
+                        className="input-enterprise w-full pl-9 pr-3 py-2 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loadingAudit}
+                      className="btn-enterprise-primary px-4 py-2 text-sm"
+                    >
+                      Run Query
+                    </button>
+                  </form>
+
+                  {/* Logs Results */}
+                  <div className="space-y-3">
+                    {loadingAudit ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="h-12 bg-base rounded-lg animate-pulse" />
+                      ))
+                    ) : auditLogs.length === 0 ? (
+                      <div className="text-sm text-secondary py-6 text-center font-medium">
+                        No matching audit records found.
+                      </div>
+                    ) : (
+                      <div className="border border-border/50 rounded-lg divide-y divide-border/50 overflow-hidden bg-base/10">
+                        {auditLogs.map((log) => (
+                          <div key={log._id} className="p-3 hover:bg-base/30 text-xs flex justify-between gap-4">
+                            <div>
+                              <div className="font-semibold text-primary flex items-center gap-2">
+                                <span>{log.actionType}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-base border border-border/50 text-[10px] font-normal text-secondary">
+                                  {log.module}
+                                </span>
+                              </div>
+                              <div className="text-secondary mt-1">{log.description}</div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-medium text-secondary">{log.name}</div>
+                              <div className="text-secondary/70 mt-1 flex items-center gap-1 justify-end">
+                                <Clock className="w-3 h-3" />
+                                {fmt(log.timestamp)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
             </div>
           </div>
 
           {/* Health Diagnostics Column */}
           <div className="lg:col-span-4">
-            <div className="bg-surface border border-border rounded-xl p-6 shadow-sm sticky top-6">
-              <div className="flex items-center justify-between mb-5">
+            <div className="card-enterprise p-0 overflow-hidden shadow-sm sticky top-6">
+              <div 
+                className="flex justify-between items-center p-5 md:p-6 border-b border-border bg-base/30 cursor-pointer select-none hover:bg-base/20 transition-colors"
+                onClick={() => setIsHealthCollapsed(!isHealthCollapsed)}
+              >
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <Shield className="w-5 h-5 text-indigo-500" />
                   System Health
                 </h3>
-                <button
-                  onClick={fetchHealth}
-                  disabled={healthLoading}
-                  className="p-1.5 rounded-lg border border-border bg-base hover:bg-surface text-secondary hover:text-primary transition-colors"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={fetchHealth}
+                    disabled={healthLoading}
+                    className="p-1.5 rounded-lg border border-border bg-base hover:bg-surface text-secondary hover:text-primary transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                  <ChevronDown size={18} className={`text-secondary transition-transform duration-200 ${isHealthCollapsed ? '-rotate-90' : ''}`} onClick={() => setIsHealthCollapsed(!isHealthCollapsed)} />
+                </div>
               </div>
+              <motion.div
+                initial={false}
+                animate={{ height: isHealthCollapsed ? 0 : 'auto', opacity: isHealthCollapsed ? 0 : 1 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="p-6">
+                  {healthLoading ? (
+                    <div className="space-y-4">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="h-10 bg-base rounded animate-pulse" />
+                      ))}
+                    </div>
+                  ) : health ? (
+                    <div className="space-y-4 text-sm">
+                      {/* Status Indicator */}
+                      <div className="flex items-center gap-3 p-3 bg-base rounded-xl border border-border/50">
+                        <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+                        <div>
+                          <div className="font-bold capitalize">{health.status}</div>
+                          <div className="text-xs text-secondary">Checked {fmt(health.timestamp)}</div>
+                        </div>
+                      </div>
 
-              {healthLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-10 bg-base rounded animate-pulse" />
-                  ))}
+                      {/* Service breakdown */}
+                      <div className="space-y-2">
+                        {/* Database */}
+                        <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
+                          <div>
+                            <div className="font-semibold">Database Connection</div>
+                            <div className="text-xs text-secondary">{health.services.database.details}</div>
+                          </div>
+                          {health.services.database.status === 'healthy' ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">OK</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-xs font-semibold">Fail</span>
+                          )}
+                        </div>
+
+                        {/* Email Service */}
+                        <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
+                          <div>
+                            <div className="font-semibold">SMTP Email Gateway</div>
+                            <div className="text-xs text-secondary">Brevo Relay</div>
+                          </div>
+                          {health.services.emailService.status === 'configured' ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
+                          )}
+                        </div>
+
+                        {/* WhatsApp */}
+                        <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
+                          <div>
+                            <div className="font-semibold">WhatsApp Gateway</div>
+                            <div className="text-xs text-secondary">Meta Cloud API</div>
+                          </div>
+                          {health.services.whatsapp.status === 'configured' ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
+                          )}
+                        </div>
+
+                        {/* Payment */}
+                        <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
+                          <div>
+                            <div className="font-semibold">Razorpay Integration</div>
+                            <div className="text-xs text-secondary">Payment link creation</div>
+                          </div>
+                          {health.services.paymentGateway.status === 'configured' ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-secondary text-center py-6">
+                      Unable to parse health snapshot.
+                    </div>
+                  )}
                 </div>
-              ) : health ? (
-                <div className="space-y-4 text-sm">
-                  {/* Status Indicator */}
-                  <div className="flex items-center gap-3 p-3 bg-base rounded-xl border border-border/50">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
-                    <div>
-                      <div className="font-bold capitalize">{health.status}</div>
-                      <div className="text-xs text-secondary">Checked {fmt(health.timestamp)}</div>
-                    </div>
-                  </div>
-
-                  {/* Service breakdown */}
-                  <div className="space-y-3">
-                    {/* Database */}
-                    <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
-                      <div>
-                        <div className="font-semibold">Database Connection</div>
-                        <div className="text-xs text-secondary">{health.services.database.details}</div>
-                      </div>
-                      {health.services.database.status === 'healthy' ? (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">OK</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-xs font-semibold">Fail</span>
-                      )}
-                    </div>
-
-                    {/* Email Service */}
-                    <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
-                      <div>
-                        <div className="font-semibold">SMTP Email Gateway</div>
-                        <div className="text-xs text-secondary">Brevo Relay</div>
-                      </div>
-                      {health.services.emailService.status === 'configured' ? (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
-                      )}
-                    </div>
-
-                    {/* WhatsApp */}
-                    <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
-                      <div>
-                        <div className="font-semibold">WhatsApp Gateway</div>
-                        <div className="text-xs text-secondary">Meta Cloud API</div>
-                      </div>
-                      {health.services.whatsapp.status === 'configured' ? (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
-                      )}
-                    </div>
-
-                    {/* Payment */}
-                    <div className="flex items-center justify-between p-2 rounded hover:bg-base/30">
-                      <div>
-                        <div className="font-semibold">Razorpay Integration</div>
-                        <div className="text-xs text-secondary">Payment link creation</div>
-                      </div>
-                      {health.services.paymentGateway.status === 'configured' ? (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-semibold">Active</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-semibold">Disabled</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-secondary text-center py-6">
-                  Unable to parse health snapshot.
-                </div>
-              )}
+              </motion.div>
             </div>
           </div>
         </div>
@@ -771,7 +819,7 @@ export default function AdminPage() {
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                   placeholder="e.g. Vaishnavi Rathod"
                 />
               </div>
@@ -785,7 +833,7 @@ export default function AdminPage() {
                   required
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                   placeholder="e.g. name@domain.com"
                 />
               </div>
@@ -799,7 +847,7 @@ export default function AdminPage() {
                   required
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                   placeholder="At least 8 characters"
                 />
               </div>
@@ -811,7 +859,7 @@ export default function AdminPage() {
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                 >
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
@@ -837,14 +885,14 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-base border border-border rounded-lg font-medium hover:bg-surface transition-colors"
+                  className="btn-enterprise-secondary px-4 py-2"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="px-4 py-2 bg-accent text-white font-medium rounded-lg hover:opacity-95 disabled:opacity-40 transition-opacity"
+                  className="btn-enterprise-primary px-4 py-2"
                 >
                   {formSubmitting ? 'Creating...' : 'Create Account'}
                 </button>
@@ -888,7 +936,7 @@ export default function AdminPage() {
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                 />
               </div>
 
@@ -901,7 +949,7 @@ export default function AdminPage() {
                   required
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                 />
               </div>
 
@@ -913,7 +961,7 @@ export default function AdminPage() {
                   type="password"
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                   placeholder="Enter new password to change"
                 />
               </div>
@@ -925,7 +973,7 @@ export default function AdminPage() {
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-base border border-border rounded-lg text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="input-enterprise w-full px-3 py-2 text-primary"
                 >
                   <option value="Admin">Admin</option>
                   <option value="Manager">Manager</option>
@@ -951,14 +999,14 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 bg-base border border-border rounded-lg font-medium hover:bg-surface transition-colors"
+                  className="btn-enterprise-secondary px-4 py-2"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="px-4 py-2 bg-indigo-500 text-white font-medium rounded-lg hover:bg-indigo-600 disabled:opacity-40 transition-colors"
+                  className="btn-enterprise-primary px-4 py-2"
                 >
                   {formSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>

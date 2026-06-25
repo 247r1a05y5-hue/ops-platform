@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { 
   Users, Sparkles, Zap,
-  FileText, ChevronRight, ArrowUpRight,
+  FileText, ChevronRight, ChevronDown, ArrowUpRight,
   Shield, ShieldCheck, Download, Layers,
   Activity, CheckCircle, X
 } from 'lucide-react';
@@ -17,12 +17,13 @@ import { triggerActivityLog } from '@/utils/activity';
 
 const Card = ({ children, className = "", delay = 0 }: { children: React.ReactNode, className?: string, delay?: number }) => {
   const hasBg = className.split(' ').some(c => c.startsWith('bg-'));
+  const hasPadding = className.split(' ').some(c => c.startsWith('p-') || c.startsWith('px-') || c.startsWith('py-'));
   return (
     <motion.div 
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: "easeOut" }}
-      className={`${hasBg ? "" : "bg-surface"} border border-border rounded-2xl shadow-sm p-6 hover:shadow-md transition-all ${className}`}
+      className={`card-enterprise ${hasBg ? "" : "bg-surface"} ${hasPadding ? "" : ""} ${className}`}
     >
       {children}
     </motion.div>
@@ -190,6 +191,11 @@ function ManagerDashboard() {
   const [showBriefingModal, setShowBriefingModal] = useState(false);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [briefingStep, setBriefingStep] = useState(0);
+
+  // Collapse states for sidebar cards
+  const [isPulseCollapsed, setIsPulseCollapsed] = useState(false);
+  const [isInsightsCollapsed, setIsInsightsCollapsed] = useState(false);
+  const [isQuickLinksCollapsed, setIsQuickLinksCollapsed] = useState(false);
 
   // getVelocityData returns normalised heights for the chart bars.
   // Returns fallback bars when no task data exists.
@@ -621,8 +627,8 @@ function ManagerDashboard() {
                                     <Badge text={req.status} type={req.status === 'Authorized' ? 'success' : 'danger'} />
                                  ) : (
                                     <>
-                                       <button onClick={() => handleDenyApproval(req.id)} className="px-4 py-2 bg-base border border-border rounded-lg text-[10px] font-bold uppercase hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 transition-all active:scale-95">Deny</button>
-                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="px-4 py-2 bg-accent text-white rounded-lg text-[10px] font-bold uppercase hover:bg-indigo-600 transition-all shadow-lg shadow-accent/20 active:scale-95">Authorize</button>
+                                       <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary text-[10px] font-bold uppercase hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20">Deny</button>
+                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary text-[10px] font-bold uppercase">Authorize</button>
                                     </>
                                  )}
                               </div>
@@ -749,81 +755,133 @@ function ManagerDashboard() {
            </AnimatePresence>
         </div>
 
-        {/* Right Sidebar (Pulse & AI Briefings) */}
-        <div className="space-y-8">
-           <Card className="p-6">
-              <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Strategic Pulse</h3>
-              <div className="space-y-6">
-                 <div>
-                    <div className="flex justify-between items-center mb-2">
-                       <span className="text-xs font-bold text-secondary">Global Performance</span>
-                       <span className="text-xs font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
-                    </div>
-                    <div className="h-10 flex items-end gap-1 px-1">
-                       {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
-                         <div key={i} className="flex-1 bg-accent/20 rounded-t-sm group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[8px] font-bold px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Week {i+1}</div>
-                         </div>
-                       ))}
-                    </div>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-                    <div className="p-4 bg-base border border-border rounded-xl">
-                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Revenue</div>
-                       <div className="text-lg font-bold text-primary">
-                          {analytics?.revenue?.current
-                            ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                            : '—'}
+         {/* Right Sidebar (Pulse & AI Briefings) */}
+         <div className="space-y-6">
+            <Card className="p-0 overflow-hidden">
+               <div 
+                  className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
+                  onClick={() => setIsPulseCollapsed(!isPulseCollapsed)}
+               >
+                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest flex items-center gap-1.5">
+                     <Activity size={12} className="text-secondary" />
+                     Strategic Pulse
+                  </h3>
+                  <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPulseCollapsed ? '-rotate-90' : ''}`} />
+               </div>
+               <motion.div 
+                  initial={false}
+                  animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+               >
+                  <div className="px-5 md:px-6 pb-6 space-y-6">
+                     <div>
+                        <div className="flex justify-between items-center mb-2">
+                           <span className="text-xs font-semibold text-secondary">Global Performance</span>
+                           <span className="text-xs font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
                         </div>
-                    </div>
-                    <div className="p-4 bg-base border border-border rounded-xl">
-                       <div className="text-[10px] font-bold text-tertiary uppercase mb-1">Task Rate</div>
-                       <div className="text-lg font-bold text-primary">
-                          {analytics
-                            ? `${analytics.tasks.completionRate}%`
-                            : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                        <div className="h-10 flex items-end gap-1 px-1">
+                           {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
+                             <div key={i} className="flex-1 bg-accent/20 rounded-t-sm group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
+                                <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[8px] font-bold px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Week {i+1}</div>
+                             </div>
+                           ))}
                         </div>
-                    </div>
-                 </div>
-              </div>
-           </Card>
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+                        <div className="p-3 bg-base border border-border rounded-xl">
+                           <div className="text-[9px] font-bold text-tertiary uppercase mb-1">Revenue</div>
+                           <div className="text-base font-bold text-primary">
+                              {analytics?.revenue?.current
+                                ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                                : '—'}
+                           </div>
+                        </div>
+                        <div className="p-3 bg-base border border-border rounded-xl">
+                           <div className="text-[9px] font-bold text-tertiary uppercase mb-1">Task Rate</div>
+                           <div className="text-base font-bold text-primary">
+                              {analytics
+                                ? `${analytics.tasks.completionRate}%`
+                                : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </motion.div>
+            </Card>
 
-           <Card className="relative group overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/15 transition-colors"></div>
-              <div className="relative z-10">
-                 <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                       <Zap size={20} className="text-accent" />
-                    </div>
-                    <h3 className="text-sm font-bold text-primary">Executive Insights</h3>
-                 </div>
-                 <p className="text-xs text-secondary leading-relaxed mb-6 font-medium">Based on last week&apos;s sprint velocity, we recommend accelerating the <b>R2 Migration</b> to bypass upcoming bandwidth throttles.</p>
-                 <button onClick={handleGenerateBriefing} className="w-full py-3 bg-accent text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all active:scale-95 shadow-lg shadow-accent/20">
-                    Generate AI Briefing
-                 </button>
-              </div>
-           </Card>
+            <Card className="relative group overflow-hidden p-0">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/15 transition-colors pointer-events-none"></div>
+               <div className="relative z-10">
+                  <div 
+                     className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
+                     onClick={() => setIsInsightsCollapsed(!isInsightsCollapsed)}
+                  >
+                     <div className="flex items-center gap-2">
+                        <Zap size={14} className="text-accent animate-pulse" />
+                        <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest">Executive Insights</h3>
+                     </div>
+                     <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isInsightsCollapsed ? '-rotate-90' : ''}`} />
+                  </div>
+                  <motion.div 
+                     initial={false}
+                     animate={{ height: isInsightsCollapsed ? 0 : 'auto', opacity: isInsightsCollapsed ? 0 : 1 }}
+                     transition={{ duration: 0.2 }}
+                     className="overflow-hidden"
+                  >
+                     <div className="px-5 md:px-6 pb-6">
+                        <p className="text-xs text-secondary leading-relaxed mb-4 font-medium">Based on last week&apos;s sprint velocity, we recommend accelerating the <b>R2 Migration</b> to bypass upcoming bandwidth throttles.</p>
+                        <button 
+                           onClick={handleGenerateBriefing} 
+                           className="btn-enterprise-primary w-full text-xs py-2"
+                        >
+                           Generate AI Briefing
+                        </button>
+                     </div>
+                  </motion.div>
+               </div>
+            </Card>
 
-           <div className="p-6 rounded-2xl border border-border bg-surface shadow-sm">
-              <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Quick Links</h3>
-              <div className="space-y-2">
-                 {[
-                   { name: 'Resource Allocation', icon: Layers, tab: 'tasks' },
-                   { name: 'Security Audit', icon: ShieldCheck, tab: 'approvals' },
-                   { name: 'Export Monthly Reports', icon: Download, tab: 'reports' },
-                 ].map((link, i) => (
-                   <button key={i} onClick={() => router.push(`/manager?tab=${link.tab}`)} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-base transition-all group border border-transparent hover:border-border/50">
-                      <div className="flex items-center gap-3">
-                         <link.icon size={16} className="text-secondary group-hover:text-accent transition-colors" />
-                         <span className="text-xs font-bold text-secondary group-hover:text-primary transition-colors">{link.name}</span>
-                      </div>
-                      <ChevronRight size={14} className="text-tertiary group-hover:translate-x-1 transition-transform" />
-                   </button>
-                 ))}
-              </div>
-           </div>
-        </div>
+            <Card className="p-0 overflow-hidden">
+               <div 
+                  className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
+                  onClick={() => setIsQuickLinksCollapsed(!isQuickLinksCollapsed)}
+               >
+                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest flex items-center gap-1.5">
+                     <Layers size={12} className="text-secondary" />
+                     Quick Links
+                  </h3>
+                  <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isQuickLinksCollapsed ? '-rotate-90' : ''}`} />
+               </div>
+               <motion.div 
+                  initial={false}
+                  animate={{ height: isQuickLinksCollapsed ? 0 : 'auto', opacity: isQuickLinksCollapsed ? 0 : 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+               >
+                  <div className="px-5 md:px-6 pb-5 space-y-1">
+                     {[
+                       { name: 'Resource Allocation', icon: Layers, tab: 'tasks' },
+                       { name: 'Security Audit', icon: ShieldCheck, tab: 'approvals' },
+                       { name: 'Export Monthly Reports', icon: Download, tab: 'reports' },
+                     ].map((link, i) => (
+                       <button 
+                          key={i} 
+                          onClick={() => router.push(`/manager?tab=${link.tab}`)} 
+                          className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-base/60 transition-all duration-200 group border border-transparent hover:border-border/30"
+                       >
+                          <div className="flex items-center gap-2.5">
+                             <link.icon size={14} className="text-secondary group-hover:text-accent transition-colors" />
+                             <span className="text-xs font-semibold text-secondary group-hover:text-primary transition-colors">{link.name}</span>
+                          </div>
+                          <ChevronRight size={12} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
+                       </button>
+                     ))}
+                  </div>
+               </motion.div>
+            </Card>
+         </div>
       </div>
     
       {/* Executive Briefing Modal */}
@@ -906,14 +964,14 @@ function ManagerDashboard() {
                     <button 
                       type="button" 
                       onClick={() => setShowBriefingModal(false)}
-                      className="flex-1 py-3 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
+                      className="btn-enterprise-secondary flex-1 py-2 text-xs"
                     >
                       Close
                     </button>
                     <button 
                       type="button"
                       onClick={handleApplyBriefingDirective}
-                      className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      className="btn-enterprise-primary flex-1 py-2 text-xs"
                     >
                       <Zap size={12} /> Apply Directive
                     </button>
@@ -960,7 +1018,7 @@ function ManagerDashboard() {
                             updated[idx].role = e.target.value;
                             setEditingEmployees(updated);
                           }}
-                          className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
+                          className="input-enterprise w-full text-xs px-3 py-2"
                         >
                           <option value="Employee">Employee</option>
                           <option value="Staff">Staff</option>
@@ -977,13 +1035,13 @@ function ManagerDashboard() {
                   <button 
                     type="button" 
                     onClick={() => setShowRolesModal(false)}
-                    className="flex-1 py-3 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
+                    className="btn-enterprise-secondary flex-1 py-2 text-xs"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"
+                    className="btn-enterprise-primary flex-1 py-2 text-xs"
                   >
                     Apply Changes
                   </button>
