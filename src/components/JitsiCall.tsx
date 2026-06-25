@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
 
@@ -15,15 +15,78 @@ export default function JitsiCall({ roomName, userName, userEmail, onEnd }: Jits
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const iceServers = {
-    replace: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  const configOverwrite = useMemo(() => ({
+    iceServers: {
+      replace: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      ],
+    },
+    startWithAudioMuted: false,
+    startWithVideoMuted: false,
+    prejoinPageEnabled: false,
+    disableDeepLinking: true,
+    enableWelcomePage: false,
+    enableClosePage: false,
+    disableAudioLevels: false,
+    useStunTurn: true,
+    enableNoAudioDetection: true,
+    enableNoisyMicDetection: true,
+    p2p: {
+      enabled: true,
+      preferH264: true,
+      useStunTurn: true,
+    },
+  }), []);
+
+  const interfaceConfigOverwrite = useMemo(() => ({
+    TOOLBAR_BUTTONS: [
+      'microphone', 'camera', 'closedcaptions', 'desktop', 'embedmeeting', 'fullscreen',
+      'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
+      'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
+      'videoquality', 'filmstrip', 'invite', 'feedback', 'stats', 'shortcuts',
+      'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
+      'security'
     ],
-  };
+  }), []);
+
+  const userInfo = useMemo(() => ({
+    displayName: userName,
+    email: userEmail,
+  }), [userName, userEmail]);
+
+  const handleApiReady = useCallback((externalApi: any) => {
+    console.info('[Jitsi] iframe ready', { roomName, userName });
+
+    externalApi.addEventListener('videoConferenceJoined', () => {
+      console.info('[Jitsi] videoConferenceJoined', { roomName });
+    });
+    externalApi.addEventListener('participantJoined', (...args: any[]) => {
+      console.info('[Jitsi] participantJoined', args);
+    });
+    externalApi.addEventListener('participantLeft', (...args: any[]) => {
+      console.info('[Jitsi] participantLeft', args);
+    });
+    externalApi.addEventListener('audioMuteStatusChanged', (...args: any[]) => {
+      console.info('[Jitsi] audioMuteStatusChanged', args);
+    });
+    externalApi.addEventListener('videoMuteStatusChanged', (...args: any[]) => {
+      console.info('[Jitsi] videoMuteStatusChanged', args);
+    });
+    externalApi.addEventListener('iceConnectionStateChange', (...args: any[]) => {
+      console.info('[Jitsi] ICE connection state', args);
+    });
+    externalApi.addEventListener('peerConnectionStateChange', (...args: any[]) => {
+      console.info('[Jitsi] peer connection state', args);
+    });
+    externalApi.addEventListener('videoConferenceLeft', () => {
+      console.info('[Jitsi] videoConferenceLeft', { roomName });
+      onEnd();
+    });
+  }, [roomName, userName, onEnd]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -41,6 +104,14 @@ export default function JitsiCall({ roomName, userName, userEmail, onEnd }: Jits
       });
     }
   };
+
+  const getIFrameRef = useCallback((iframeRef: any) => {
+    const iframe = iframeRef as HTMLIFrameElement;
+    iframe.style.height = '100%';
+    iframe.style.width = '100%';
+    iframe.style.border = 'none';
+    iframe.allow = 'camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen';
+  }, []);
 
   return (
     <div 
@@ -143,74 +214,11 @@ export default function JitsiCall({ roomName, userName, userEmail, onEnd }: Jits
         <JitsiMeeting
           domain="meet.jit.si"
           roomName={roomName}
-          configOverwrite={{
-            iceServers,
-            startWithAudioMuted: false,
-            startWithVideoMuted: false,
-            prejoinPageEnabled: false,
-            disableDeepLinking: true,
-            enableWelcomePage: false,
-            enableClosePage: false,
-            disableAudioLevels: false,
-            useStunTurn: true,
-            enableNoAudioDetection: true,
-            enableNoisyMicDetection: true,
-            p2p: {
-              enabled: true,
-              preferH264: true,
-              useStunTurn: true,
-            },
-          }}
-          interfaceConfigOverwrite={{
-            TOOLBAR_BUTTONS: [
-              'microphone', 'camera', 'closedcaptions', 'desktop', 'embedmeeting', 'fullscreen',
-              'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
-              'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
-              'videoquality', 'filmstrip', 'invite', 'feedback', 'stats', 'shortcuts',
-              'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
-              'security'
-            ],
-          }}
-          userInfo={{
-            displayName: userName,
-            email: userEmail,
-          }}
-          onApiReady={(externalApi) => {
-            console.info('[Jitsi] iframe ready', { roomName, userName });
-
-            externalApi.addEventListener('videoConferenceJoined', () => {
-              console.info('[Jitsi] videoConferenceJoined', { roomName });
-            });
-            externalApi.addEventListener('participantJoined', (...args: any[]) => {
-              console.info('[Jitsi] participantJoined', args);
-            });
-            externalApi.addEventListener('participantLeft', (...args: any[]) => {
-              console.info('[Jitsi] participantLeft', args);
-            });
-            externalApi.addEventListener('audioMuteStatusChanged', (...args: any[]) => {
-              console.info('[Jitsi] audioMuteStatusChanged', args);
-            });
-            externalApi.addEventListener('videoMuteStatusChanged', (...args: any[]) => {
-              console.info('[Jitsi] videoMuteStatusChanged', args);
-            });
-            externalApi.addEventListener('iceConnectionStateChange', (...args: any[]) => {
-              console.info('[Jitsi] ICE connection state', args);
-            });
-            externalApi.addEventListener('peerConnectionStateChange', (...args: any[]) => {
-              console.info('[Jitsi] peer connection state', args);
-            });
-            externalApi.addEventListener('videoConferenceLeft', () => {
-              console.info('[Jitsi] videoConferenceLeft', { roomName });
-              onEnd();
-            });
-          }}
-          getIFrameRef={(iframeRef) => {
-            const iframe = iframeRef as HTMLIFrameElement;
-            iframe.style.height = '100%';
-            iframe.style.width = '100%';
-            iframe.style.border = 'none';
-            iframe.allow = 'camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen';
-          }}
+          configOverwrite={configOverwrite}
+          interfaceConfigOverwrite={interfaceConfigOverwrite}
+          userInfo={userInfo}
+          onApiReady={handleApiReady}
+          getIFrameRef={getIFrameRef}
         />
       </div>
     </div>

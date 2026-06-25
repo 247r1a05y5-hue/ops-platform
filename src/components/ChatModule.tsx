@@ -274,11 +274,9 @@ export default function ChatModule() {
   const [activeCallConvId, setActiveCallConvId] = useState<string | null>(null);
   const [activeCallPeer, setActiveCallPeer]     = useState<{ id: string; name: string } | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  const [activeCallRoomName, setActiveCallRoomName] = useState<string | null>(null);
 
-  // ── Instant Jitsi Meet State (header button — no signaling) ──────────────────
-  const [showInstantJitsi, setShowInstantJitsi] = useState(false);
-  const [instantJitsiRoom, setInstantJitsiRoom] = useState<string>('');
-
+  const ringTimeoutRef      = useRef<NodeJS.Timeout | null>(null);
   const callTargetRef       = useRef<string | null>(null);  // userId we're calling
   const callStateRef        = useRef<CallState>('idle');
   const activeCallConvIdRef = useRef<string | null>(null);
@@ -494,6 +492,10 @@ export default function ChatModule() {
 
   const hangupLocal = useCallback((sendSignalToRemote = true) => {
     console.log('[Jitsi Call] Call ended (local hangup).');
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
     if (sendSignalToRemote && callTargetRef.current) {
       // Use ref so we always read the current conversationId, not the stale closure value
       sendSignal('hangup', callTargetRef.current, {
@@ -505,6 +507,7 @@ export default function ChatModule() {
     setActiveCallConvId(null);
     setActiveCallPeer(null);
     setCallError(null);
+    setActiveCallRoomName(null);
   }, [sendSignal]);
 
   // ── Initiate call ─────────────────────────────────────────────────────────
@@ -519,15 +522,35 @@ export default function ChatModule() {
     const target = conv.otherParticipants[0];
     if (!target) return;
 
+    // Check permission roles
+    const allowedRoles = ['Admin', 'Manager', 'Staff', 'Employee', 'User', 'MR'];
+    if (user?.role && !allowedRoles.includes(user.role)) {
+      alert('You do not have permission to start a video call.');
+      return;
+    }
+
     console.log('[STAGE 1] Call button clicked', { conversationId: activeConvId, targetUserId: target._id });
 
     setCallError(null);
     const wId = conv.workspaceId || 'ops-main';
     console.log('[Jitsi Call] Initiating new Jitsi call to:', target.name);
+
+    const roomName = `workspace-${wId}-conversation-${activeConvId}`;
+    setActiveCallRoomName(roomName);
+
     callTargetRef.current = target._id;
     setCallState('ringing_out');
     setActiveCallConvId(activeConvId);
     setActiveCallPeer({ id: target._id, name: target.name });
+
+    if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+    ringTimeoutRef.current = setTimeout(() => {
+      if (callStateRef.current === 'ringing_out') {
+        console.log('[Jitsi Call] Call timed out (no answer).');
+        hangupLocal(true);
+        setCallError('No answer. Call timed out.');
+      }
+    }, 30000);
 
     const result = await sendSignal('ring', target._id, {
       conversationId: activeConvId,
@@ -536,30 +559,15 @@ export default function ChatModule() {
 
     if (!result.ok) {
       console.error('[Jitsi Call] Failed to send ring signal to:', target.name);
+      if (ringTimeoutRef.current) {
+        clearTimeout(ringTimeoutRef.current);
+        ringTimeoutRef.current = null;
+      }
       // Hard failure (network error) — abort immediately
       hangupLocal(false);
       setCallError('Could not reach the other user. Please check your connection and try again.');
     }
-  }, [activeConvId, conversations, sendSignal, hangupLocal]);
-
-  // ── Instant Jitsi Meet (header button) ──────────────────────────────────────
-  // Generates a deterministic room name from the conversation/workspace ID and
-  // opens an instant Jitsi meeting. No ring/answer signaling — just a shared room.
-  const handleJitsiInstantMeet = useCallback(() => {
-    if (!activeConvId) return;
-    const conv = conversations.find(c => c._id === activeConvId);
-    // Permission check: all roles may start an instant Jitsi call
-    const allowedRoles = ['Admin', 'Manager', 'Staff', 'Employee', 'User', 'MR'];
-    if (user?.role && !allowedRoles.includes(user.role)) {
-      alert('You do not have permission to start a video call.');
-      return;
-    }
-    const workspaceId = conv?.workspaceId || 'ops-main';
-    // Deterministic room: stable across participants, unique per conversation
-    const room = `ops-${workspaceId}-${activeConvId}`.replace(/[^a-zA-Z0-9-]/g, '-');
-    setInstantJitsiRoom(room);
-    setShowInstantJitsi(true);
-  }, [activeConvId, conversations, user]);
+  }, [activeConvId, conversations, sendSignal, hangupLocal, user]);
 
   // ── Google Meet creation ──────────────────────────────────────────────────
   const handleCreateGoogleMeetDirect = useCallback(async () => {
@@ -618,6 +626,14 @@ export default function ChatModule() {
     console.log('[Jitsi Call] Call accepted locally. Connecting Jitsi...');
     setCallError(null);
 
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+
+    const roomName = `workspace-${incomingCall.workspaceId || 'ops-main'}-conversation-${incomingCall.conversationId}`;
+    setActiveCallRoomName(roomName);
+
     await sendSignal('answer', incomingCall.from, {
       conversationId: incomingCall.conversationId,
     });
@@ -632,6 +648,10 @@ export default function ChatModule() {
   // ── Reject incoming call ──────────────────────────────────────────────────
 
   const handleRejectCall = useCallback(async () => {
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
     if (incomingCall) {
       console.log('[Jitsi Call] Call rejected locally:', incomingCall.fromName);
       await sendSignal('reject', incomingCall.from, {
@@ -828,7 +848,7 @@ export default function ChatModule() {
 
       // ── Jitsi signaling ──────────────────────────────────────────────────
       if (payload.type === 'vid_signal') {
-        const { subtype, from, fromName, conversationId, workspaceId } = payload;
+        const { subtype, from, fromName, conversationId, workspaceId, reason } = payload;
 
         console.log('[STAGE 6] Receiver listener received vid_signal', { subtype, from, fromName, conversationId });
         console.debug(`[Jitsi Call] Signal received: ${subtype} from ${fromName ?? from}`);
@@ -838,7 +858,7 @@ export default function ChatModule() {
           console.log('[Jitsi Call] Incoming call (ring) received from:', fromName || from);
           if (callStateRef.current !== 'idle') {
             console.log('[Jitsi Call] Busy — auto-rejecting incoming ring from:', fromName || from);
-            await sendSignal('reject', from, { conversationId });
+            await sendSignal('reject', from, { conversationId, reason: 'busy' });
             return;
           }
           setIncomingCall({ from, fromName, conversationId, workspaceId: workspaceId || 'ops-main' });
@@ -848,6 +868,10 @@ export default function ChatModule() {
 
         if (subtype === 'answer') {
           console.log('[Jitsi Call] Answer signal received from:', fromName || from);
+          if (ringTimeoutRef.current) {
+            clearTimeout(ringTimeoutRef.current);
+            ringTimeoutRef.current = null;
+          }
           if (callStateRef.current === 'ringing_out') {
             setCallState('connected');
           }
@@ -856,8 +880,9 @@ export default function ChatModule() {
         if (subtype === 'reject') {
           console.log('[Jitsi Call] Call rejected by remote user:', fromName || from);
           if (callStateRef.current === 'ringing_out') {
+            const isBusy = reason === 'busy';
             hangupLocal(false);
-            setCallError(`${fromName || 'User'} declined your call.`);
+            setCallError(isBusy ? `${fromName || 'User'} is busy in another call.` : `${fromName || 'User'} declined your call.`);
           }
         }
 
@@ -898,6 +923,18 @@ export default function ChatModule() {
 
   // ── Check Google connection on mount ─────────────────────────────────────
   useEffect(() => { checkGoogleConnection(); }, [checkGoogleConnection]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (callStateRef.current !== 'idle') {
+        hangupLocal(true);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hangupLocal]);
 
   useEffect(() => {
     if (activeConvId) {
@@ -1509,7 +1546,7 @@ export default function ChatModule() {
         )}
 
         {/* ══ JITISI CALL DIALOG/MODAL ══ */}
-        {callState === 'connected' && activeCallConvId && (
+        {callState === 'connected' && activeCallRoomName && (
           <div 
             className="cm-fadeIn"
             style={{
@@ -1538,10 +1575,10 @@ export default function ChatModule() {
               }}
             >
               <JitsiCall
-                roomName={`workspace-${conversations.find(c => c._id === activeCallConvId)?.workspaceId || 'ops-main'}-conversation-${activeCallConvId}`}
+                roomName={activeCallRoomName}
                 userName={user?.name || 'User'}
                 userEmail={user?.email || ''}
-                onEnd={() => hangupLocal(true)}
+                onEnd={hangupLocal}
               />
             </div>
           </div>
@@ -1823,11 +1860,12 @@ export default function ChatModule() {
                   {/* ── Jitsi Instant Meet Button (header) ── */}
                   <button
                     className="cm-ibtn"
-                    onClick={handleJitsiInstantMeet}
-                    title="Start Instant Jitsi Video Call"
+                    onClick={handleVideoCall}
+                    disabled={callState !== 'idle'}
+                    title={callState !== 'idle' ? "Call in progress" : "Start Jitsi Video Call"}
                     style={{
                       position: 'relative',
-                      background: 'rgba(99,102,241,0.10)',
+                      background: callState !== 'idle' ? 'rgba(99,102,241,0.05)' : 'rgba(99,102,241,0.10)',
                       border: '1px solid rgba(99,102,241,0.22)',
                       borderRadius: 8,
                       padding: '5px 9px',
@@ -1837,16 +1875,21 @@ export default function ChatModule() {
                       color: '#818cf8',
                       fontSize: 11,
                       fontWeight: 650,
-                      cursor: 'pointer',
+                      cursor: callState !== 'idle' ? 'not-allowed' : 'pointer',
+                      opacity: callState !== 'idle' ? 0.6 : 1,
                       transition: 'background 0.15s, border-color 0.15s',
                     }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(99,102,241,0.20)';
-                      e.currentTarget.style.borderColor = 'rgba(99,102,241,0.45)';
+                      if (callState === 'idle') {
+                        e.currentTarget.style.background = 'rgba(99,102,241,0.20)';
+                        e.currentTarget.style.borderColor = 'rgba(99,102,241,0.45)';
+                      }
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.background = 'rgba(99,102,241,0.10)';
-                      e.currentTarget.style.borderColor = 'rgba(99,102,241,0.22)';
+                      if (callState === 'idle') {
+                        e.currentTarget.style.background = 'rgba(99,102,241,0.10)';
+                        e.currentTarget.style.borderColor = 'rgba(99,102,241,0.22)';
+                      }
                     }}
                   >
                     <MonitorPlay size={14}/>
@@ -2499,38 +2542,7 @@ export default function ChatModule() {
           </div>
         )}
 
-        {/* ══ INSTANT JITSI MEET MODAL ══ */}
-        {showInstantJitsi && instantJitsiRoom && (
-          <div
-            className="cm-fadeIn"
-            style={{
-              position: 'absolute', inset: 0, zIndex: 100,
-              background: 'rgba(0,0,0,0.80)',
-              backdropFilter: 'blur(10px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16, borderRadius: 16,
-            }}
-          >
-            <div
-              style={{
-                width: '100%', height: '100%',
-                maxWidth: 1200, maxHeight: 800,
-                borderRadius: 16, overflow: 'hidden',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              {/* JitsiCall has its own header bar (room name, fullscreen, close).
-                  Pass onEnd so the close button dismisses the modal. */}
-              <JitsiCall
-                roomName={instantJitsiRoom}
-                userName={user?.name || 'User'}
-                userEmail={user?.email || ''}
-                onEnd={() => setShowInstantJitsi(false)}
-              />
-            </div>
-          </div>
-        )}
+        {/* Instant Jitsi Meet Modal removed - Integrated with the Jitsi Call flow */}
 
         {/* ══ GOOGLE MEET TOAST NOTIFICATION ══ */}
         {meetingToast && (
