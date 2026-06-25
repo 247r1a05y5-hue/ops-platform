@@ -4,10 +4,10 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { 
-  Users, Calendar, Plus, Bell, Sparkles, Zap,
-  Send, FileText, Command, ChevronRight, ArrowUpRight,
-  Shield, ShieldCheck, Download, Layers, Trash2, Clock,
-  Activity, Search, Filter, CheckCircle, X, DollarSign, Target, Mail, Phone, ExternalLink
+  Users, Sparkles, Zap,
+  FileText, ChevronRight, ArrowUpRight,
+  Shield, ShieldCheck, Download, Layers,
+  Activity, CheckCircle, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
@@ -78,28 +78,6 @@ interface ManagerTask {
   progress: number;
   subtasks: { title: string; done: boolean }[];
   logs: TaskLog[];
-}
-
-interface LeadItem {
-  id: string;
-  name: string;
-  company: string;
-  value: string;
-  status: 'Hot' | 'Warm' | 'Cold';
-  stage: 'Qualified' | 'Sequence Active' | 'Proposal Sent' | 'Closed Won';
-  source: string;
-  email: string;
-  communications: { date: string; subject: string; sender: string }[];
-}
-
-interface InvoiceItem {
-  id: string;
-  client: string;
-  amount: string;
-  due: string;
-  status: 'Paid' | 'Pending' | 'Overdue';
-  remindersSent: number;
-  clientEmail?: string;
 }
 
 // Mapped approval shape (derived from ApprovalRequest + populated Lead)
@@ -186,76 +164,32 @@ function ManagerDashboard() {
   const searchParams = useSearchParams();
   const { showToast } = useUI();
   
-  const [activeTab, setActiveTab] = useState<'team' | 'tasks' | 'approvals' | 'progress' | 'crm' | 'invoices' | 'directory' | 'communication' | 'reports' | 'settings'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'approvals' | 'progress' | 'reports' | 'settings'>('team');
   const [isLoading, setIsLoading] = useState(true);
 
   // Section specific loading and error states
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
 
-  const [loadingTasks, setLoadingTasks] = useState(false);
-  const [tasksError, setTasksError] = useState<string | null>(null);
-
   const [loadingApprovals, setLoadingApprovals] = useState(false);
   const [approvalsError, setApprovalsError] = useState<string | null>(null);
 
-  const [loadingLeads, setLoadingLeads] = useState(false);
-  const [leadsError, setLeadsError] = useState<string | null>(null);
-
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
-  const [invoicesError, setInvoicesError] = useState<string | null>(null);
-
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
-
-  const [loadingDirectives, setLoadingDirectives] = useState(false);
-  const [directivesError, setDirectivesError] = useState<string | null>(null);
 
   // Database persistent states
   const [employees, setEmployees] = useState<ManagerEmployee[]>([]);
   const [tasks, setTasks] = useState<ManagerTask[]>([]);
   const [approvals, setApprovals] = useState<any[]>([]);
-  const [leads, setLeads] = useState<LeadItem[]>([]);
-  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
-  const [directives, setDirectives] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Filter & search states
-  const [filterOwner, setFilterOwner] = useState<string>('All');
-  const [filterPriority, setFilterPriority] = useState<string>('All');
-  const [filterStatus, setFilterStatus] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-
   // Modals & form states
-  const [selectedTask, setSelectedTask] = useState<ManagerTask | null>(null);
-  const [editOwner, setEditOwner] = useState<string>('');
-  const [editPriority, setEditPriority] = useState<ManagerTask['priority']>('Medium');
-  const [editStatus, setEditStatus] = useState<ManagerTask['status']>('In Progress');
-  const [editDeadline, setEditDeadline] = useState<string>('');
-
-  const [selectedLead, setSelectedLead] = useState<LeadItem | null>(null);
-  const [showTaskModal, setShowTaskModal] = useState(false);
   const [showRolesModal, setShowRolesModal] = useState(false);
   const [editingEmployees, setEditingEmployees] = useState<ManagerEmployee[]>([]);
   const [showBriefingModal, setShowBriefingModal] = useState(false);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [briefingStep, setBriefingStep] = useState(0);
-
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
-  const [newTaskOwner, setNewTaskOwner] = useState('');
-  const [newTaskDeadline, setNewTaskDeadline] = useState('');
-
-  const [newDirSubject, setNewDirSubject] = useState('');
-  const [newDirMsg, setNewDirMsg] = useState('');
-  const [newDirPriority, setNewDirPriority] = useState('Normal');
-
-  const [chatMessages, setChatMessages] = useState([
-     { user: 'System Bot', msg: 'Operational logs are running normally. Chat channel ready.', time: '10:00 AM', isSelf: false }
-  ]);
-  const [newChatMsg, setNewChatMsg] = useState('');
 
   // getVelocityData returns normalised heights for the chart bars.
   // Returns fallback bars when no task data exists.
@@ -274,9 +208,7 @@ function ManagerDashboard() {
   
   const fetchDashboardData = async () => {
     setLoadingTeam(true);
-    setLoadingTasks(true);
     setTeamError(null);
-    setTasksError(null);
     try {
       const teamRes = await fetch('/api/settings/team', { credentials: 'include' });
       if (!teamRes.ok) throw new Error(`HTTP error! status: ${teamRes.status}`);
@@ -326,11 +258,6 @@ function ManagerDashboard() {
         };
       });
       setEmployees(mappedEmployees);
-
-      // Default new task owner to first employee if not set
-      if (mappedEmployees.length > 0 && !newTaskOwner) {
-        setNewTaskOwner(mappedEmployees[0].name);
-      }
       
       const mappedTasks: ManagerTask[] = tasksData.tasks.map((t: any) => {
         return {
@@ -352,11 +279,9 @@ function ManagerDashboard() {
       console.error('Error fetching dashboard data:', err);
       const msg = err.message || 'Failed to load dashboard data from database';
       setTeamError(msg);
-      setTasksError(msg);
       showToast(msg, 'error');
     } finally {
       setLoadingTeam(false);
-      setLoadingTasks(false);
     }
   };
 
@@ -396,70 +321,6 @@ function ManagerDashboard() {
     }
   };
 
-  const fetchLeads = async () => {
-    setLoadingLeads(true);
-    setLeadsError(null);
-    try {
-      const res = await fetch('/api/leads?limit=20', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      const mappedLeads = data.leads.map((lead: any) => {
-        return {
-          id: lead._id,
-          name: lead.name,
-          company: lead.company || 'Acme Corp',
-          value: lead.value || '$0',
-          status: lead.status || 'Warm',
-          stage: lead.stage || 'Discovery',
-          source: lead.leadSource || 'Manual Entry',
-          email: lead.email,
-          communications: (lead.emails || []).map((email: any) => ({
-            date: email.sentAt ? new Date(email.sentAt).toLocaleDateString() : 'Just now',
-            subject: email.subject || 'No Subject',
-            sender: email.sender || 'System'
-          }))
-        };
-      });
-      setLeads(mappedLeads);
-    } catch (err: any) {
-      console.error('Error fetching leads:', err);
-      setLeadsError(err.message || 'Failed to load leads');
-    } finally {
-      setLoadingLeads(false);
-    }
-  };
-
-  const fetchInvoices = async () => {
-    setLoadingInvoices(true);
-    setInvoicesError(null);
-    try {
-      const res = await fetch('/api/invoices', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      const mappedInvoices = data.invoices.map((inv: any) => {
-        return {
-          id: inv._id,
-          client: inv.client,
-          amount: inv.amount.startsWith('$') || inv.amount.startsWith('₹') ? inv.amount : `$${inv.amount}`,
-          due: inv.due,
-          status: inv.status,
-          remindersSent: inv.remindersCount || 0,
-          clientEmail: inv.clientEmail || ''
-        };
-      });
-      setInvoices(mappedInvoices);
-    } catch (err: any) {
-      console.error('Error fetching invoices:', err);
-      setInvoicesError(err.message || 'Failed to load invoices');
-    } finally {
-      setLoadingInvoices(false);
-    }
-  };
-
   const fetchAnalytics = async () => {
     setLoadingAnalytics(true);
     setAnalyticsError(null);
@@ -480,35 +341,6 @@ function ManagerDashboard() {
     }
   };
 
-  const fetchDirectives = async () => {
-    setLoadingDirectives(true);
-    setDirectivesError(null);
-    try {
-      const res = await fetch('/api/notifications?limit=10', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      const mappedDirectives = data.notifications.map((n: any) => {
-        return {
-          id: n._id,
-          user: 'System Bot',
-          msg: `[${n.title}] ${n.message}`,
-          time: new Date(n.createdAt).toLocaleDateString() + ' ' + new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          priority: n.read ? 'Normal' : 'High'
-        };
-      });
-
-      // No fallback — show real empty state when DB has no notifications
-      setDirectives(mappedDirectives);
-    } catch (err: any) {
-      console.error('Error fetching notifications/directives:', err);
-      setDirectivesError(err.message || 'Failed to load notifications');
-    } finally {
-      setLoadingDirectives(false);
-    }
-  };
-
   const loadAllData = async () => {
     setIsLoading(true);
     try {
@@ -524,10 +356,7 @@ function ManagerDashboard() {
       await Promise.all([
         fetchDashboardData(),
         fetchApprovals(),
-        fetchLeads(),
-        fetchInvoices(),
-        fetchAnalytics(),
-        fetchDirectives()
+        fetchAnalytics()
       ]);
     } catch (err) {
       console.error('Error loading all data:', err);
@@ -542,7 +371,7 @@ function ManagerDashboard() {
 
   useEffect(() => {
     const tab = searchParams?.get('tab');
-    if (tab && ['team', 'tasks', 'approvals', 'progress', 'crm', 'invoices', 'directory', 'communication', 'reports', 'settings'].includes(tab)) {
+    if (tab && ['team', 'approvals', 'progress', 'reports', 'settings'].includes(tab)) {
       setActiveTab(tab as any);
     }
   }, [searchParams]);
@@ -603,255 +432,42 @@ function ManagerDashboard() {
     }
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle || !newTaskDeadline) {
-      showToast('Please fill out all task details', 'warning');
-      return;
-    }
+  const handleAuthorizeApproval = async (approvalId: string) => {
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title: newTaskTitle,
-          description: newTaskDesc || 'Strategic operational directive.',
-          priority: newTaskPriority,
-          assignee: newTaskOwner,
-          dueDate: new Date(newTaskDeadline),
-          stage: 'To Do',
-          tags: ['Manager Initiative']
-        })
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      showToast(`New Initiative "${newTaskTitle}" deployed!`, 'success');
-      await fetchDashboardData();
-      triggerActivityLog('task_creation', `Deployed new strategic initiative "${newTaskTitle}" assigned to ${newTaskOwner}`, {
-        taskId: data.task._id,
-        owner: newTaskOwner,
-        priority: newTaskPriority
-      }).catch(console.error);
-      
-      setNewTaskTitle('');
-      setNewTaskDesc('');
-      setNewTaskDeadline('');
-      setShowTaskModal(false);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to deploy initiative', 'error');
-    }
-  };
-
-  const handleOpenTask = (task: ManagerTask) => {
-    setSelectedTask(task);
-    setEditOwner(task.owner);
-    setEditPriority(task.priority);
-    setEditStatus(task.status);
-    setEditDeadline(task.deadline);
-  };
-
-  const handleSaveTaskDetails = async () => {
-    if (!selectedTask) return;
-    const isCompleted = editStatus === 'Done';
-    const computedProgress = isCompleted ? 100 : selectedTask.progress;
-    
-    try {
-      const res = await fetch(`/api/tasks/${selectedTask.id}`, {
+      const res = await fetch(`/api/leads/approval/${approvalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         credentials: 'include',
-        body: JSON.stringify({
-          assignee: editOwner,
-          priority: editPriority,
-          stage: editStatus,
-          dueDate: editDeadline ? new Date(editDeadline) : undefined,
-          progress: computedProgress
-        })
+        body: JSON.stringify({ status: 'approved' })
       });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-
-      setSelectedTask(null);
-      showToast(`Task parameters successfully synced!`, 'success');
-      await fetchDashboardData();
-      triggerActivityLog('task_update', `Updated initiative parameters for task ${selectedTask.id} (${editStatus})`, {
-        taskId: selectedTask.id,
-        status: editStatus,
-        priority: editPriority
-      }).catch(console.error);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save task details', 'error');
-    }
-  };
-
-  const handleDeleteTask = async () => {
-    if (!selectedTask) return;
-    if (!confirm('Are you sure you want to delete this initiative?')) return;
-    try {
-      const res = await fetch(`/api/tasks/${selectedTask.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-
-      setSelectedTask(null);
-      showToast(`Initiative successfully deleted!`, 'success');
-      await fetchDashboardData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete task', 'error');
-    }
-  };
-
-  const handleAuthorizeApproval = async (id: string) => {
-    try {
-      const res = await fetch('/api/leads/approval', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        credentials: 'include',
-        body: JSON.stringify({ requestId: id, action: 'approve', reviewNote: 'Authorized by Manager via Dashboard' })
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      showToast(`Request authorized successfully!`, 'success');
+      showToast('Approval authorized successfully.', 'success');
+      triggerActivityLog('workflow_action', `Authorized approval request ${approvalId}`).catch(console.error);
       await fetchApprovals();
     } catch (err: any) {
       showToast(err.message || 'Failed to authorize approval', 'error');
     }
   };
 
-  const handleDenyApproval = async (id: string) => {
+  const handleDenyApproval = async (approvalId: string) => {
     try {
-      const res = await fetch('/api/leads/approval', {
+      const res = await fetch(`/api/leads/approval/${approvalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         credentials: 'include',
-        body: JSON.stringify({ requestId: id, action: 'reject', reviewNote: 'Denied by Manager via Dashboard' })
+        body: JSON.stringify({ status: 'rejected' })
       });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      
-      showToast(`Request denied`, 'error');
+      showToast('Approval request denied.', 'success');
+      triggerActivityLog('workflow_action', `Denied approval request ${approvalId}`).catch(console.error);
       await fetchApprovals();
     } catch (err: any) {
       showToast(err.message || 'Failed to deny approval', 'error');
     }
-  };
-
-  const handleApproveInvoice = async (id: string) => {
-    try {
-      const res = await fetch('/api/invoices', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        credentials: 'include',
-        body: JSON.stringify({ id, action: 'approve' })
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      showToast(`Invoice approved and marked as Paid!`, 'success');
-      await fetchInvoices();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to approve invoice', 'error');
-    }
-  };
-
-  const handleSendReminder = async (id: string) => {
-    const inv = invoices.find((i: any) => i.id === id);
-    try {
-      const res = await fetch('/api/invoices', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        credentials: 'include',
-        body: JSON.stringify({ id, action: 'send_reminder', clientEmail: inv?.clientEmail })
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      showToast(`WhatsApp & Email reminder dispatched!`, 'info');
-      await fetchInvoices();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to send reminder', 'error');
-    }
-  };
-
-  const handleAddDirective = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDirSubject || !newDirMsg) {
-      showToast('Please enter both subject and message', 'warning');
-      return;
-    }
-    const fullMsg = `[${newDirSubject}] ${newDirMsg}`;
-    
-    // Broadcast locally for now but log in system activity
-    setDirectives(prev => [
-      { user: 'Maya Thompson', msg: fullMsg, time: 'Just now', priority: newDirPriority },
-      ...prev
-    ]);
-    
-    showToast('Directive broadcasted successfully!', 'success');
-    triggerActivityLog('workflow_action', `Broadcasted new operational directive: [${newDirSubject}]`).catch(console.error);
-    setNewDirSubject('');
-    setNewDirMsg('');
-  };
-
-  const handleAcknowledgeDirective = async (index: number) => {
-    const dir = directives[index];
-    if (dir.id) {
-      try {
-        const res = await fetch('/api/notifications', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-          credentials: 'include',
-          body: JSON.stringify({ id: dir.id })
-        });
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      } catch (e) {
-        console.error('Failed to mark notification as read:', e);
-      }
-    }
-    setDirectives(prev => prev.filter((_, i) => i !== index));
-    showToast('Directive archived', 'success');
-  };
-
-  const handleSendChatMsg = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newChatMsg.trim()) return;
-    
-    const userMsg = newChatMsg;
-    setChatMessages(prev => [
-      ...prev,
-      { user: currentUser?.name || 'Manager', msg: userMsg, time: 'Just now', isSelf: true }
-    ]);
-    setNewChatMsg('');
-    
-    setTimeout(() => {
-       const replies = [
-          "On it! Task queue synced.",
-          "Strategic directives acknowledged, proceeding now.",
-          "I will verify the validation results by EOD.",
-          "Understood. Initiating recalibration protocol."
-       ];
-       const names = employees.length > 0 ? employees.map(emp => emp.name) : ["Team Member"];
-       const randReply = replies[Math.floor(Math.random() * replies.length)];
-       const randName = names[Math.floor(Math.random() * names.length)];
-       
-       setChatMessages(prev => [
-          ...prev,
-          { user: randName, msg: randReply, time: 'Just now', isSelf: false }
-       ]);
-       showToast(`New message from ${randName}`, 'info');
-    }, 1200);
   };
 
   const handleGenerateBriefing = () => {
@@ -864,14 +480,8 @@ function ManagerDashboard() {
   };
 
   const handleApplyBriefingDirective = () => {
-    const firstEmp = employees[0]?.name || 'Personnel';
-    const secondEmp = employees[1]?.name || 'Staff';
-    setDirectives(prev => [
-      { user: 'Executive System', msg: `[APAC Cloudflare Sync] Reallocate ${firstEmp} to assist ${secondEmp} on APAC-West migration nodes.`, time: 'Just now', priority: 'High' },
-      ...prev
-    ]);
     showToast('Briefing directive broadcasted to Department Hub!', 'success');
-    triggerActivityLog('workflow_action', 'Broadcasted executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
+    triggerActivityLog('workflow_action', 'Applied executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
     setShowBriefingModal(false);
   };
 
@@ -887,11 +497,6 @@ function ManagerDashboard() {
       tasks.forEach(t => {
         csvContent += `${t.id},${t.title},${t.priority},${t.owner},${t.deadline},${t.progress}%,${t.status}\n`;
       });
-    } else {
-      csvContent += "Directives,Broadcast Date,Priority\n";
-      directives.forEach(d => {
-        csvContent += `"${d.msg.replace(/"/g, '""')}",${d.time},${d.priority}\n`;
-      });
     }
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -903,18 +508,6 @@ function ManagerDashboard() {
     showToast(`Spreadsheet for ${reportTitle} successfully compiled!`, 'success');
     triggerActivityLog('export_csv', `Exported spreadsheet for ${reportTitle}`).catch(console.error);
   };
-
-  // Perform dynamic filtering on Tasks list
-  const filteredTasks = tasks.filter(task => {
-    const matchesOwner = filterOwner === 'All' || task.owner === filterOwner;
-    const matchesPriority = filterPriority === 'All' || task.priority === filterPriority;
-    const matchesStatus = filterStatus === 'All' || task.status === filterStatus;
-    const matchesQuery = searchQuery === '' || 
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.owner.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesOwner && matchesPriority && matchesStatus && matchesQuery;
-  });
 
   if (isLoading) {
     return (
@@ -988,118 +581,6 @@ function ManagerDashboard() {
                 </motion.div>
               )}
               
-              {activeTab === 'tasks' && (
-                <motion.div key="tasks" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-6">
-                  <div className="flex justify-between items-end mb-4 flex-wrap gap-4">
-                     <div>
-                        <h2 className="text-xl font-bold text-primary">Strategic Allocations</h2>
-                        <p className="text-secondary text-xs">Manage cross-functional initiatives and project distribution.</p>
-                     </div>
-                     <button onClick={() => setShowTaskModal(true)} className="px-4 py-2.5 bg-accent text-white rounded-xl text-xs font-bold hover:bg-indigo-600 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 active:scale-95">
-                        <Plus size={14}/> Deploy Initiative
-                     </button>
-                  </div>
-
-                  {loadingTasks ? (
-                    <SectionSpinner message="Loading Initiatives..." />
-                  ) : tasksError ? (
-                    <SectionError message={tasksError} />
-                  ) : (
-                    <>
-
-                  {/* Task Filter Controls */}
-                  <div className="p-4 bg-surface border border-border rounded-2xl grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-                      <input 
-                        type="text" 
-                        placeholder="Search initiative..." 
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full bg-base border border-border rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-1 focus:ring-accent outline-none"
-                      />
-                    </div>
-                    <div>
-                      <select 
-                        value={filterOwner} 
-                        onChange={e => setFilterOwner(e.target.value)}
-                        className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-accent outline-none"
-                      >
-                        <option value="All">All Assignees</option>
-                        {employees.map(emp => (
-                          <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <select 
-                        value={filterPriority} 
-                        onChange={e => setFilterPriority(e.target.value)}
-                        className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-accent outline-none"
-                      >
-                        <option value="All">All Priorities</option>
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                        <option value="Critical">Critical</option>
-                      </select>
-                    </div>
-                    <div>
-                      <select 
-                        value={filterStatus} 
-                        onChange={e => setFilterStatus(e.target.value)}
-                        className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-accent outline-none"
-                      >
-                        <option value="All">All Statuses</option>
-                        <option value="To Do">To Do</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Under Review">Under Review</option>
-                        <option value="Blocked">Blocked</option>
-                        <option value="Done">Done</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                     {filteredTasks.length > 0 ? filteredTasks.map((t, i) => (
-                       <div key={t.id} onClick={() => handleOpenTask(t)} className="p-5 bg-surface border border-border rounded-2xl hover:border-accent/40 group cursor-pointer transition-all">
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                             <div className="flex items-start gap-5">
-                                <div className="w-12 h-12 rounded-xl bg-base border border-border flex flex-col items-center justify-center shrink-0 group-hover:bg-accent/5 transition-colors overflow-hidden">
-                                    <span className="text-[7px] font-bold text-tertiary uppercase">SYS</span>
-                                    <span className="text-[8px] font-extrabold text-indigo-600 dark:text-indigo-400 leading-none mt-0.5 w-full text-center px-0.5 truncate">{String(t.id).slice(-6).toUpperCase()}</span>
-                                </div>
-                                <div>
-                                   <h4 className="text-sm font-bold text-primary mb-2 group-hover:text-accent transition-colors">{t.title}</h4>
-                                   <div className="flex flex-wrap gap-2.5">
-                                      <Badge text={t.priority} type={t.priority === 'Critical' ? 'danger' : t.priority === 'High' ? 'warning' : 'info'} />
-                                      <span className="flex items-center gap-1 text-[9px] font-bold text-secondary uppercase bg-base px-2 py-0.5 rounded border border-border/50"><Users size={10} className="text-accent"/> {t.owner}</span>
-                                      <span className="flex items-center gap-1 text-[9px] font-bold text-secondary uppercase bg-base px-2 py-0.5 rounded border border-border/50"><Calendar size={10} className="text-accent"/> Due {t.deadline}</span>
-                                   </div>
-                                </div>
-                             </div>
-                             <div className="flex flex-col items-end gap-2 shrink-0">
-                                <div className="flex items-center gap-3">
-                                   <span className="text-[10px] font-bold text-secondary uppercase">{t.status}</span>
-                                   <span className="text-xs font-bold text-primary tabular-nums">{t.progress}%</span>
-                                </div>
-                                <div className="w-48 h-1.5 bg-base rounded-full overflow-hidden border border-border/50">
-                                   <div className={`h-full rounded-full ${t.status === 'Blocked' ? 'bg-red-500' : t.status === 'Done' ? 'bg-emerald-500' : 'bg-accent'}`} style={{ width: `${t.progress}%` }}></div>
-                                </div>
-                             </div>
-                          </div>
-                       </div>
-                     )) : (
-                       <div className="p-12 text-center border border-dashed border-border rounded-3xl bg-surface/30">
-                          <p className="text-xs text-secondary font-medium">No initiative tasks matches active filters.</p>
-                       </div>
-                     )}
-                  </div>
-                    </>
-                  )}
-                </motion.div>
-              )}
-
               {activeTab === 'approvals' && (
                 <motion.div key="approvals" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
                    <div className="flex flex-col gap-1 mb-6">
@@ -1235,246 +716,6 @@ function ManagerDashboard() {
                 </motion.div>
               )}
 
-              {activeTab === 'crm' && (
-                <motion.div key="crm" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}} className="space-y-6">
-                   <div className="flex justify-between items-end mb-2 flex-wrap gap-4">
-                      <div>
-                         <h2 className="text-xl font-bold text-primary">CRM Operations</h2>
-                         <p className="text-secondary text-xs">Read-only monitoring of marketing representative lead streams and communication logs.</p>
-                      </div>
-                      <Badge text="Telemetry Connected" type="success" />
-                   </div>
-
-                   {loadingLeads ? (
-                     <SectionSpinner message="Fetching CRM Lead Streams..." />
-                   ) : leadsError ? (
-                     <SectionError message={leadsError} />
-                   ) : (
-                     <>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     {['Hot', 'Warm', 'Cold'].map(level => (
-                       <div key={level} className="p-4 bg-base/20 rounded-2xl border border-border/50 space-y-4">
-                         <h3 className="text-[10px] font-bold uppercase tracking-widest px-1 flex items-center justify-between">
-                           <span>{level} pipeline</span>
-                           <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${level === 'Hot' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : level === 'Warm' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
-                             {leads.filter(l => l.status === level).length}
-                           </span>
-                         </h3>
-                         <div className="space-y-3">
-                           {leads.filter(l => l.status === level).map(lead => (
-                             <div key={lead.id} onClick={() => setSelectedLead(lead)} className="p-4 bg-surface border border-border rounded-xl hover:border-accent/40 cursor-pointer transition-all group">
-                               <div className="flex justify-between items-start gap-2 mb-1.5">
-                                 <Badge text={lead.stage} type="info" />
-                                 <span className="text-[8px] font-mono text-tertiary">#{lead.id}</span>
-                               </div>
-                               <h4 className="text-xs font-bold text-primary leading-none mb-1 group-hover:text-accent transition-colors">{lead.name}</h4>
-                               <span className="text-[10px] text-secondary font-medium block mb-3">{lead.company}</span>
-                               
-                               <div className="flex justify-between items-center text-[10px] pt-2 border-t border-border/50 text-secondary">
-                                 <span className="font-mono font-bold text-primary">{lead.value}</span>
-                                 <span className="text-[8px] font-bold uppercase tracking-wider bg-base px-2 py-0.5 border rounded">{lead.source}</span>
-                               </div>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                     ))}
-                   </div>
-                     </>
-                   )}
-                </motion.div>
-              )}
-
-              {activeTab === 'invoices' && (
-                <motion.div key="invoices" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}} className="space-y-6">
-                   <div className="flex justify-between items-end mb-2">
-                      <div>
-                         <h2 className="text-xl font-bold text-primary">Invoices & Billing</h2>
-                         <p className="text-secondary text-xs">Approve employee payment requests and monitor outbound client invoice states.</p>
-                      </div>
-                      <Badge text="Razorpay Synced" type="info" />
-                   </div>
-
-                   <div className="space-y-4">
-                      {loadingInvoices ? (
-                        <SectionSpinner message="Loading Invoices..." />
-                      ) : invoicesError ? (
-                        <SectionError message={invoicesError} />
-                      ) : invoices.length === 0 ? (
-                        <div className="p-12 text-center border border-dashed border-border rounded-3xl bg-surface/30">
-                          <DollarSign size={32} className="text-accent/30 mx-auto mb-4" />
-                          <p className="text-sm font-bold text-secondary mb-1">No Invoices</p>
-                          <p className="text-xs text-tertiary">No invoices found in the billing system. Create one from the Admin panel.</p>
-                        </div>
-                      ) : invoices.map(inv => (
-                       <Card key={inv.id} className="p-5 hover:border-accent/20 group transition-all">
-                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                           <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center text-accent font-bold">
-                               $
-                             </div>
-                             <div>
-                               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                 <span className="text-xs font-bold text-primary">{inv.client}</span>
-                                 <span className="text-[9px] text-tertiary font-mono">#{inv.id}</span>
-                               </div>
-                               <div className="text-[10px] text-secondary font-medium">Due Date: {inv.due} · Reminders sent: {inv.remindersSent}</div>
-                             </div>
-                           </div>
-                           <div className="flex items-center gap-3 shrink-0">
-                             <span className="text-sm font-black text-primary mr-2">{inv.amount}</span>
-                             <Badge text={inv.status} type={inv.status === 'Paid' ? 'success' : inv.status === 'Overdue' ? 'danger' : 'warning'} />
-                             
-                             {inv.status !== 'Paid' && (
-                               <div className="flex items-center gap-2 ml-3">
-                                 <button onClick={() => handleSendReminder(inv.id)} className="px-3 py-1.5 bg-base border border-border rounded-lg text-[9px] font-bold uppercase hover:bg-accent/5 hover:border-accent/30 transition-all active:scale-95">Remind Client</button>
-                                 <button onClick={() => handleApproveInvoice(inv.id)} className="px-3 py-1.5 bg-accent text-white rounded-lg text-[9px] font-bold uppercase hover:bg-indigo-600 transition-all active:scale-95 shadow-sm shadow-accent/10">Approve</button>
-                               </div>
-                             )}
-                           </div>
-                         </div>
-                       </Card>
-                     ))}
-                   </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'directory' && (
-                <motion.div key="directory" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}} className="space-y-6">
-                   <div className="flex justify-between items-end mb-2">
-                      <div>
-                         <h2 className="text-xl font-bold text-primary">Workspace Personnel</h2>
-                         <p className="text-secondary text-xs">Directory of all active accounts mapped inside the ops platform workspace.</p>
-                      </div>
-                      <Badge text={`${employees.length} Accounts Active`} type="success" />
-                   </div>
-
-                   {loadingTeam ? (
-                     <SectionSpinner message="Loading Workspace Personnel..." />
-                   ) : teamError ? (
-                     <SectionError message={teamError} />
-                   ) : (
-                     <Card className="p-0 overflow-hidden">
-                     <table className="w-full text-left text-xs border-collapse">
-                       <thead className="bg-base/80 border-b border-border text-[9px] font-bold text-tertiary uppercase tracking-wider">
-                         <tr>
-                           <th className="px-6 py-3.5">Account Member</th>
-                           <th className="px-6 py-3.5">System Email</th>
-                           <th className="px-6 py-3.5">Clearance Rank</th>
-                           <th className="px-6 py-3.5">Attendance Status</th>
-                           <th className="px-6 py-3.5 text-right">Sprint Load</th>
-                         </tr>
-                       </thead>
-                       <tbody className="divide-y divide-border">
-                         {employees.map((emp, idx) => (
-                           <tr key={idx} className="hover:bg-base/30 transition-colors">
-                             <td className="px-6 py-4 flex items-center gap-3">
-                               <div className={`w-8 h-8 rounded-lg ${emp.color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm`}>
-                                 {emp.avatar}
-                               </div>
-                               <span className="font-bold text-primary">{emp.name}</span>
-                             </td>
-                             <td className="px-6 py-4 font-medium text-secondary">{emp.email}</td>
-                             <td className="px-6 py-4"><Badge text={emp.role} type={emp.role.includes('Director') || emp.role.includes('Admin') ? 'danger' : 'info'} /></td>
-                             <td className="px-6 py-4">
-                               <div className="flex items-center gap-1.5">
-                                 <div className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-orange-500' : 'bg-red-500'} animate-pulse`} />
-                                 <span className="font-bold uppercase tracking-wider text-[9px] text-secondary">{emp.status}</span>
-                               </div>
-                             </td>
-                             <td className="px-6 py-4 text-right font-bold text-primary">{emp.activeTasks} active tasks</td>
-                           </tr>
-                         ))}
-                       </tbody>
-                     </table>
-                   </Card>
-                   )}
-                </motion.div>
-              )}
-
-              {activeTab === 'communication' && (
-                <motion.div key="communication" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                   <div className="space-y-6">
-                      <div className="flex flex-col gap-1 mb-2">
-                         <h2 className="text-xl font-bold text-primary">Department Hub</h2>
-                         <p className="text-secondary text-xs">Internal broadcasts, strategic directives, and team feedback.</p>
-                      </div>
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                         <div className="lg:col-span-2 space-y-4">
-                            {loadingDirectives ? (
-                               <SectionSpinner message="Fetching Directives..." />
-                            ) : directivesError ? (
-                               <SectionError message={directivesError} />
-                            ) : directives.length === 0 ? (
-                               <div className="p-12 text-center border-2 border-dashed border-border rounded-3xl bg-surface/30">
-                                  <p className="text-xs text-secondary font-medium">All directives acknowledged! Team hub is clear.</p>
-                               </div>
-                            ) : (
-                               directives.map((broadcast, i) => (
-                                 <Card key={i} delay={i * 0.05} className="hover:border-accent/20">
-                                    <div className="flex justify-between items-start mb-3">
-                                       <div className="flex items-center gap-3">
-                                          <div className="w-8 h-8 rounded-full bg-accent/10 text-accent flex items-center justify-center font-bold text-xs">
-                                            {broadcast.user.split(' ').map(n=>n[0]).join('')}
-                                          </div>
-                                          <span className="text-xs font-bold text-primary">{broadcast.user}</span>
-                                       </div>
-                                       <Badge text={broadcast.priority} type={broadcast.priority === 'Critical' ? 'danger' : broadcast.priority === 'High' ? 'warning' : 'default'} />
-                                    </div>
-                                    <p className="text-xs text-secondary leading-relaxed mb-4">{broadcast.msg}</p>
-                                    <div className="flex items-center justify-between pt-3 border-t border-border">
-                                       <span className="text-[10px] text-tertiary font-bold uppercase">{broadcast.time}</span>
-                                       <button onClick={() => handleAcknowledgeDirective(i)} className="text-[10px] font-bold text-accent uppercase hover:underline cursor-pointer">Acknowledge</button>
-                                    </div>
-                                 </Card>
-                               ))
-                            )}
-                         </div>
-                         <Card className="h-fit sticky top-0">
-                            <h3 className="text-xs font-bold text-primary mb-6 uppercase tracking-wider">New Directive</h3>
-                            <form onSubmit={handleAddDirective} className="space-y-4">
-                               <div>
-                                  <label className="text-[9px] font-bold text-tertiary uppercase block mb-1.5">Subject</label>
-                                  <input 
-                                    type="text" 
-                                    required
-                                    value={newDirSubject}
-                                    onChange={e => setNewDirSubject(e.target.value)}
-                                    className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none" 
-                                    placeholder="e.g., Egress Bandwidth Check" 
-                                  />
-                               </div>
-                               <div>
-                                  <label className="text-[9px] font-bold text-tertiary uppercase block mb-1.5">Priority</label>
-                                  <select 
-                                    value={newDirPriority}
-                                    onChange={e => setNewDirPriority(e.target.value)}
-                                    className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                                  >
-                                    <option value="Normal">Normal</option>
-                                    <option value="High">High</option>
-                                    <option value="Critical">Critical</option>
-                                  </select>
-                               </div>
-                               <div>
-                                  <label className="text-[9px] font-bold text-tertiary uppercase block mb-1.5">Message</label>
-                                  <textarea 
-                                    required
-                                    value={newDirMsg}
-                                    onChange={e => setNewDirMsg(e.target.value)}
-                                    className="w-full bg-base border border-border rounded-xl px-4 py-3 text-xs text-primary focus:ring-1 focus:ring-accent outline-none h-24 resize-none" 
-                                    placeholder="Type your directive here..."
-                                  ></textarea>
-                               </div>
-                               <button type="submit" className="w-full py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 active:scale-95">
-                                  <Send size={12} /> Broadcast
-                               </button>
-                            </form>
-                         </Card>
-                      </div>
-                   </div>
-                </motion.div>
-              )}
               {activeTab === 'reports' && (
                 <motion.div key="reports" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
                    <div className="flex flex-col gap-1 mb-6">
@@ -1533,7 +774,7 @@ function ManagerDashboard() {
                        <div className="text-lg font-bold text-primary">
                           {analytics?.revenue?.current
                             ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                            : `${invoices.filter(i => i.status === 'Paid').length} paid`}
+                            : '—'}
                         </div>
                     </div>
                     <div className="p-4 bg-base border border-border rounded-xl">
@@ -1638,7 +879,7 @@ function ManagerDashboard() {
                          <div className="text-xs font-bold text-accent">
                            {analytics?.revenue?.current
                              ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                             : `${invoices.filter(i => i.status === 'Paid').length} inv. paid`}
+                             : '—'}
                          </div>
                        </div>
                      </div>
@@ -1753,329 +994,6 @@ function ManagerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Task Creation Modal */}
-      <AnimatePresence>
-        {showTaskModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface border border-border rounded-3xl w-full max-w-md p-6 shadow-2xl relative"
-            >
-              <h3 className="text-lg font-bold text-primary mb-2">Deploy Strategic Initiative</h3>
-              <p className="text-secondary text-xs mb-6">Allocate system resources and define ownership protocols.</p>
-              
-              <form onSubmit={handleCreateTask} className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Initiative Title</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newTaskTitle}
-                    onChange={e => setNewTaskTitle(e.target.value)}
-                    placeholder="e.g. Compression validation" 
-                    className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Description</label>
-                  <textarea 
-                    value={newTaskDesc}
-                    onChange={e => setNewTaskDesc(e.target.value)}
-                    placeholder="Brief description of project requirements..." 
-                    className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none h-16 resize-none"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Priority</label>
-                    <select 
-                      value={newTaskPriority}
-                      onChange={e => setNewTaskPriority(e.target.value as any)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                      <option value="Critical">Critical</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Owner</label>
-                    <select 
-                      value={newTaskOwner}
-                      onChange={e => setNewTaskOwner(e.target.value)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    >
-                      {employees.map(emp => (
-                        <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="text-[10px] font-bold text-tertiary uppercase block mb-1.5">Deadline</label>
-                  <input 
-                    type="date" 
-                    required
-                    value={newTaskDeadline}
-                    onChange={e => setNewTaskDeadline(e.target.value)}
-                    className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                  />
-                </div>
-                
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowTaskModal(false)}
-                    className="flex-1 py-3 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"
-                  >
-                    Deploy Initiative
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Advanced Task Edit / Details Modal */}
-      <AnimatePresence>
-        {selectedTask && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface border border-border rounded-3xl w-full max-w-lg p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]"
-            >
-              <div className="flex justify-between items-start border-b border-border pb-4 mb-4">
-                <div>
-                  <span className="text-[9px] font-bold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded tracking-wide font-mono">#{selectedTask.id}</span>
-                  <h3 className="text-base font-bold text-primary mt-2">{selectedTask.title}</h3>
-                </div>
-                <button onClick={() => setSelectedTask(null)} className="p-1.5 hover:bg-base rounded-lg text-secondary transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-5 pr-1 custom-scrollbar text-xs">
-                <div>
-                  <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Strategic Description</label>
-                  <p className="p-3 bg-base border border-border rounded-xl text-secondary leading-relaxed font-sans">{selectedTask.desc}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Assignee Owner</label>
-                    <select 
-                      value={editOwner}
-                      onChange={e => setEditOwner(e.target.value)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    >
-                      {employees.map(emp => (
-                        <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Priority Rank</label>
-                    <select 
-                      value={editPriority}
-                      onChange={e => setEditPriority(e.target.value as any)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                      <option value="Critical">Critical</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Strategic Status</label>
-                    <select 
-                      value={editStatus}
-                      onChange={e => setEditStatus(e.target.value as any)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    >
-                      <option value="To Do">To Do</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Under Review">Under Review</option>
-                      <option value="Blocked">Blocked</option>
-                      <option value="Done">Done</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[9px] font-bold text-tertiary uppercase mb-1.5">Target Deadline</label>
-                    <input 
-                      type="date" 
-                      value={editDeadline}
-                      onChange={e => setEditDeadline(e.target.value)}
-                      className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Subtask Status list */}
-                <div>
-                  <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider mb-2">Initiative Subtasks Checklist</h4>
-                  {selectedTask.subtasks.length > 0 ? (
-                    <div className="space-y-1.5 bg-base p-3 rounded-xl border border-border/50">
-                      {selectedTask.subtasks.map((sub, sIdx) => (
-                        <div key={sIdx} className="flex items-center gap-2 text-xs py-0.5">
-                          {sub.done ? <CheckCircle size={12} className="text-emerald-500 shrink-0" /> : <div className="w-3 h-3 rounded-full border border-border shrink-0" />}
-                          <span className={sub.done ? 'text-secondary line-through' : 'text-primary'}>{sub.title}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-base text-center border border-dashed rounded-xl text-tertiary uppercase text-[8px] font-bold">No subtask checklists mapped.</div>
-                  )}
-                </div>
-
-                {/* Employee Logs list */}
-                <div>
-                  <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider mb-2">Employee Telemetry progress logs</h4>
-                  {selectedTask.logs.length > 0 ? (
-                    <div className="space-y-2 border-l-2 border-border pl-2.5">
-                      {selectedTask.logs.map((log, lIdx) => (
-                        <div key={lIdx} className="text-xs">
-                          <div className="flex justify-between items-center text-[9px] text-secondary font-bold uppercase mb-0.5">
-                            <span>{log.author}</span>
-                            <span>{log.time}</span>
-                          </div>
-                          <p className="text-primary font-medium">{log.note}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-base text-center border border-dashed rounded-xl text-tertiary uppercase text-[8px] font-bold">No employee logs registered on this initiative.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-border pt-4 mt-4 flex justify-between gap-3 shrink-0">
-                <button 
-                  type="button" 
-                  onClick={handleDeleteTask}
-                  className="px-4 py-2.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center gap-1.5"
-                >
-                  <Trash2 size={14} /> Delete Initiative
-                </button>
-                <div className="flex gap-3">
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedTask(null)}
-                    className="px-4 py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={handleSaveTaskDetails}
-                    className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"
-                  >
-                    Apply Sync Changes
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* CRM Lead Details Modal */}
-      <AnimatePresence>
-        {selectedLead && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface border border-border rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[80vh]"
-            >
-              <div className="flex justify-between items-start border-b border-border pb-4 mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[9px] font-bold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded tracking-wide font-mono">#{selectedLead.id}</span>
-                    <Badge text={selectedLead.stage} type="info" />
-                  </div>
-                  <h3 className="text-base font-bold text-primary">{selectedLead.name}</h3>
-                  <span className="text-xs text-secondary font-medium">{selectedLead.company}</span>
-                </div>
-                <button onClick={() => setSelectedLead(null)} className="p-1.5 hover:bg-base rounded-lg text-secondary transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar text-xs">
-                <div className="p-4 bg-base border border-border rounded-2xl grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[8px] font-bold text-tertiary uppercase block mb-0.5">Estimated Value</span>
-                    <span className="text-sm font-black text-accent">{selectedLead.value}</span>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold text-tertiary uppercase block mb-0.5">Lead Priority</span>
-                    <Badge text={selectedLead.status} type={selectedLead.status === 'Hot' ? 'danger' : 'warning'} />
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold text-tertiary uppercase block mb-0.5">Acquisition Source</span>
-                    <span className="font-semibold text-secondary">{selectedLead.source}</span>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold text-tertiary uppercase block mb-0.5">Email Line</span>
-                    <span className="font-semibold text-secondary truncate block">{selectedLead.email}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider mb-2 flex items-center gap-1"><Mail size={12} className="text-accent" /> Marketing Outbox History</h4>
-                  {selectedLead.communications.length > 0 ? (
-                    <div className="space-y-2 bg-base p-3 rounded-xl border border-border/50">
-                      {selectedLead.communications.map((comm, idx) => (
-                        <div key={idx} className="p-2 bg-surface rounded-lg border border-border/40 text-[11px] leading-snug">
-                          <div className="flex justify-between items-center text-[8px] font-bold text-secondary uppercase mb-1">
-                            <span>From: {comm.sender}</span>
-                            <span>{comm.date}</span>
-                          </div>
-                          <p className="text-primary font-semibold font-sans">{comm.subject}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-base rounded-2xl text-center border border-dashed border-border text-tertiary uppercase text-[8px] font-bold">No outreach communications records.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-border pt-4 mt-4 flex justify-end shrink-0">
-                <button 
-                  type="button" 
-                  onClick={() => setSelectedLead(null)}
-                  className="w-full py-2.5 bg-base border border-border rounded-xl text-xs font-bold text-secondary hover:bg-border/20 transition-all active:scale-95"
-                >
-                  Close Lead Viewer
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 </div>
   );
 }

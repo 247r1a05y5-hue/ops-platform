@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -6,14 +6,13 @@ import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   Target, Mail, CreditCard, Folder, Plus, Upload,
-  ChevronRight, MoreHorizontal, Send, Download,
-  Clock, FileText, Share2, Trash2, UserPlus,
-  Zap, Star, ArrowUpRight, BarChart3, X,
-  Image, Type, Paperclip, Settings, Hash, Shield, Bell, MessageSquare,
-  CheckSquare, AlertCircle
+  ChevronRight, Send, Download,
+  Clock, FileText, Share2,
+  ArrowUpRight, BarChart3, X,
+  Image, Type, Paperclip, Settings, Hash, Shield, MessageSquare,
+  CheckSquare, Star, Zap, UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { triggerActivityLog } from '@/utils/activity';
 import { downloadCSV } from '@/utils/export';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 
@@ -1089,7 +1088,7 @@ const ResourceModule = ({
             { label: 'Contracts', count: allDocs.filter(d => d.fileName.includes('.pdf')).length, icon: Shield, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
             { label: 'Campaign Proposals', count: allDocs.length, icon: FileText, color: 'text-accent', bg: 'bg-accent/10' },
             { label: 'Shared Brand Assets', count: allDocs.filter(d => d.fileName.includes('.zip') || d.fileName.includes('.png')).length, icon: Image, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-            { label: 'Total Document Size', count: allDocs.length, icon: Share2, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+            { label: 'Shared Assets', count: allDocs.length, icon: Share2, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
           ].map((s, i) => (
             <Card key={i} className="p-4 flex items-center justify-between group hover:border-accent/40 cursor-pointer bg-surface">
                <div className="flex items-center gap-3">

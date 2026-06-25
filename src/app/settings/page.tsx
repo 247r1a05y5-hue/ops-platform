@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { useUI } from '@/context/UIContext';
@@ -40,43 +40,10 @@ export default function Settings() {
   const [tfaSetupToken, setTfaSetupToken] = useState('');
   const [tfaLoading, setTfaLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [loadingTeam, setLoadingTeam] = useState(false);
   const [billingData, setBillingData] = useState<any>(null);
   const [loadingBilling, setLoadingBilling] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('Employee');
 
-  const fetchTeam = async () => {
-    if (activeTab !== 'Team & Roles') return;
-    setLoadingTeam(true);
-    try {
-      const res = await fetch('/api/settings/team', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        // Merge active members and invitations
-        const activeList = (data.members || []).map((m: any) => ({
-          id: m._id,
-          name: m.name,
-          email: m.email,
-          role: m.role === 'Staff' ? 'Employee' : m.role === 'User' ? 'Marketing Rep' : m.role,
-          status: m.suspended ? 'Suspended' : 'Active'
-        }));
-        const inviteList = (data.invitations || []).map((i: any) => ({
-          id: i._id,
-          name: i.email.split('@')[0],
-          email: i.email,
-          role: i.role === 'Staff' ? 'Employee' : i.role === 'User' ? 'Marketing Rep' : i.role,
-          status: 'Invited'
-        }));
-        setTeamMembers([...activeList, ...inviteList]);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingTeam(false);
-    }
-  };
+
 
   const fetchTwoFAStatus = async () => {
     try {
@@ -103,7 +70,6 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    fetchTeam();
     fetchBilling();
     if (activeTab === 'Security') fetchTwoFAStatus();
   }, [activeTab]);
@@ -219,104 +185,11 @@ export default function Settings() {
     finally { setIsSaving(false); }
   };
 
-  const handleInvite = async () => {
-    if (!inviteEmail) { showToast('Please enter an email', 'warning'); return; }
-    try {
-      let roleMap: Record<string, string> = {
-        'Admin': 'Admin',
-        'Manager': 'Manager',
-        'Employee': 'Staff',
-        'Marketing Rep': 'User'
-      };
-      const dbRole = roleMap[inviteRole] || 'Staff';
-
-      const res = await fetch('/api/settings/team', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        body: JSON.stringify({ email: inviteEmail, role: dbRole })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(`Invitation sent to ${inviteEmail}`, 'success');
-        setInviteEmail('');
-        fetchTeam();
-      } else {
-        showToast(data.error || 'Failed to send invitation', 'error');
-      }
-    } catch {
-      showToast('Network error sending invitation', 'error');
-    }
-  };
-
-  const removeMember = async (id: string | number) => {
-    if (String(id).length < 5) {
-      setTeamMembers(prev => prev.filter(m => m.id !== id));
-      showToast('Team member removed', 'success');
-      return;
-    }
-    if (!confirm('Are you sure you want to remove this member?')) return;
-    try {
-      const res = await fetch(`/api/settings/team?userId=${id}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast('Team member removed', 'success');
-        fetchTeam();
-      } else {
-        showToast(data.error || 'Failed to remove member', 'error');
-      }
-    } catch {
-      showToast('Network error removing member', 'error');
-    }
-  };
-
-  const changeMemberRole = async (id: string | number, currentMemberRole: string) => {
-    if (String(id).length < 5) {
-      showToast('Cannot modify mock member roles', 'warning');
-      return;
-    }
-    const newRole = prompt('Enter new role (Admin, Manager, Employee, Marketing Rep):', currentMemberRole);
-    if (!newRole) return;
-    
-    let roleMap: Record<string, string> = {
-      'Admin': 'Admin',
-      'Manager': 'Manager',
-      'Employee': 'Staff',
-      'Marketing Rep': 'User',
-      'Staff': 'Staff',
-      'User': 'User'
-    };
-    const dbRole = roleMap[newRole] || roleMap[newRole.trim()];
-    if (!dbRole) {
-      showToast('Invalid role. Use Admin, Manager, Employee, or Marketing Rep.', 'warning');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/settings/team', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        body: JSON.stringify({ userId: id, role: dbRole })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast('Member role updated successfully', 'success');
-        fetchTeam();
-      } else {
-        showToast(data.error || 'Failed to update role', 'error');
-      }
-    } catch {
-      showToast('Network error updating role', 'error');
-    }
-  };
-
   const tabs = [
     { name: 'Profile', icon: User }, 
     { name: 'Appearance', icon: SunIcon },
     { name: 'Notifications', icon: Bell }, 
     { name: 'Security', icon: Shield },
-    { name: 'Team & Roles', icon: Building }, 
     { name: 'Billing', icon: CreditCard },
   ];
 
@@ -339,12 +212,7 @@ export default function Settings() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const roleColor = (r: string) => {
-    const roleLower = r.toLowerCase();
-    if (roleLower === 'admin' || roleLower === 'operations director') return 'text-red-500 bg-red-55 border-red-200 dark:bg-red-500/10 dark:border-red-500/20';
-    if (roleLower === 'manager') return 'text-blue-500 bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/20';
-    return 'text-secondary bg-surface border-border';
-  };
+
 
   return (
     <div className="flex-1 flex h-full bg-base text-primary overflow-hidden transition-colors">
@@ -562,42 +430,7 @@ export default function Settings() {
               </motion.div>
             )}
 
-            {activeTab === 'Team & Roles' && (
-              <motion.div key="team" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="space-y-6">
-                <div className="bg-surface p-5 rounded-xl border border-border">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2"><Mail size={16}/> Invite Team Member</h3>
-                  <div className="flex gap-3">
-                    <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="colleague@company.com" className="flex-1 bg-base border border-border px-4 py-2.5 rounded-lg text-sm focus:border-accent outline-none"/>
-                    <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} className="px-3 py-2.5 border border-border bg-base rounded-lg text-sm focus:border-accent outline-none appearance-none">
-                      <option>Employee</option><option>Manager</option><option>Marketing Rep</option><option>Admin</option>
-                    </select>
-                    <button type="button" onClick={handleInvite} className="px-4 py-2.5 bg-accent text-white font-semibold rounded-lg text-sm hover:bg-emerald-600 flex items-center gap-2"><Plus size={14}/> Invite</button>
-                  </div>
-                </div>
-                <div className="border border-border rounded-xl overflow-hidden bg-surface">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-base border-b border-border text-xs font-bold text-secondary uppercase tracking-wider">
-                      <tr><th className="px-5 py-3">Member</th><th className="px-5 py-3">Role</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {teamMembers.map(m => (
-                        <tr key={m.id} className="hover:bg-base transition-colors">
-                          <td className="px-5 py-3"><div className="font-semibold text-primary">{m.name}</div><div className="text-xs text-secondary">{m.email}</div></td>
-                          <td className="px-5 py-3"><span className={`inline-flex px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${roleColor(m.role)}`}>{m.role}</span></td>
-                          <td className="px-5 py-3"><span className={`text-xs font-semibold ${m.status === 'Active' ? 'text-emerald-500' : 'text-orange-500'}`}>{m.status}</span></td>
-                          <td className="px-5 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button type="button" onClick={() => changeMemberRole(m.id, m.role)} className="p-1.5 text-secondary hover:text-accent bg-base border border-border rounded transition-colors"><Edit size={14}/></button>
-                              {m.email !== formData.email && <button type="button" onClick={() => removeMember(m.id)} className="p-1.5 text-secondary hover:text-red-500 bg-base border border-border rounded transition-colors"><Trash2 size={14}/></button>}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </motion.div>
-            )}
+
 
             {activeTab === 'Billing' && (
               <motion.div key="billing" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="space-y-6">

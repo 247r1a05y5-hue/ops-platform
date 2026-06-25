@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 import {
   Users, CheckSquare, CheckCircle, TrendingUp, MessageSquare,
   BarChart3, Settings2, Settings, LogOut, Target, FileText, X
@@ -15,21 +15,21 @@ function getInitials(name: string) {
 
 export default function ManagerSidebar() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { showToast, setSidebarOpen } = useUI();
   const { user, logout } = useAuth();
   const currentTab = searchParams?.get('tab') || 'team';
 
   const managerNavItems = [
-    { name: 'Team Overview',         href: '/manager?tab=team',          icon: Users,         tabId: 'team' },
-    { name: 'Strategic Allocations', href: '/manager?tab=tasks',         icon: CheckSquare,   tabId: 'tasks' },
-    { name: 'Decision Protocols',    href: '/manager?tab=approvals',     icon: CheckCircle,   tabId: 'approvals' },
-    { name: 'Performance Velocity',  href: '/manager?tab=progress',      icon: TrendingUp,    tabId: 'progress' },
-    { name: 'CRM Activity',          href: '/manager?tab=crm',           icon: Target,        tabId: 'crm' },
-    { name: 'Invoices & Billing',    href: '/manager?tab=invoices',      icon: FileText,      tabId: 'invoices' },
-    { name: 'Workspace Personnel',   href: '/manager?tab=directory',     icon: Users,         tabId: 'directory' },
-    { name: 'Department Hub',        href: '/manager?tab=communication', icon: MessageSquare, tabId: 'communication' },
-    { name: 'Intelligence Reports',  href: '/manager?tab=reports',       icon: BarChart3,     tabId: 'reports' },
-    { name: 'Settings',              href: '/manager?tab=settings',      icon: Settings,      tabId: 'settings' },
+    { name: 'Team Overview',         href: '/manager?tab=team',          icon: Users,         isActive: pathname === '/manager' && (currentTab === 'team' || !searchParams?.get('tab')) },
+    { name: 'Strategic Allocations', href: '/tasks',                     icon: CheckSquare,   isActive: pathname.startsWith('/tasks') },
+    { name: 'Decision Protocols',    href: '/manager?tab=approvals',     icon: CheckCircle,   isActive: pathname === '/manager' && currentTab === 'approvals' },
+    { name: 'Performance Velocity',  href: '/manager?tab=progress',      icon: TrendingUp,    isActive: pathname === '/manager' && currentTab === 'progress' },
+    { name: 'CRM Activity',          href: '/crm',                       icon: Target,        isActive: pathname.startsWith('/crm') },
+    { name: 'Invoices & Billing',    href: '/invoices',                  icon: FileText,      isActive: pathname.startsWith('/invoices') },
+    { name: 'Department Hub',        href: '/employee?tab=chat',         icon: MessageSquare, isActive: pathname.startsWith('/employee') && currentTab === 'chat' },
+    { name: 'Intelligence Reports',  href: '/manager?tab=reports',       icon: BarChart3,     isActive: pathname === '/manager' && currentTab === 'reports' },
+    { name: 'Settings',              href: '/manager?tab=settings',      icon: Settings,      isActive: pathname === '/manager' && currentTab === 'settings' },
   ];
 
   const handleLogout = async () => {
@@ -72,7 +72,7 @@ export default function ManagerSidebar() {
           <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-4 px-3">Management Panel</div>
           <nav className="space-y-1.5">
             {managerNavItems.map((item, i) => {
-              const isActive = item.tabId === currentTab;
+              const isActive = item.isActive;
               return (
                 <motion.div key={item.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 + (i * 0.03) }}>
                   <Link

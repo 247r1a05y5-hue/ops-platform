@@ -73,9 +73,16 @@ export default function Integrations() {
   const { showToast } = useUI();
   const [gmailStatus, setGmailStatus] = useState<IntegrationStatus>('Loading');
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [configStatus, setConfigStatus] = useState({
+    wati: false,
+    razorpay: false,
+    zapier: false,
+    r2: false
+  });
+  const [loadingConfig, setLoadingConfig] = useState(true);
 
-  // Fetch real Google OAuth connection status on mount
   useEffect(() => {
+    // Fetch real Google OAuth connection status on mount
     fetch('/api/gmail/oauth?action=status')
       .then(r => r.json())
       .then(data => {
@@ -87,6 +94,22 @@ export default function Integrations() {
         }
       })
       .catch(() => setGmailStatus('Available'));
+
+    // Fetch backend configuration states for other services
+    fetch('/api/admin/integrations')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setConfigStatus({
+            wati: data.wati,
+            razorpay: data.razorpay,
+            zapier: data.zapier,
+            r2: data.r2
+          });
+        }
+      })
+      .catch(err => console.error('Failed to fetch integrations status:', err))
+      .finally(() => setLoadingConfig(false));
   }, []);
 
   function getStatus(id: string): IntegrationStatus {
@@ -96,7 +119,11 @@ export default function Integrations() {
         : gmailStatus === 'Loading' ? 'Loading'
         : 'Available';
     }
-    if (id === 'wati') return 'Connected';
+    if (loadingConfig) return 'Loading';
+    if (id === 'wati') return configStatus.wati ? 'Connected' : 'Available';
+    if (id === 'razorpay') return configStatus.razorpay ? 'Connected' : 'Available';
+    if (id === 'zapier') return configStatus.zapier ? 'Connected' : 'Available';
+    if (id === 'r2') return configStatus.r2 ? 'Connected' : 'Available';
     return 'Available';
   }
 
@@ -270,13 +297,13 @@ export default function Integrations() {
                   {integration.id !== 'gmail' && integration.id !== 'googlemeet' && integration.status === 'Connected' && (
                     <>
                       <button
-                        onClick={() => showToast(`Configuring ${integration.name}...`, 'info')}
+                        onClick={() => showToast(`${integration.name} is configured via system environment variables.`, 'success')}
                         className="flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold border border-border rounded-lg text-primary hover:border-accent/50 hover:text-accent hover:bg-base transition-colors"
                       >
                         <Settings size={14} /> Configure
                       </button>
                       <button
-                        onClick={() => showToast('Disconnected', 'info')}
+                        onClick={() => showToast('To disconnect, remove the credentials from your system environment variables.', 'info')}
                         className="px-4 py-2 text-sm font-bold border border-border rounded-lg text-secondary hover:text-red-500 hover:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                       >
                         Disconnect
@@ -285,7 +312,7 @@ export default function Integrations() {
                   )}
                   {integration.id !== 'gmail' && integration.id !== 'googlemeet' && integration.status === 'Available' && (
                     <button
-                      onClick={() => showToast(`${integration.name} coming soon!`, 'info')}
+                      onClick={() => showToast(`To connect ${integration.name}, please configure the required environment variables in your deployment dashboard.`, 'warning')}
                       className="flex-1 py-2 text-sm font-bold bg-accent text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-md"
                     >
                       Connect

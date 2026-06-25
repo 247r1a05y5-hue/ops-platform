@@ -4,7 +4,7 @@ import { useSearchParams, usePathname } from 'next/navigation';
 import {
   Target, Mail, CreditCard, Folder,
   Settings2, LogOut, Megaphone,
-  BarChart3, CheckCircle, Lock, Settings, X, CheckSquare
+  BarChart3, CheckCircle, Settings, X, CheckSquare
 } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
@@ -22,7 +22,6 @@ export default function MRSidebar() {
 
   const isMarketing = pathname?.includes('/marketing');
   const currentTab = searchParams?.get('tab') || (isMarketing ? 'campaigns' : 'leads');
-  const showSecurity = user && ['Admin', 'Manager'].includes(user.role);
 
   const campaignItems = [
     { name: 'Campaign Desk',       href: '/marketing?tab=campaigns', icon: Megaphone,   tabId: 'campaigns' },
@@ -35,9 +34,6 @@ export default function MRSidebar() {
     { name: 'Financials',     href: '/mr?tab=finance',   icon: CreditCard,tabId: 'finance' },
     { name: 'Media Desk',     href: '/mr?tab=resources', icon: Folder,    tabId: 'resources' },
     { name: 'Tasks & Alerts', href: '/mr?tab=tasks',     icon: CheckSquare,tabId: 'tasks' },
-  ];
-  const securityItems = [
-    { name: 'Restricted Systems', href: '/marketing?tab=restricted', icon: Lock, tabId: 'restricted' },
   ];
   const accountItems = [
     { name: 'Settings', href: '/mr?tab=settings', icon: Settings, tabId: 'settings' },
@@ -99,12 +95,6 @@ export default function MRSidebar() {
           <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Media & Pipeline</div>
           <nav className="space-y-1">{operationsItems.map((item, i) => renderNavItem(item, i + 3, 'ops'))}</nav>
         </div>
-        {showSecurity && (
-          <div>
-            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Security</div>
-            <nav className="space-y-1">{securityItems.map((item, i) => renderNavItem(item, i + 7, 'security'))}</nav>
-          </div>
-        )}
         <div>
           <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Account</div>
           <nav className="space-y-1">{accountItems.map((item, i) => renderNavItem(item, i + 8, 'account'))}</nav>

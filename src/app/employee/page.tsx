@@ -3,16 +3,16 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
-import { useTheme } from '@/context/ThemeContext';
 import { 
-  CheckSquare, Clock, TrendingUp, MessageSquare, Star, CheckCircle, 
-  Pause, Play, RotateCcw, MoreHorizontal, Send, Save, BarChart3, 
-  Plus, ChevronRight, X, Paperclip, Check, ListChecks, HelpCircle, Bell, PhoneCall
+  CheckSquare, Clock, MessageSquare, Star, CheckCircle, 
+  Pause, Play, RotateCcw, Save, BarChart3, 
+  ChevronRight, X, Paperclip, Check, ListChecks
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
 import ChatModule from '@/components/ChatModule';
+import { useUnreadCount } from '@/hooks/useUnreadCount';
 
 // --- Reusable Components ---
 
@@ -464,34 +464,7 @@ const PerformanceModule = () => {
   );
 };
 
-const SettingsModule = () => {
-  const { toggleTheme } = useTheme();
-  const { showToast } = useUI();
-  return (
-    <Card className="max-w-2xl">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-primary mb-1">My Settings</h2>
-        <p className="text-xs text-secondary font-medium">Manage your personal workspace preferences.</p>
-      </div>
-      <div className="space-y-6">
-         <div className="flex items-center justify-between p-4 bg-base border border-border rounded-2xl">
-            <div>
-               <div className="text-sm font-bold text-primary">Workspace Theme</div>
-               <div className="text-[10px] font-medium text-secondary">Switch between light and dark operational views.</div>
-            </div>
-            <button onClick={toggleTheme} className="px-4 py-2 bg-surface border border-border rounded-xl text-xs font-bold shadow-sm hover:bg-base transition-colors">Toggle Theme</button>
-         </div>
-         <div className="flex items-center justify-between p-4 bg-base border border-border rounded-2xl">
-            <div>
-               <div className="text-sm font-bold text-primary">Notification Preferences</div>
-               <div className="text-[10px] font-medium text-secondary">Manage what alerts you receive in your hub.</div>
-            </div>
-            <button onClick={() => showToast('Routing settings loaded successfully in main control settings panel!', 'success')} className="px-4 py-2 bg-accent text-white rounded-xl text-xs font-bold shadow-sm shadow-accent/20 hover:bg-indigo-600 transition-colors">Configure</button>
-         </div>
-      </div>
-    </Card>
-  );
-};
+// SettingsModule removed — settings tab now renders <SharedSettingsModule role="staff" /> directly.
 
 // --- Main Shell ---
 
@@ -501,6 +474,7 @@ function EmployeeDashboard() {
   const tab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<'workspace' | 'settings' | 'tasks' | 'time' | 'chat' | 'performance'>('workspace');
   const { showToast } = useUI();
+  const unreadMessages = useUnreadCount();
 
   useEffect(() => {
     if (tab && ['workspace', 'settings', 'tasks', 'time', 'chat', 'performance'].includes(tab)) {
@@ -509,8 +483,6 @@ function EmployeeDashboard() {
       setActiveTab('workspace');
     }
   }, [tab]);
-
-  const [isAcknowledged, setIsAcknowledged] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -787,8 +759,10 @@ function EmployeeDashboard() {
         <div className="flex items-center gap-4">
            <div className="bg-surface border border-border p-3 rounded-xl flex items-center gap-4 shadow-sm">
               <div className="text-right border-r border-border pr-4">
-                 <div className="text-[10px] font-bold text-secondary uppercase tracking-widest leading-none">Efficiency Index</div>
-                 <div className="text-lg font-bold text-primary mt-1 leading-none">98.4%</div>
+                 <div className="text-[10px] font-bold text-secondary uppercase tracking-widest leading-none">Completion Rate</div>
+                 <div className="text-lg font-bold text-primary mt-1 leading-none">
+                   {tasks.length > 0 ? `${Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100)}%` : '—'}
+                 </div>
               </div>
               <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
                  <BarChart3 size={20} />
@@ -798,25 +772,29 @@ function EmployeeDashboard() {
       </motion.div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-         {[
-           { label: 'My Active Tasks', value: tasks.filter(t => t.status !== 'Done').length.toString(), icon: CheckSquare, color: 'text-accent', bg: 'bg-accent/10', tab: 'tasks' },
-           { label: 'Logged Hours', value: '34.5', icon: Clock, color: 'text-emerald-500', bg: 'bg-emerald-500/10', tab: 'time' },
-           { label: 'Weekly Trend', value: '+14%', icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-500/10', tab: 'workspace' },
-           { label: 'Messages', value: '3', icon: MessageSquare, color: 'text-rose-500', bg: 'bg-rose-500/10', tab: 'chat' },
-         ].map((stat, i) => (
-           <Card key={i} delay={i * 0.05} className="p-4 border-border/60 cursor-pointer hover:border-accent/30 group" onClick={() => router.push(`/employee?tab=${stat.tab}`)}>
-              <div className="flex items-center gap-4">
-                 <div className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
-                    <stat.icon size={20} />
-                 </div>
-                 <div>
-                    <div className="text-[10px] font-bold text-tertiary uppercase mb-0.5 leading-none">{stat.label}</div>
-                    <div className="text-lg font-bold text-primary mt-1 leading-none">{stat.value}</div>
-                 </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+        <Card delay={0} className="p-4 border-border/60 cursor-pointer hover:border-accent/30 group" onClick={() => router.push('/employee?tab=tasks')}>
+           <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                 <CheckSquare size={20} />
               </div>
-           </Card>
-         ))}
+              <div>
+                 <div className="text-[10px] font-bold text-tertiary uppercase mb-0.5 leading-none">My Active Tasks</div>
+                 <div className="text-lg font-bold text-primary mt-1 leading-none">{tasks.filter(t => t.status !== 'Done').length}</div>
+              </div>
+           </div>
+        </Card>
+        <Card delay={0.05} className="p-4 border-border/60 cursor-pointer hover:border-accent/30 group" onClick={() => router.push('/employee?tab=chat')}>
+           <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                 <MessageSquare size={20} />
+              </div>
+              <div>
+                 <div className="text-[10px] font-bold text-tertiary uppercase mb-0.5 leading-none">Unread Messages</div>
+                 <div className="text-lg font-bold text-primary mt-1 leading-none">{unreadMessages > 0 ? unreadMessages : '—'}</div>
+              </div>
+           </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
@@ -897,20 +875,7 @@ function EmployeeDashboard() {
                </button>
             </Card>
 
-            <Card className="bg-accent/5 border-accent/20 relative group">
-               <div className="absolute top-2 right-2">
-                  <div className="w-2 h-2 rounded-full bg-accent animate-ping"></div>
-               </div>
-               <h3 className="text-[10px] font-bold text-accent uppercase tracking-widest mb-4">Daily Briefing</h3>
-               <p className="text-[11px] text-secondary leading-relaxed font-medium">System audit scheduled for 3 PM today. Please ensure all media assets are validated by then.</p>
-               <button 
-                  onClick={() => { setIsAcknowledged(true); showToast('Protocol acknowledged', 'success'); triggerActivityLog('workflow_action', 'Acknowledged daily briefing protocol for system audit').catch(console.error); }} 
-                  disabled={isAcknowledged}
-                  className={`mt-4 w-full py-2.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 ${isAcknowledged ? 'bg-emerald-500/20 text-emerald-500 shadow-none' : 'bg-accent text-white hover:bg-indigo-600 shadow-accent/10'}`}
-               >
-                  {isAcknowledged ? <><CheckCircle size={14}/> Acknowledged</> : 'Acknowledge Protocol'}
-               </button>
-            </Card>
+
         </div>
       </div>
 

@@ -4,10 +4,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { 
-  Target, Mail, Plus, Send, AlertCircle, BarChart3, 
-  TrendingUp, ShieldAlert, CheckCircle, Clock, Zap, 
-  Award, Sparkles, Megaphone, Eye, MousePointer, 
-  Lock, ArrowUpRight 
+  Plus, Send, AlertCircle, BarChart3, 
+  TrendingUp, CheckCircle, Clock, Zap, 
+  Award, Megaphone, Eye, MousePointer 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerActivityLog } from '@/utils/activity';
@@ -42,10 +41,10 @@ function MarketingDashboard() {
   const { showToast } = useUI();
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'analytics' | 'approvals' | 'restricted'>('campaigns');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'analytics' | 'approvals'>('campaigns');
 
   useEffect(() => {
-    if (tab && ['campaigns', 'analytics', 'approvals', 'restricted'].includes(tab)) {
+    if (tab && ['campaigns', 'analytics', 'approvals'].includes(tab)) {
       setActiveTab(tab as any);
     } else {
       setActiveTab('campaigns');
@@ -256,11 +255,13 @@ function MarketingDashboard() {
         <div className="flex gap-4 items-center shrink-0">
           <div className="px-4 py-3 bg-surface border border-border/80 rounded-2xl flex flex-col items-end shadow-sm">
              <span className="text-[9px] font-bold uppercase tracking-wider text-tertiary">Active Outreach</span>
-             <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">3 Sequences</span>
+             <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">
+               {campaigns.length} {campaigns.length === 1 ? 'Sequence' : 'Sequences'}
+             </span>
           </div>
           <div className="px-4 py-3 bg-surface border border-border/80 rounded-2xl flex flex-col items-end shadow-sm">
              <span className="text-[9px] font-bold uppercase tracking-wider text-tertiary">Strategy Status</span>
-             <span className="text-sm font-extrabold text-emerald-500">Aligned (100%)</span>
+             <span className="text-sm font-extrabold text-emerald-500">Aligned ({strategyAlignment})</span>
           </div>
         </div>
       </motion.div>
@@ -270,8 +271,7 @@ function MarketingDashboard() {
         {[
           { id: 'campaigns', name: 'Outreach & Campaigns' },
           { id: 'analytics', name: 'Analytics & ROI' },
-          { id: 'approvals', name: 'Strategy Alignment' },
-          { id: 'restricted', name: '🔒 Restricted Systems' }
+          { id: 'approvals', name: 'Strategy Alignment' }
         ].map(tab => (
           <button 
             key={tab.id} 
@@ -537,46 +537,6 @@ function MarketingDashboard() {
           </motion.div>
         )}
 
-        {/* TAB 4: RESTRICTED ACCESS SYSTEM */}
-        {activeTab === 'restricted' && (
-          <motion.div key="restricted" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6 max-w-3xl mx-auto">
-            <div className="text-center p-8 bg-red-500/5 border border-red-500/20 rounded-3xl mb-8">
-              <ShieldAlert size={48} className="mx-auto text-red-500 mb-4 animate-bounce" />
-              <h2 className="text-xl font-bold text-primary mb-2">Role Isolation Controls Active</h2>
-              <p className="text-xs text-secondary font-medium leading-relaxed">
-                As a Marketing Representative, your operational access limits are active. External systems outside campaign marketing, alignment, and promotional outreach are secured for data protection.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {[
-                { name: 'Core Audit & Activity Ledger', desc: 'Organizational access audit trail databases', role: 'Requires Admin/Manager Privilege' },
-                { name: 'System Integrations Desk', desc: 'Production Brevo SMTP credentials and Stripe webhook configurations', role: 'Requires Admin Privilege' },
-                { name: 'Financial Pipeline Invoicing Hub', desc: 'Direct corporate invoice creation and payment link logs', role: 'Requires Media Rep/Manager Privilege' },
-                { name: 'Workspace Security Settings', desc: 'Session timeout boundaries and organizational token limits', role: 'Requires Admin Privilege' },
-              ].map((sys, i) => (
-                <div key={i} className="flex justify-between items-center p-5 bg-surface border border-border/80 rounded-2xl relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-base/40 opacity-70"></div>
-                  <div className="relative z-10 flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center text-red-500 shrink-0">
-                      <Lock size={18} />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-primary/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                        {sys.name}
-                        <span className="text-[9px] font-black text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded uppercase border border-red-500/20">Locked</span>
-                      </h4>
-                      <p className="text-[11px] text-secondary/80 font-medium mt-1">{sys.desc}</p>
-                    </div>
-                  </div>
-                  <div className="relative z-10 text-[9px] font-bold text-secondary uppercase bg-base border border-border/80 px-2 py-1 rounded">
-                    {sys.role}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
 
       </AnimatePresence>
 
