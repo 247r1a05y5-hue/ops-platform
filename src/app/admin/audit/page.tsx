@@ -32,7 +32,7 @@ export default function AuditPage() {
   const [page, setPage] = useState(1);
   const [actionTypes, setActionTypes] = useState<string[]>([]);
   const [modules, setModules] = useState<string[]>([]);
-  const [selected, setSelected] = useState<AuditLog | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true); setError(null);
@@ -110,6 +110,7 @@ export default function AuditPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-base">
+                <th className="w-10 px-4 py-3"></th>
                 {['Timestamp','User','Action','Module','Description','IP'].map(h => (
                   <th key={h} className={`text-left px-4 py-3 text-secondary font-medium ${h === 'Description' ? 'hidden lg:table-cell' : ''} ${h === 'IP' ? 'hidden xl:table-cell' : ''}`}>{h}</th>
                 ))}
@@ -118,20 +119,64 @@ export default function AuditPage() {
             <tbody>
               {loading ? Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i} className="border-b border-border/50 animate-pulse">
-                  {[140,120,100,80,200,80].map((w,j) => <td key={j} className="px-4 py-3"><div className="h-3 bg-base rounded" style={{width:w}} /></td>)}
+                  {[40,140,120,100,80,200,80].map((w,j) => <td key={j} className="px-4 py-3"><div className="h-3 bg-base rounded" style={{width:w}} /></td>)}
                 </tr>
               )) : logs.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-secondary">No logs found.</td></tr>
-              ) : logs.map(log => (
-                <tr key={log._id} className="border-b border-border/50 hover:bg-base/50 cursor-pointer transition-colors" onClick={() => setSelected(log)}>
-                  <td className="px-4 py-3 font-mono text-xs text-secondary whitespace-nowrap">{fmt(log.timestamp)}</td>
-                  <td className="px-4 py-3"><div className="font-medium text-primary">{log.name}</div><div className="text-xs text-secondary">{log.userRole}</div></td>
-                  <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[log.actionType] || 'bg-base text-secondary'}`}>{log.actionType}</span></td>
-                  <td className="px-4 py-3 text-secondary">{log.module}</td>
-                  <td className="px-4 py-3 text-secondary max-w-xs truncate hidden lg:table-cell">{log.description}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-secondary hidden xl:table-cell">{log.ip}</td>
-                </tr>
-              ))}
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-secondary">No logs found.</td></tr>
+              ) : logs.map(log => {
+                const isExpanded = expandedLogId === log._id;
+                return (
+                  <>
+                    <tr key={log._id} className={`border-b border-border/50 hover:bg-base/50 cursor-pointer transition-colors ${isExpanded ? 'bg-base/20' : ''}`} onClick={() => setExpandedLogId(isExpanded ? null : log._id)}>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-block transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                          <ChevronRight size={14} className="text-secondary" />
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-secondary whitespace-nowrap">{fmt(log.timestamp)}</td>
+                      <td className="px-4 py-3"><div className="font-medium text-primary">{log.name}</div><div className="text-xs text-secondary">{log.userRole}</div></td>
+                      <td className="px-4 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[log.actionType] || 'bg-base text-secondary'}`}>{log.actionType}</span></td>
+                      <td className="px-4 py-3 text-secondary">{log.module}</td>
+                      <td className="px-4 py-3 text-secondary max-w-xs truncate hidden lg:table-cell">{log.description}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-secondary hidden xl:table-cell">{log.ip}</td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${log._id}-details`} className="bg-base/10 border-b border-border/50">
+                        <td colSpan={7} className="px-6 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-primary">
+                            <div className="space-y-3">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase text-secondary tracking-wider block">Full Description</span>
+                                <p className="text-sm mt-1 font-medium">{log.description}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-[10px] font-bold uppercase text-secondary tracking-wider block">User Email</span>
+                                  <p className="font-semibold mt-0.5">{log.userEmail}</p>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-bold uppercase text-secondary tracking-wider block">IP Address</span>
+                                  <p className="font-mono mt-0.5">{log.ip}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-secondary tracking-wider block mb-1">Metadata</span>
+                              {log.metadata && Object.keys(log.metadata).length > 0 ? (
+                                <pre className="p-3 bg-surface border border-border rounded-xl font-mono text-[10px] overflow-x-auto max-h-40 overflow-y-auto">
+                                  {JSON.stringify(log.metadata, null, 2)}
+                                </pre>
+                              ) : (
+                                <span className="text-secondary italic">No metadata available</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -144,37 +189,6 @@ export default function AuditPage() {
           <span className="text-sm text-secondary px-2">{page} / {pagination.pages}</span>
           <button onClick={() => setPage(p => Math.min(pagination.pages, p+1))} disabled={page>=pagination.pages||loading} className="p-2 rounded-lg border border-border bg-surface text-secondary hover:text-primary disabled:opacity-40 transition-colors"><ChevronRight className="w-4 h-4" /></button>
         </div>
-      )}
-
-      {/* Detail drawer */}
-      {selected && (
-        <>
-          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setSelected(null)} />
-          <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-surface border-l border-border z-50 overflow-y-auto p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-primary">Entry Detail</h2>
-              <button onClick={() => setSelected(null)} className="p-2 rounded-lg hover:bg-base transition-colors"><X className="w-4 h-4 text-secondary" /></button>
-            </div>
-            <div className="space-y-4">
-              {[{label:'Timestamp',value:fmt(selected.timestamp),Icon:Clock},{label:'User',value:`${selected.name} (${selected.userEmail})`,Icon:User},{label:'Role',value:selected.userRole,Icon:Shield},{label:'Action',value:selected.actionType,Icon:Activity},{label:'Module',value:selected.module,Icon:Filter},{label:'IP Address',value:selected.ip,Icon:AlertCircle}].map(({label,value,Icon}) => (
-                <div key={label} className="flex gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-base flex items-center justify-center shrink-0"><Icon className="w-4 h-4 text-secondary" /></div>
-                  <div><div className="text-xs text-secondary font-medium uppercase tracking-wide">{label}</div><div className="text-sm text-primary mt-0.5">{value}</div></div>
-                </div>
-              ))}
-              <div className="bg-base border border-border rounded-lg p-3">
-                <div className="text-xs text-secondary font-medium uppercase tracking-wide mb-2">Description</div>
-                <p className="text-sm text-primary">{selected.description}</p>
-              </div>
-              {selected.metadata && Object.keys(selected.metadata).length > 0 && (
-                <div className="bg-base border border-border rounded-lg p-3">
-                  <div className="text-xs text-secondary font-medium uppercase tracking-wide mb-2">Metadata</div>
-                  <pre className="text-xs text-primary overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(selected.metadata, null, 2)}</pre>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
       )}
     </div>
   );

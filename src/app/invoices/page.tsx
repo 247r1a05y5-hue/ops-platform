@@ -4,7 +4,7 @@ import { useUI } from '@/context/UIContext';
 import { 
   Search, Plus, FileText, Download, Filter,
   Clock, CheckCircle, AlertCircle,
-  Mail, Trash2, Eye, Check, X
+  Mail, Trash2, Eye, Check, X, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadCSV } from '@/utils/export';
@@ -27,6 +27,7 @@ export default function Invoices() {
   const { showToast } = useUI();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [niClient, setNiClient] = useState('');
   const [niAmount, setNiAmount] = useState('');
@@ -217,6 +218,7 @@ export default function Invoices() {
             <table className="w-full text-left text-xs">
               <thead className="bg-base/50 text-secondary font-bold uppercase tracking-widest border-b border-border">
                 <tr>
+                  <th className="w-10 px-6 py-4"></th>
                   <th className="px-6 py-4">Invoice ID</th>
                   <th className="px-6 py-4">Client</th>
                   <th className="px-6 py-4">Category</th>
@@ -228,47 +230,120 @@ export default function Invoices() {
               </thead>
               <tbody className="divide-y divide-border">
                 <AnimatePresence>
-                  {filteredInvoices.map(inv => (
-                    <motion.tr key={inv.invoiceId} layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="hover:bg-base/30 transition-colors group cursor-pointer" onClick={() => showToast(`Viewing invoice ${inv.invoiceId}`, 'info')}>
-                      <td className="px-6 py-4 font-bold text-primary">{inv.invoiceId}</td>
-                      <td className="px-6 py-4">
-                         <div className="font-bold text-primary group-hover:text-accent transition-colors">{inv.client}</div>
-                         <div className="text-[10px] text-tertiary mt-0.5">Due {inv.due} {inv.remindersCount ? `· Reminded (${inv.remindersCount})` : ''}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                         <span className="px-2 py-0.5 bg-surface border border-border rounded text-[10px] font-bold text-secondary">{inv.category}</span>
-                      </td>
-                      <td className="px-6 py-4 text-secondary font-semibold">{inv.date}</td>
-                      <td className="px-6 py-4">
-                         <div className="font-bold text-primary text-sm">{inv.amount}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-[10px] tracking-wider uppercase ${
-                           inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
-                           inv.status === 'Pending' ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' :
-                           'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
-                         }`}>
-                            {inv.status === 'Paid' ? <CheckCircle size={12}/> : inv.status === 'Pending' ? <Clock size={12}/> : <AlertCircle size={12}/>}
-                            {inv.status}
-                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {inv.status !== 'Paid' && (
-                              <button onClick={(e) => { e.stopPropagation(); handleApprove(inv._id!); }} className="p-2 bg-accent text-white rounded-lg hover:bg-emerald-600 transition-colors shadow-sm" title="Approve Payment"><Check size={14}/></button>
-                            )}
-                            {inv._id && (
-                              <button onClick={(e) => { e.stopPropagation(); window.open(`/pay/${inv._id}`, '_blank'); showToast('Opened payment portal', 'info'); }} className="p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm" title="Open Payment Portal"><Eye size={14}/></button>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); handleSendReminder(inv._id!, inv.client); }} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors" title="Resend Payment Reminder"><Mail size={14}/></button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(inv._id!); }} className="p-2 bg-base border border-border rounded-lg hover:text-red-500 transition-colors" title="Delete Invoice"><Trash2 size={14}/></button>
-                         </div>
-                      </td>
-                    </motion.tr>
-                  ))}
+                  {filteredInvoices.map(inv => {
+                    const isExpanded = expandedInvoiceId === inv._id;
+                    return (
+                      <>
+                        <motion.tr key={inv.invoiceId} layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className={`hover:bg-base/30 transition-colors group cursor-pointer ${isExpanded ? 'bg-base/20' : ''}`} onClick={() => setExpandedInvoiceId(isExpanded ? null : inv._id!)}>
+                          <td className="px-6 py-4 text-center">
+                            <span className="inline-block transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                              <ChevronRight size={14} className="text-secondary" />
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-primary">{inv.invoiceId}</td>
+                          <td className="px-6 py-4">
+                             <div className="font-bold text-primary group-hover:text-accent transition-colors">{inv.client}</div>
+                             <div className="text-[10px] text-tertiary mt-0.5">Due {inv.due} {inv.remindersCount ? `· Reminded (${inv.remindersCount})` : ''}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                             <span className="px-2 py-0.5 bg-surface border border-border rounded text-[10px] font-bold text-secondary">{inv.category}</span>
+                          </td>
+                          <td className="px-6 py-4 text-secondary font-semibold">{inv.date}</td>
+                          <td className="px-6 py-4">
+                             <div className="font-bold text-primary text-sm">{inv.amount}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-[10px] tracking-wider uppercase ${
+                               inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
+                               inv.status === 'Pending' ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' :
+                               'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
+                             }`}>
+                                {inv.status === 'Paid' ? <CheckCircle size={12}/> : inv.status === 'Pending' ? <Clock size={12}/> : <AlertCircle size={12}/>}
+                                {inv.status}
+                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                             <div className="flex justify-end gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                {inv.status !== 'Paid' && (
+                                  <button onClick={() => handleApprove(inv._id!)} className="p-2 bg-accent text-white rounded-lg hover:bg-emerald-600 transition-colors shadow-sm" title="Approve Payment"><Check size={14}/></button>
+                                )}
+                                {inv._id && (
+                                  <button onClick={() => window.open(`/pay/${inv._id}`, '_blank')} className="p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm" title="Open Payment Portal"><Eye size={14}/></button>
+                                )}
+                                <button onClick={() => handleSendReminder(inv._id!, inv.client)} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors" title="Resend Payment Reminder"><Mail size={14}/></button>
+                                <button onClick={() => handleDelete(inv._id!)} className="p-2 bg-base border border-border rounded-lg hover:text-red-500 transition-colors" title="Delete Invoice"><Trash2 size={14}/></button>
+                             </div>
+                          </td>
+                        </motion.tr>
+                        {isExpanded && (
+                          <tr key={`${inv.invoiceId}-details`} className="bg-base/10">
+                            <td colSpan={8} className="px-8 py-6">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-primary">
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-bold uppercase text-secondary tracking-widest block">Client Contact details</span>
+                                  <div>
+                                    <span className="text-[10px] text-tertiary">Billing Email:</span>
+                                    <div className="font-semibold">{inv.client} Billing</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-tertiary">Category / Tag:</span>
+                                    <div className="font-semibold">{inv.category}</div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-bold uppercase text-secondary tracking-widest block">Billing Status Info</span>
+                                  <div>
+                                    <span className="text-[10px] text-tertiary">Reminders Dispatched:</span>
+                                    <div className="font-semibold">{inv.remindersCount || 0} times</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-tertiary">Due Date:</span>
+                                    <div className="font-semibold text-rose-500 font-mono">{inv.due}</div>
+                                  </div>
+                                </div>
+                                <div className="space-y-3 flex flex-col justify-center">
+                                  <span className="text-[10px] font-bold uppercase text-secondary tracking-widest block mb-1">Available Quick Actions</span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {inv.status !== 'Paid' && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleApprove(inv._id!); }} 
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-accent text-white rounded-xl font-bold shadow-md hover:bg-emerald-600 transition-all active:scale-95 text-[11px]"
+                                      >
+                                        <Check size={12}/> Mark Paid
+                                      </button>
+                                    )}
+                                    {inv._id && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); window.open(`/pay/${inv._id}`, '_blank'); }} 
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500 text-white rounded-xl font-bold shadow-md hover:bg-indigo-600 transition-all active:scale-95 text-[11px]"
+                                      >
+                                        <Eye size={12}/> Pay Online
+                                      </button>
+                                    )}
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleSendReminder(inv._id!, inv.client); }} 
+                                      className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border text-primary rounded-xl font-bold hover:text-accent hover:border-accent/40 transition-all active:scale-95 text-[11px]"
+                                    >
+                                      <Mail size={12}/> Send Reminder
+                                    </button>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); if (confirm('Remove this invoice record permanently?')) handleDelete(inv._id!); }} 
+                                      className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-red-500/20 text-red-500 rounded-xl font-bold hover:bg-red-500/10 transition-all active:scale-95 text-[11px]"
+                                    >
+                                      <Trash2 size={12}/> Delete Record
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
                   {filteredInvoices.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-secondary font-bold text-sm">No billing entries found</td>
+                      <td colSpan={8} className="px-6 py-12 text-center text-secondary font-bold text-sm">No billing entries found</td>
                     </tr>
                   )}
                 </AnimatePresence>

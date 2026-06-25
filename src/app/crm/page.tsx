@@ -1348,10 +1348,14 @@ export default function CRM() {
       <AnimatePresence>
         {selectedLead && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm"
             onClick={() => setSelectedLead(null)}>
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-surface w-full max-w-5xl rounded-3xl border border-border shadow-2xl flex flex-col md:flex-row h-[90vh] max-h-[860px] overflow-hidden"
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="bg-surface w-full max-w-5xl border-l border-border shadow-2xl flex flex-col md:flex-row h-screen overflow-hidden rounded-l-3xl rounded-r-none"
               onClick={(e) => e.stopPropagation()}>
 
               {/* Sidebar */}

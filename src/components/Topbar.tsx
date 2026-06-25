@@ -35,7 +35,7 @@ const ROLE_ROUTE: Record<string, string> = {
 
 export default function Topbar() {
   const pathname = usePathname();
-  const { showToast, setSidebarOpen } = useUI();
+  const { showToast, setSidebarOpen, sidebarCollapsed, setSidebarCollapsed } = useUI();
   const { theme, toggleTheme, mounted } = useTheme();
   const { user, logout } = useAuth();
 
@@ -166,6 +166,15 @@ export default function Topbar() {
           aria-label="Open sidebar"
         >
           <Menu size={20} />
+        </button>
+
+        {/* Desktop Collapse Toggle */}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="hidden lg:flex p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface border border-border bg-surface/50 shadow-sm transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+          title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          <Menu size={16} />
         </button>
 
         <div className="relative group flex-1">

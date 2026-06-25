@@ -32,6 +32,7 @@ export default function Tasks() {
   const { showToast } = useUI();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'board' | 'list'>('board');
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
   const [draggedItem, setDraggedItem] = useState<{id: string, stage: string} | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,7 +173,14 @@ export default function Tasks() {
                   className="bg-surface border border-border rounded-xl pl-9 pr-4 py-2 text-xs w-64 focus:outline-none focus:border-accent transition-all text-primary font-medium"
                 />
              </div>
-             <button onClick={handleExport} className="p-2 border border-border bg-surface text-secondary hover:text-primary rounded-xl transition-colors shadow-sm">
+             <button 
+               onClick={() => setFiltersCollapsed(!filtersCollapsed)} 
+               className={`p-2 border border-border rounded-xl transition-all shadow-sm ${filtersCollapsed ? 'bg-surface text-secondary hover:text-primary hover:bg-base' : 'bg-accent/10 border-accent/20 text-accent'}`}
+               title={filtersCollapsed ? "Show Filters" : "Hide Filters"}
+             >
+                <Filter size={16} />
+             </button>
+             <button onClick={handleExport} className="p-2 border border-border bg-surface text-secondary hover:text-primary rounded-xl transition-colors shadow-sm" title="Export CSV">
                 <Download size={16} />
              </button>
            </div>
@@ -181,7 +189,7 @@ export default function Tasks() {
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-64 shrink-0 border-r border-border bg-surface p-6 overflow-y-auto hidden lg:block transition-colors">
+          <div className={`shrink-0 bg-surface overflow-y-auto hidden lg:block transition-all duration-300 ${filtersCollapsed ? 'w-0 p-0 border-r-0 overflow-hidden' : 'w-64 border-r border-border p-6'}`}>
               <h3 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">Active Projects</h3>
               <div className="space-y-2 mb-8">
                  {projects.map(proj => (

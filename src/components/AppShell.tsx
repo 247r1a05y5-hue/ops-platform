@@ -18,7 +18,7 @@ const PUBLIC_PATHS = ['/landing', '/login', '/', '/reset-password'];
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, mounted } = useTheme();
-  const { sidebarOpen, setSidebarOpen } = useUI();
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useUI();
   const { user } = useAuth();
   const isPublic = PUBLIC_PATHS.includes(pathname);
 
@@ -63,8 +63,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Responsive Sidebar Wrapper */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 lg:static lg:translate-x-0 transition-transform duration-300 ease-in-out shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 lg:static lg:translate-x-0 transition-all duration-300 ease-in-out shrink-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:block'
+        } ${
+          sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
         }`}
       >
         <Suspense fallback={<div className="w-64 bg-base border-r border-border h-screen" />}>
