@@ -246,6 +246,8 @@ io.on('connection', (socket) => {
       from:           userId,
       fromName:       userName,
       conversationId: data.conversationId ?? null,
+      workspaceId:    data.workspaceId ?? null,
+      reason:         data.reason ?? null,
       sdp:            data.sdp ?? null,
       candidate:      data.candidate ?? null,
     };

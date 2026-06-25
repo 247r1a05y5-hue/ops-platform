@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { type, targetUserId, conversationId, workspaceId } = body;
+  const { type, targetUserId, conversationId, workspaceId, reason } = body;
 
   if (!type || !targetUserId) {
     return NextResponse.json({ error: 'type and targetUserId are required' }, { status: 400 });
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     fromName:       session.name,
     conversationId: conversationId ?? null,
     workspaceId:    workspaceId ?? null,
+    reason:         reason ?? null,
   };
 
   const io = getIO();
