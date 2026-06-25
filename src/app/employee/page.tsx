@@ -6,13 +6,15 @@ import { useUI } from '@/context/UIContext';
 import { 
   CheckSquare, Clock, MessageSquare, Star, CheckCircle, 
   Pause, Play, RotateCcw, Save, BarChart3, 
-  ChevronRight, X, Paperclip, Check, ListChecks
+  ChevronRight, X, Paperclip, Check, ListChecks,
+  Search, Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
 import ChatModule from '@/components/ChatModule';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
+import { useSocket } from '@/hooks/useSocket';
 
 // --- Reusable Components ---
 
@@ -484,6 +486,37 @@ function EmployeeDashboard() {
     }
   }, [tab]);
 
+  const { socket } = useSocket();
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [isTeamDrawerOpen, setIsTeamDrawerOpen] = useState(false);
+  const [previewSearchQuery, setPreviewSearchQuery] = useState('');
+  const [drawerSearchQuery, setDrawerSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onChatEvent = (payload: any) => {
+      if (payload.type === 'presence_snapshot') {
+        setOnlineUsers(new Set<string>(payload.onlineUserIds ?? []));
+      } else if (payload.type === 'presence_change') {
+        const { userId, isOnline } = payload;
+        setOnlineUsers(prev => {
+          const next = new Set(prev);
+          if (isOnline) {
+            next.add(userId);
+          } else {
+            next.delete(userId);
+          }
+          return next;
+        });
+      }
+    };
+    socket.on('chat_event', onChatEvent);
+    return () => {
+      socket.off('chat_event', onChatEvent);
+    };
+  }, [socket]);
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
@@ -507,6 +540,17 @@ function EmployeeDashboard() {
           const teamData = await teamRes.json();
           if (teamData.success && Array.isArray(teamData.users)) {
             setTeamMembers(teamData.users);
+            const initialOnline = new Set<string>();
+            teamData.users.forEach((u: any) => {
+              if (u.status === 'Online' || u.isOnline) {
+                initialOnline.add(u._id);
+              }
+            });
+            setOnlineUsers(prev => {
+              const merged = new Set(prev);
+              initialOnline.forEach(id => merged.add(id));
+              return merged;
+            });
           }
         } catch (err) {
           console.error('Failed to load active team members:', err);
@@ -847,31 +891,68 @@ function EmployeeDashboard() {
             </Card>
 
             <Card>
-               <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Active Team</h3>
-               <div className="space-y-4">
-                  {teamMembers.length > 0 ? (
-                    teamMembers.map((user, i) => {
-                      const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
-                      const color = colors[i % colors.length];
-                      const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-                      return (
-                        <div key={user._id || i} className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group">
-                           <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-full ${color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>
-                                {initials}
-                              </div>
-                              <span className="text-xs font-bold text-primary">{user.name}</span>
-                           </div>
-                           <div className={`w-2 h-2 rounded-full ${user.status === 'Online' ? 'bg-emerald-500' : 'bg-orange-500'} animate-pulse`} />
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="text-[10px] text-secondary italic">No active team members.</p>
-                  )}
+               <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest leading-none">Active Team</h3>
+                  <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                     {teamMembers.filter(m => onlineUsers.has(m._id) || m.status === 'Online' || m.isOnline).length} Online
+                  </span>
                </div>
-               <button onClick={() => router.push('/employee?tab=chat')} className="w-full mt-6 py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all flex items-center justify-center gap-2">
-                  <MessageSquare size={12}/> Open Team Hub
+               
+               <div className="relative mb-4">
+                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+                  <input 
+                    type="text" 
+                    value={previewSearchQuery}
+                    onChange={(e) => setPreviewSearchQuery(e.target.value)}
+                    placeholder="Search online teammates..." 
+                    className="w-full bg-base border border-border rounded-xl pl-8 pr-3 py-1.5 text-[10px] focus:outline-none focus:border-accent text-primary font-medium"
+                  />
+               </div>
+
+               <div className="space-y-3">
+                  {(() => {
+                     const onlineTeammates = teamMembers.filter(member => {
+                       const isOnline = onlineUsers.has(member._id) || member.status === 'Online' || member.isOnline;
+                       const matchesSearch = member.name.toLowerCase().includes(previewSearchQuery.toLowerCase());
+                       return isOnline && matchesSearch;
+                     });
+                     const previewList = onlineTeammates.slice(0, 5);
+
+                     if (previewList.length > 0) {
+                       return previewList.map((user, i) => {
+                         const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
+                         const color = colors[i % colors.length];
+                         const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+                         return (
+                           <div 
+                             key={user._id || i} 
+                             onClick={() => router.push(`/employee?tab=chat&dmUserId=${user._id}`)}
+                             className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group"
+                           >
+                              <div className="flex items-center gap-3">
+                                 <div className={`w-8 h-8 rounded-full ${color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>
+                                   {initials}
+                                 </div>
+                                 <div>
+                                   <span className="text-xs font-bold text-primary block leading-none">{user.name}</span>
+                                   <span className="text-[9px] text-tertiary font-bold mt-1 block">{user.role || 'Teammate'}</span>
+                                 </div>
+                              </div>
+                              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                           </div>
+                         );
+                       });
+                     } else {
+                       return <p className="text-[10px] text-secondary italic p-2">No online teammates found.</p>;
+                     }
+                  })()}
+               </div>
+
+               <button 
+                 onClick={() => { setIsTeamDrawerOpen(true); setVisibleCount(20); }} 
+                 className="w-full mt-4 py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all flex items-center justify-center gap-2"
+               >
+                  <Users size={12}/> View All Team Members
                </button>
             </Card>
 
@@ -1050,6 +1131,151 @@ function EmployeeDashboard() {
                 >
                   <Save size={14} /> Save Progress Changes
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Team Directory Drawer */}
+      <AnimatePresence>
+        {isTeamDrawerOpen && (
+          <div 
+            className="fixed inset-0 z-[120] flex justify-end bg-slate-950/60 backdrop-blur-sm"
+            onClick={() => setIsTeamDrawerOpen(false)}
+          >
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="bg-surface w-full max-w-md border-l border-border shadow-2xl flex flex-col h-screen overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drawer Header */}
+              <div className="p-6 border-b border-border flex justify-between items-center bg-base/50">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-accent" />
+                  <h2 className="text-md font-bold text-primary">Team Directory</h2>
+                  <span className="text-[10px] bg-accent/10 text-accent border border-accent/20 px-2.5 py-0.5 rounded-full font-bold ml-1">
+                    {teamMembers.length} Total
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsTeamDrawerOpen(false)} 
+                  className="p-2 hover:bg-base rounded-xl text-secondary hover:text-primary transition-colors"
+                >
+                  <X size={20}/>
+                </button>
+              </div>
+
+              {/* Drawer Search */}
+              <div className="p-4 border-b border-border bg-base/30">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+                  <input 
+                    type="text" 
+                    value={drawerSearchQuery}
+                    onChange={(e) => { setDrawerSearchQuery(e.target.value); setVisibleCount(20); }}
+                    placeholder="Search by name, role, or email..." 
+                    className="w-full bg-surface border border-border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-accent text-primary font-medium shadow-sm transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Drawer Team List */}
+              <div 
+                className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar bg-base/10"
+                onScroll={(e) => {
+                  const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+                  if (scrollHeight - scrollTop <= clientHeight + 50) {
+                    const filteredCount = teamMembers.filter(member => {
+                      const q = drawerSearchQuery.toLowerCase();
+                      return member.name.toLowerCase().includes(q) || 
+                             (member.email && member.email.toLowerCase().includes(q)) ||
+                             (member.role && member.role.toLowerCase().includes(q));
+                    }).length;
+                    if (visibleCount < filteredCount) {
+                      setVisibleCount(prev => prev + 20);
+                    }
+                  }
+                }}
+              >
+                {(() => {
+                  const filteredDirectory = teamMembers
+                    .filter(member => {
+                      const q = drawerSearchQuery.toLowerCase();
+                      return member.name.toLowerCase().includes(q) || 
+                             (member.email && member.email.toLowerCase().includes(q)) ||
+                             (member.role && member.role.toLowerCase().includes(q));
+                    })
+                    .sort((a, b) => {
+                      const aOnline = onlineUsers.has(a._id) || a.status === 'Online' || a.isOnline;
+                      const bOnline = onlineUsers.has(b._id) || b.status === 'Online' || b.isOnline;
+                      if (aOnline && !bOnline) return -1;
+                      if (!aOnline && bOnline) return 1;
+                      return a.name.localeCompare(b.name);
+                    });
+
+                  const visibleTeammates = filteredDirectory.slice(0, visibleCount);
+
+                  if (visibleTeammates.length > 0) {
+                    return (
+                      <>
+                        {visibleTeammates.map((member, i) => {
+                          const isOnline = onlineUsers.has(member._id) || member.status === 'Online' || member.isOnline;
+                          const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
+                          const color = colors[i % colors.length];
+                          const initials = member.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+                          return (
+                            <div 
+                              key={member._id || i}
+                              className="flex items-center justify-between p-3 rounded-xl border border-border bg-surface hover:border-accent/40 hover:bg-base/30 transition-all group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="relative shrink-0">
+                                  <div className={`w-9 h-9 rounded-full ${color} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
+                                    {initials}
+                                  </div>
+                                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-surface ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-xs font-bold text-primary block truncate leading-tight">{member.name}</span>
+                                  <span className="text-[9px] text-tertiary font-bold uppercase tracking-wider block mt-1">{member.role || 'Teammate'}</span>
+                                  <span className="text-[9px] text-secondary font-medium block truncate mt-0.5">{member.email}</span>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  setIsTeamDrawerOpen(false);
+                                  router.push(`/employee?tab=chat&dmUserId=${member._id}`);
+                                }}
+                                className="p-2 bg-base border border-border rounded-xl text-secondary hover:text-accent hover:border-accent/30 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+                                title="Message Teammate"
+                              >
+                                <MessageSquare size={14} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {visibleCount < filteredDirectory.length && (
+                          <button 
+                            onClick={() => setVisibleCount(prev => prev + 20)}
+                            className="w-full py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all text-secondary mt-4"
+                          >
+                            Load More Teammates
+                          </button>
+                        )}
+                      </>
+                    );
+                  } else {
+                    return (
+                      <div className="p-8 text-center bg-base/50 rounded-2xl border border-border border-dashed">
+                        <p className="text-xs text-secondary font-bold">No teammates match your query.</p>
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             </motion.div>
           </div>

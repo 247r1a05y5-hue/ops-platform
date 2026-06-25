@@ -1,14 +1,16 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 import {
   LayoutDashboard, CheckSquare, Clock, MessageSquare,
-  Settings, LogOut, Settings2, BarChart3, X
+  Settings, LogOut, Settings2, BarChart3, X, Star, Clock as ClockIcon, FileText
 } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
-import { motion } from 'framer-motion';
+import { useFavoritesAndRecents } from '@/hooks/useFavoritesAndRecents';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect } from 'react';
 
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -16,10 +18,19 @@ function getInitials(name: string) {
 
 export default function EmployeeSidebar() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { showToast, setSidebarOpen, sidebarCollapsed } = useUI();
   const { user, logout } = useAuth();
   const currentTab = searchParams?.get('tab') || 'workspace';
   const unread = useUnreadCount();
+  const { favorites, recents, toggleFavorite, addRecent, isFavorite } = useFavoritesAndRecents();
+
+  useEffect(() => {
+    const currentItem = navItems.find(item => item.tabId === currentTab);
+    if (currentItem) {
+      addRecent({ name: currentItem.name, href: currentItem.href });
+    }
+  }, [pathname, currentTab]);
 
   const navItems = [
     { name: 'My Workspace', href: '/employee',               icon: LayoutDashboard, tabId: 'workspace' },
@@ -88,6 +99,21 @@ export default function EmployeeSidebar() {
                   >
                     <item.icon size={18} className={`${isActive ? 'text-white' : 'text-secondary group-hover:text-accent'} transition-colors shrink-0`} />
                     {!sidebarCollapsed && <span className="flex-1 truncate">{item.name}</span>}
+                    {!sidebarCollapsed && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleFavorite({ name: item.name, href: item.href });
+                        }}
+                        className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all z-20 ${
+                          isFavorite(item.href) ? 'text-yellow-500' : 'text-tertiary hover:text-yellow-500 hover:bg-base/80'
+                        }`}
+                        title={isFavorite(item.href) ? "Remove from Favorites" : "Add to Favorites"}
+                      >
+                        <Star size={12} className={isFavorite(item.href) ? "fill-yellow-500 text-yellow-500" : ""} />
+                      </button>
+                    )}
                     {badge > 0 && (
                       sidebarCollapsed ? (
                         <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 border border-base animate-pulse"></span>
@@ -104,6 +130,60 @@ export default function EmployeeSidebar() {
             })}
           </nav>
         </div>
+
+        {favorites.length > 0 && !sidebarCollapsed && (
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+              <Star size={10} className="text-yellow-500 fill-yellow-500" /> Favorites
+            </div>
+            <nav className="space-y-1">
+              {favorites.map((fav) => {
+                const match = navItems.find(n => n.href === fav.href);
+                const Icon = match ? match.icon : FileText;
+                const isActive = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '') === fav.href;
+                return (
+                  <Link
+                    key={fav.href}
+                    href={fav.href}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
+                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <span className="truncate flex-1">{fav.name}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
+        {recents.length > 0 && !sidebarCollapsed && (
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+              <ClockIcon size={10} className="text-accent" /> Recents
+            </div>
+            <nav className="space-y-1">
+              {recents.map((rec) => {
+                const match = navItems.find(n => n.href === rec.href);
+                const Icon = match ? match.icon : ClockIcon;
+                const isActive = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '') === rec.href;
+                return (
+                  <Link
+                    key={rec.href}
+                    href={rec.href}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
+                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <span className="truncate flex-1">{rec.name}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

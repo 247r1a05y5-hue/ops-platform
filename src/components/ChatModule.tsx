@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useSearchParams } from 'next/navigation';
 import JitsiCall from './JitsiCall';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -191,6 +192,8 @@ function renderMessageBody(text: string, isSelf: boolean): React.ReactNode {
 export default function ChatModule() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
+  const searchParams = useSearchParams();
+  const dmUserId = searchParams ? searchParams.get('dmUserId') : null;
 
   // ── Socket.io realtime connection ─────────────────────────────────────────
   const { socket, connected, joinConversation, leaveConversation, emitTyping, emitSignal } = useSocket();
@@ -1190,6 +1193,25 @@ export default function ChatModule() {
     } catch (e) { console.error('[startDM]', e); }
     finally { setSending(false); }
   };
+
+  useEffect(() => {
+    if (!dmUserId || loadingConvs) return;
+
+    // Find if direct chat with dmUserId exists
+    const existing = conversations.find(c => 
+      c.type === 'direct' && 
+      c.participants.includes(dmUserId)
+    );
+
+    if (existing) {
+      if (activeConvId !== existing._id) {
+        setActiveConvId(existing._id);
+      }
+    } else {
+      // Start a new DM conversation
+      startDM(dmUserId);
+    }
+  }, [dmUserId, loadingConvs, conversations, activeConvId]);
 
   const loadMore = () => {
     if (!activeConvId || !hasMore || !nextCursor) return;

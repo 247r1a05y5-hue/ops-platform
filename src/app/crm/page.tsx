@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -7,7 +8,7 @@ import {
   LayoutGrid, List, Download, Target, TrendingUp, Clock, CheckCircle, X, Send,
   FileText, Settings, Zap, Upload, User, AlertCircle, MessageSquare, Paperclip,
   Star, DollarSign, ArrowRight, AlertTriangle, CheckSquare, Link, BarChart2,
-  Briefcase, Activity, Bell, ChevronDown, RefreshCw
+  Briefcase, Activity, Bell, ChevronDown, RefreshCw, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadCSV } from '@/utils/export';
@@ -358,13 +359,28 @@ function FunnelBar({ funnelData }: { funnelData: Array<{ stage: string; count: n
   );
 }
 
-export default function CRM() {
+export function CRMWorkspace() {
   const { showToast } = useUI();
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  // Pagination & Bulk Selection states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+
+  // Command Palette deep linking trigger
+  useEffect(() => {
+    if (searchParams) {
+      if (searchParams.get('openModal') === 'true') {
+        setIsAddModalOpen(true);
+      }
+    }
+  }, [searchParams]);
 
   // Modals & Dynamic State
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -375,8 +391,8 @@ export default function CRM() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [modalTab, setModalTab] = useState<'workflow' | 'proposal' | 'timeline' | 'notes' | 'outreach' | 'documents' | 'history' | 'approvals'>('workflow');
 
-  // Workflow action loading state
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [creatingLead, setCreatingLead] = useState(false);
 
   // Workflow log
   const [workflowLog, setWorkflowLog] = useState<any[]>([]);
@@ -864,6 +880,7 @@ export default function CRM() {
       showToast('Lead name and email are required', 'warning');
       return;
     }
+    setCreatingLead(true);
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
@@ -888,6 +905,9 @@ export default function CRM() {
       }
     } catch (err) {
       console.error(err);
+      showToast('Network error creating lead', 'error');
+    } finally {
+      setCreatingLead(false);
     }
   };
 
@@ -1093,6 +1113,106 @@ export default function CRM() {
     l.company.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredLeads.length / pageSize);
+  const paginatedLeads = filteredLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [filteredLeads.length, pageSize, totalPages, currentPage]);
+
+  const toggleSelectLead = (id: string) => {
+    setSelectedLeadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllPageLeads = () => {
+    const allPageIds = paginatedLeads.map(l => l._id).filter(Boolean) as string[];
+    const allSelected = allPageIds.every(id => selectedLeadIds.has(id));
+    setSelectedLeadIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        allPageIds.forEach(id => next.delete(id));
+      } else {
+        allPageIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkUpdateLeadStage = async (targetStage: string) => {
+    showToast(`Bulk updating ${selectedLeadIds.size} leads to ${targetStage}...`, 'info');
+    const ids = Array.from(selectedLeadIds);
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch('/api/leads', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id,
+            action: 'update_stage',
+            stage: targetStage,
+            force: true,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+      } catch (_) {}
+    }
+    showToast(`Successfully updated ${successCount}/${ids.length} leads`, 'success');
+    setSelectedLeadIds(new Set());
+    fetchLeads();
+    fetchFunnelData();
+  };
+
+  const handleBulkRequestLeadApproval = async () => {
+    showToast(`Bulk requesting approval for ${selectedLeadIds.size} leads...`, 'info');
+    const ids = Array.from(selectedLeadIds);
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        const lead = leads.find(l => l._id === id);
+        if (!lead) continue;
+        const res = await fetch('/api/leads/workflow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadId: id, action: 'request_approval', dealValue: lead.value }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+      } catch (_) {}
+    }
+    showToast(`Successfully requested approval for ${successCount}/${ids.length} leads`, 'success');
+    setSelectedLeadIds(new Set());
+    fetchLeads();
+  };
+
+  const handleBulkDeleteLeads = async () => {
+    if (!confirm(`Are you sure you want to permanently delete the ${selectedLeadIds.size} selected leads?`)) return;
+    showToast(`Bulk deleting ${selectedLeadIds.size} leads...`, 'info');
+    const ids = Array.from(selectedLeadIds);
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/leads?id=${id}`, {
+          method: 'DELETE',
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+      } catch (_) {}
+    }
+    showToast(`Successfully deleted ${successCount}/${ids.length} leads`, 'success');
+    setSelectedLeadIds(new Set());
+    fetchLeads();
+    fetchFunnelData();
+  };
+
   const MODAL_TABS = [
     { id: 'workflow', label: 'Workflow' },
     { id: 'proposal', label: 'Proposal' },
@@ -1189,7 +1309,66 @@ export default function CRM() {
       {/* Board / List */}
       <div className="flex-1 overflow-hidden">
         {loading ? (
-          <div className="h-full flex items-center justify-center text-secondary font-bold text-sm">Synchronizing pipeline...</div>
+          view === 'board' ? (
+            /* Kanban Board loading skeleton */
+            <div className="h-full overflow-x-auto p-8 bg-base/30 relative shadow-inner custom-scrollbar">
+              <div className="flex gap-6 h-full min-w-max p-1 pb-4 animate-pulse">
+                {STAGES.map(stage => (
+                  <div key={stage} className="flex flex-col w-[300px] rounded-3xl border-2 border-transparent p-2 bg-surface/20 shrink-0 space-y-4">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="w-24 h-4 bg-border rounded"></div>
+                      <div className="w-6 h-4 bg-border rounded-full"></div>
+                    </div>
+                    {[1, 2].map(i => (
+                      <div key={i} className="bg-surface border border-border p-5 rounded-2xl space-y-3 shadow-sm">
+                        <div className="w-12 h-3 bg-border rounded"></div>
+                        <div className="w-full h-4 bg-border rounded"></div>
+                        <div className="w-2/3 h-4 bg-border rounded"></div>
+                        <div className="flex justify-between pt-3 border-t border-border mt-1">
+                          <div className="w-10 h-3 bg-border rounded"></div>
+                          <div className="w-12 h-3 bg-border rounded"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* List View table loading skeleton */
+            <div className="p-8 overflow-y-auto h-full bg-base/30 shadow-inner animate-pulse">
+              <div className="rounded-2xl border border-border bg-base shadow-sm overflow-hidden p-6 space-y-4">
+                <div className="h-10 bg-border rounded w-full"></div>
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="h-16 bg-surface border border-border rounded-xl flex items-center justify-between px-6">
+                    <div className="w-1/4 h-4 bg-border rounded"></div>
+                    <div className="w-1/6 h-4 bg-border rounded"></div>
+                    <div className="w-1/12 h-4 bg-border rounded"></div>
+                    <div className="w-1/12 h-4 bg-border rounded"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        ) : filteredLeads.length === 0 ? (
+          /* Rich Empty State */
+          <div className="h-full flex flex-col items-center justify-center p-12 bg-base/30 shadow-inner">
+            <div className="flex flex-col items-center justify-center p-12 bg-surface/50 border border-dashed border-border rounded-2xl max-w-lg w-full text-center shadow-sm">
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-4">
+                <Target size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-primary mb-1">No Leads Found</h3>
+              <p className="text-secondary text-sm mb-6 font-medium">No leads are currently matching your search filters. Import leads or create a new lead to get started.</p>
+              <div className="flex gap-3">
+                <button onClick={() => csvInputRef.current?.click()} className="px-4 py-2 border border-border bg-base text-primary rounded-xl text-xs font-semibold hover:bg-surface transition-all flex items-center gap-2 active:scale-95 shadow-sm">
+                  <Upload size={14} /> Import CSV
+                </button>
+                <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-600 transition-all active:scale-95">
+                  <Plus size={16} /> Add Lead
+                </button>
+              </div>
+            </div>
+          </div>
         ) : view === 'board' ? (
           <div className="h-full overflow-x-auto p-8 bg-base/30 relative shadow-inner custom-scrollbar snap-x scroll-smooth">
             <div className="flex gap-6 h-full min-w-max p-1 pb-4">
@@ -1237,9 +1416,9 @@ export default function CRM() {
                             >
                               <div className="flex justify-between items-center">
                                 <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${
-                                  lead.status === 'Hot' ? 'bg-red-500/10 text-red-600 border-red-500/20 dark:bg-red-500/20 dark:text-red-400' :
-                                  lead.status === 'Warm' ? 'bg-orange-500/10 text-orange-600 border-orange-500/20 dark:bg-orange-500/20 dark:text-orange-400' :
-                                  'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:bg-blue-500/20 dark:text-blue-400'
+                                  lead.status === 'Hot' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
+                                  lead.status === 'Warm' ? 'bg-orange-500/10 text-orange-600 border-orange-500/20' :
+                                  'bg-blue-500/10 text-blue-600 border-blue-500/20'
                                 }`}>{lead.status}</span>
                                 <div className="flex gap-2">
                                   {lead.leadScore != null && lead.leadScore > 0 && (
@@ -1286,11 +1465,19 @@ export default function CRM() {
             </div>
           </div>
         ) : (
-          <div className="p-8 overflow-y-auto h-full bg-base/30 shadow-inner">
-            <div className="rounded-2xl border border-border bg-base shadow-sm overflow-hidden">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-surface border-b border-border text-secondary font-bold uppercase tracking-widest">
+          <div className="p-8 overflow-hidden h-full bg-base/30 shadow-inner flex flex-col">
+            <div className="flex-1 overflow-y-auto relative custom-scrollbar mb-4 border border-border bg-base rounded-2xl shadow-sm">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-surface border-b border-border text-secondary font-bold uppercase tracking-widest z-10 shadow-sm">
                   <tr>
+                    <th className="px-6 py-4 w-12 text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={paginatedLeads.length > 0 && paginatedLeads.every(l => selectedLeadIds.has(l._id || ''))}
+                        onChange={toggleSelectAllPageLeads}
+                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
+                      />
+                    </th>
                     <th className="px-6 py-4">Lead Name</th>
                     <th className="px-6 py-4">Stage</th>
                     <th className="px-6 py-4">Score</th>
@@ -1301,45 +1488,160 @@ export default function CRM() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filteredLeads.map(lead => (
-                    <tr key={lead._id} className="hover:bg-surface/50 transition-colors group cursor-pointer" onClick={() => { setSelectedLead(lead); setModalTab('workflow'); }}>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-sm text-primary group-hover:text-accent transition-colors">{lead.name}</div>
-                        <div className="text-[11px] font-medium text-secondary mt-0.5">{lead.company} · {lead.email}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-base border border-border font-bold text-[10px] ${STAGE_META[lead.stage]?.color}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${STAGE_META[lead.stage]?.dot.split(' ')[0]}`} />
-                          {lead.stage}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {lead.leadScore != null && lead.leadScore > 0 ? (
-                          <span className={`font-black text-sm ${lead.leadScore >= 70 ? 'text-emerald-500' : lead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
-                            {lead.leadScore}/100
+                  {paginatedLeads.map(lead => {
+                    const isSelected = selectedLeadIds.has(lead._id || '');
+                    return (
+                      <tr 
+                        key={lead._id} 
+                        className={`hover:bg-surface/50 transition-colors group cursor-pointer ${isSelected ? 'bg-accent/5' : ''}`}
+                        onClick={() => { setSelectedLead(lead); setModalTab('workflow'); }}
+                      >
+                        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleSelectLead(lead._id || '')}
+                            className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-sm text-primary group-hover:text-accent transition-colors">{lead.name}</div>
+                          <div className="text-[11px] font-medium text-secondary mt-0.5">{lead.company} · {lead.email}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-base border border-border font-bold text-[10px] ${STAGE_META[lead.stage]?.color}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${STAGE_META[lead.stage]?.dot.split(' ')[0]}`} />
+                            {lead.stage}
                           </span>
-                        ) : <span className="text-tertiary">—</span>}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${
-                          lead.status === 'Hot' ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' :
-                          lead.status === 'Warm' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                          'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20'
-                        }`}>{lead.status}</span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-accent text-sm">{lead.value}</td>
-                      <td className="px-6 py-4 text-secondary font-bold uppercase tracking-wider">{lead.assignedToName || 'Unassigned'}</td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={(e) => { e.stopPropagation(); handleCallLead(lead.phone, lead.name); }} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Phone size={14}/></button>
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedLead(lead); setModalTab('outreach'); }} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Mail size={14}/></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-4">
+                          {lead.leadScore != null && lead.leadScore > 0 ? (
+                            <span className={`font-black text-sm ${lead.leadScore >= 70 ? 'text-emerald-500' : lead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                              {lead.leadScore}/100
+                            </span>
+                          ) : <span className="text-tertiary">—</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${
+                            lead.status === 'Hot' ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' :
+                            lead.status === 'Warm' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
+                            'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20'
+                          }`}>{lead.status}</span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-accent text-sm">{lead.value}</td>
+                        <td className="px-6 py-4 text-secondary font-bold uppercase tracking-wider">{lead.assignedToName || 'Unassigned'}</td>
+                        <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleCallLead(lead.phone, lead.name)} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Phone size={14}/></button>
+                            <button onClick={() => { setSelectedLead(lead); setModalTab('outreach'); }} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Mail size={14}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between p-4 border border-border bg-surface shrink-0 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-secondary font-medium">Rows per page:</span>
+                <select 
+                  value={pageSize} 
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  className="bg-base border border-border rounded-lg text-xs font-bold px-2 py-1 focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  {[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <span className="text-xs text-tertiary font-bold ml-4">
+                  Showing {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredLeads.length)} of {filteredLeads.length} leads
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="px-3 py-1.5 border border-border bg-base text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalPages }).map((_, i) => {
+                  const page = i + 1;
+                  if (totalPages > 5 && page !== 1 && page !== totalPages && Math.abs(currentPage - page) > 1) {
+                    if (page === 2 && currentPage > 3) return <span key={page} className="text-secondary text-xs">...</span>;
+                    if (page === totalPages - 1 && currentPage < totalPages - 2) return <span key={page} className="text-secondary text-xs">...</span>;
+                    return null;
+                  }
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        currentPage === page ? 'bg-accent text-white shadow-md shadow-accent/15' : 'border border-border bg-base text-secondary hover:text-primary'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+                <button 
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className="px-3 py-1.5 border border-border bg-base text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+
+            {/* Floating Bulk Selection Action Bar */}
+            <AnimatePresence>
+              {selectedLeadIds.size > 0 && (
+                <motion.div 
+                  initial={{ y: 50, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 50, opacity: 0 }}
+                  className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border rounded-2xl shadow-2xl p-4 flex items-center gap-6 max-w-xl w-full justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-accent/10 text-accent font-bold text-xs flex items-center justify-center shadow-inner">
+                      {selectedLeadIds.size}
+                    </div>
+                    <span className="text-xs font-bold text-primary">leads selected</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select 
+                      onChange={(e) => { if (e.target.value) { handleBulkUpdateLeadStage(e.target.value); e.target.value = ''; } }}
+                      className="bg-base border border-border rounded-xl text-xs font-bold px-3 py-2 text-primary focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                    >
+                      <option value="">Move Stage...</option>
+                      {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button 
+                      onClick={handleBulkRequestLeadApproval}
+                      className="px-4 py-2 bg-accent/10 border border-accent/20 text-accent rounded-xl text-xs font-bold hover:bg-accent/20 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                    >
+                      Request Approval
+                    </button>
+                    {(user?.role === 'Admin' || user?.role === 'Manager') && (
+                      <button 
+                        onClick={handleBulkDeleteLeads}
+                        className="px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setSelectedLeadIds(new Set())}
+                      className="px-3 py-2 text-secondary hover:text-primary transition-colors text-xs font-bold"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -2295,7 +2597,14 @@ export default function CRM() {
               </div>
               <div className="p-6 border-t border-border flex justify-end gap-3 bg-base/50">
                 <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 text-xs font-bold text-secondary hover:text-primary transition-colors">Cancel</button>
-                <button onClick={handleCreateLead} className="px-10 py-2.5 bg-accent text-white font-bold rounded-2xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs">Create Lead</button>
+                <button 
+                  onClick={handleCreateLead} 
+                  disabled={creatingLead}
+                  className="px-10 py-2.5 bg-accent text-white font-bold rounded-2xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs disabled:opacity-50 flex items-center gap-2"
+                >
+                   {creatingLead && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
+                   {creatingLead ? 'Creating...' : 'Create Lead'}
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -2483,5 +2792,13 @@ function ApprovalPanel() {
         </div>
       ))}
     </div>
+  );
+}
+
+export default function CRM() {
+  return (
+    <Suspense fallback={<div className="p-8 text-secondary">Loading CRM pipeline...</div>}>
+      <CRMWorkspace />
+    </Suspense>
   );
 }

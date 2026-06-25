@@ -4,11 +4,13 @@ import { useSearchParams, usePathname } from 'next/navigation';
 import {
   Target, Mail, CreditCard, Folder,
   Settings2, LogOut, Megaphone,
-  BarChart3, CheckCircle, Settings, X, CheckSquare
+  BarChart3, CheckCircle, Settings, X, CheckSquare, Star, Clock as ClockIcon, FileText
 } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
-import { motion } from 'framer-motion';
+import { useFavoritesAndRecents } from '@/hooks/useFavoritesAndRecents';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect } from 'react';
 
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -19,6 +21,30 @@ export default function MRSidebar() {
   const pathname = usePathname();
   const { showToast, setSidebarOpen, sidebarCollapsed } = useUI();
   const { user, logout } = useAuth();
+  const { favorites, recents, toggleFavorite, addRecent, isFavorite } = useFavoritesAndRecents();
+
+  const allMRNavItems = [
+    { name: 'Campaign Desk',       href: '/marketing?tab=campaigns', icon: Megaphone },
+    { name: 'Analytics & ROI',     href: '/marketing?tab=analytics', icon: BarChart3 },
+    { name: 'Strategy Alignment',  href: '/marketing?tab=approvals', icon: CheckCircle },
+    { name: 'Media Pipeline', href: '/mr?tab=leads',     icon: Target },
+    { name: 'Outreach Hub',   href: '/mr?tab=email',     icon: Mail },
+    { name: 'Financials',     href: '/mr?tab=finance',   icon: CreditCard },
+    { name: 'Media Desk',     href: '/mr?tab=resources', icon: Folder },
+    { name: 'Tasks & Alerts', href: '/mr?tab=tasks',     icon: CheckSquare },
+    { name: 'Settings', href: '/mr?tab=settings', icon: Settings }
+  ];
+
+  useEffect(() => {
+    const currentItem = allMRNavItems.find(item => {
+      const itemPath = item.href.split('?')[0];
+      const itemTab = new URLSearchParams(item.href.split('?')[1]).get('tab');
+      return pathname === itemPath && currentTab === itemTab;
+    });
+    if (currentItem) {
+      addRecent({ name: currentItem.name, href: currentItem.href });
+    }
+  }, [pathname, searchParams]);
 
   const isMarketing = pathname?.includes('/marketing');
   const currentTab = searchParams?.get('tab') || (isMarketing ? 'campaigns' : 'leads');
@@ -60,6 +86,21 @@ export default function MRSidebar() {
         >
           <item.icon size={18} className={`${isActive ? 'text-white' : 'text-secondary group-hover:text-accent'} transition-colors shrink-0`} />
           {!sidebarCollapsed && <span className="flex-1 truncate">{item.name}</span>}
+          {!sidebarCollapsed && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFavorite({ name: item.name, href: item.href });
+              }}
+              className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all z-20 ${
+                isFavorite(item.href) ? 'text-yellow-500' : 'text-tertiary hover:text-yellow-500 hover:bg-base/80'
+              }`}
+              title={isFavorite(item.href) ? "Remove from Favorites" : "Add to Favorites"}
+            >
+              <Star size={12} className={isFavorite(item.href) ? "fill-yellow-500 text-yellow-500" : ""} />
+            </button>
+          )}
           {isActive && !sidebarCollapsed && <motion.span layoutId={`activeNavMR_${sectionName}`} className="absolute right-3 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
         </Link>
       </motion.div>
@@ -112,6 +153,60 @@ export default function MRSidebar() {
           {!sidebarCollapsed && <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-3 px-3">Account</div>}
           <nav className="space-y-1">{accountItems.map((item, i) => renderNavItem(item, i + 8, 'account'))}</nav>
         </div>
+
+        {favorites.length > 0 && !sidebarCollapsed && (
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+              <Star size={10} className="text-yellow-500 fill-yellow-500" /> Favorites
+            </div>
+            <nav className="space-y-1">
+              {favorites.map((fav) => {
+                const match = allMRNavItems.find(n => n.href === fav.href);
+                const Icon = match ? match.icon : FileText;
+                const isActive = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '') === fav.href;
+                return (
+                  <Link
+                    key={fav.href}
+                    href={fav.href}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
+                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <span className="truncate flex-1">{fav.name}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
+        {recents.length > 0 && !sidebarCollapsed && (
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+              <ClockIcon size={10} className="text-accent" /> Recents
+            </div>
+            <nav className="space-y-1">
+              {recents.map((rec) => {
+                const match = allMRNavItems.find(n => n.href === rec.href);
+                const Icon = match ? match.icon : ClockIcon;
+                const isActive = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '') === rec.href;
+                return (
+                  <Link
+                    key={rec.href}
+                    href={rec.href}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
+                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    }`}
+                  >
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <span className="truncate flex-1">{rec.name}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
