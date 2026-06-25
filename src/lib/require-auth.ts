@@ -9,6 +9,10 @@ type RequireAuthResult =
   | { session: SessionPayload; error: null }
   | { session: null; error: NextResponse };
 
+// Cache suspension checks for 15 seconds to prevent hammering the DB during concurrent API loads
+const suspensionCache = new Map<string, { suspended: boolean; expiresAt: number }>();
+const SUSPENSION_CACHE_TTL = 15000;
+
 export async function requireAuth(
   req: NextRequest,
   allowedRoles?: string[]
@@ -24,10 +28,6 @@ export async function requireAuth(
       ),
     };
   }
-
-// Cache suspension checks for 15 seconds to prevent hammering the DB during concurrent API loads
-const suspensionCache = new Map<string, { suspended: boolean; expiresAt: number }>();
-const SUSPENSION_CACHE_TTL = 15000;
 
   // Instantly enforce account suspension by checking DB status with short-lived cache
   try {

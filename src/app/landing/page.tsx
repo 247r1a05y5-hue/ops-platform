@@ -26,8 +26,8 @@ export default function LandingPage() {
           {/* Nav */}
           <nav style={{ display: 'flex', gap: 32, fontSize: 14, fontWeight: 500, color: '#64748b' }}>
             <a href="#features" style={{ textDecoration: 'none', color: '#64748b', transition: 'color 0.2s' }} onMouseOver={e => (e.currentTarget.style.color = '#4338ca')} onMouseOut={e => (e.currentTarget.style.color = '#64748b')}>Features</a>
-            <a href="#pricing" style={{ textDecoration: 'none', color: '#64748b', transition: 'color 0.2s' }} onMouseOver={e => (e.currentTarget.style.color = '#4338ca')} onMouseOut={e => (e.currentTarget.style.color = '#64748b')}>Pricing</a>
-            <a href="#testimonials" style={{ textDecoration: 'none', color: '#64748b', transition: 'color 0.2s' }} onMouseOver={e => (e.currentTarget.style.color = '#4338ca')} onMouseOut={e => (e.currentTarget.style.color = '#64748b')}>Customers</a>
+            <a href="#architecture" style={{ textDecoration: 'none', color: '#64748b', transition: 'color 0.2s' }} onMouseOver={e => (e.currentTarget.style.color = '#4338ca')} onMouseOut={e => (e.currentTarget.style.color = '#64748b')}>Role Access</a>
+            <a href="#testimonials" style={{ textDecoration: 'none', color: '#64748b', transition: 'color 0.2s' }} onMouseOver={e => (e.currentTarget.style.color = '#4338ca')} onMouseOut={e => (e.currentTarget.style.color = '#64748b')}>Integrations</a>
           </nav>
 
           {/* CTAs */}
@@ -71,14 +71,14 @@ export default function LandingPage() {
         {/* Stats bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, flexWrap: 'wrap', background: 'white', borderRadius: 16, padding: '16px 32px', boxShadow: '0 2px 16px rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.1)', maxWidth: 680, margin: '0 auto' }}>
           {[
-            { label: 'companies', value: '5,200+' },
-            { label: 'tasks tracked', value: '48,000+' },
-            { label: 'invoiced', value: '$2.4M+' },
-            { label: 'uptime', value: '99.9%' },
+            { label: 'Department Ranks', value: 'Admin & Manager' },
+            { label: 'Core Workflows', value: 'Tasks & CRM' },
+            { label: 'Communication', value: 'Chat & Meet' },
+            { label: 'Channels', value: 'Email & WhatsApp' },
           ].map((s, i) => (
             <div key={i} style={{ flex: 1, textAlign: 'center', padding: '8px 16px', borderRight: i < 3 ? '1px solid rgba(99,102,241,0.12)' : 'none', minWidth: 120 }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#4338ca', letterSpacing: '-0.02em' }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500, marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#4338ca', letterSpacing: '-0.02em' }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -206,58 +206,49 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
+      {/* ── PRODUCTION INTEGRATIONS / WORKFLOWS ── */}
       <section id="testimonials" style={{ maxWidth: 1200, margin: '0 auto', padding: '80px 32px' }}>
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
-          <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em', color: '#1e1b4b', marginBottom: 14 }}>Trusted by operations teams</h2>
-          <p style={{ fontSize: 17, color: '#64748b' }}>Real results from real teams.</p>
+          <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em', color: '#1e1b4b', marginBottom: 14 }}>High-Fidelity Operational Integrations</h2>
+          <p style={{ fontSize: 17, color: '#64748b' }}>Every channel is fully functional and backed by real integrations.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
           {[
-            { name: 'Amanda Riley', role: 'Head of Operations, BrightRetail', initials: 'AR', quote: 'OPS Platform replaced five tools and reduced our monthly operational overhead by 40%. The pipelines and task templates are game changers.' },
-            { name: 'Marco Silva', role: 'Director of Finance', initials: 'MS', quote: 'Integrated invoicing and task automation made month-end closing painless. Reporting alone saved us several days each month.' },
-            { name: 'Julia Lee', role: 'VP Sales', initials: 'JL', quote: 'Lead routing and SLA alerts mean our reps follow up faster and close more deals. Ops and Sales finally speak the same language.' },
+            { title: 'Gmail OAuth Integration', desc: 'Authorize secure Gmail access via official Google OAuth APIs to seamlessly sync incoming lead emails and compile automated outreach directly within sales pipelines.' },
+            { title: 'WhatsApp Notification Gateway', desc: 'Dispatch instant task assignments, team shift check-ins, and automated client invoicing reminders directly to mobile numbers via meta-compliant WhatsApp Cloud APIs.' },
+            { title: 'Razorpay Payment Gateway', desc: 'Generate secure transaction links for GST invoices, track payment status in real-time, and trigger automatic workflow progressions upon receipt of funds.' },
           ].map((t, i) => (
             <div key={i} style={{ background: 'white', borderRadius: 16, padding: '28px', border: '1.5px solid rgba(99,102,241,0.1)', boxShadow: '0 2px 12px rgba(99,102,241,0.06)' }}>
-              <div style={{ display: 'flex', gap: 2, marginBottom: 16 }}>
-                {[...Array(5)].map((_, si) => <Star key={si} size={13} fill="#6366f1" color="#6366f1" />)}
-              </div>
-              <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, fontStyle: 'italic', marginBottom: 24 }}>&quot;{t.quote}&quot;</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid rgba(99,102,241,0.08)', paddingTop: 20 }}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #4338ca, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white' }}>{t.initials}</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13.5, color: '#1e1b4b' }}>{t.name}</div>
-                  <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{t.role}</div>
-                </div>
-              </div>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#3730a3', marginBottom: 12 }}>{t.title}</h3>
+              <p style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.7, marginBottom: 0 }}>{t.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── PRICING ── */}
-      <section id="pricing" style={{ background: 'white', borderTop: '1px solid rgba(99,102,241,0.1)', borderBottom: '1px solid rgba(99,102,241,0.1)', padding: '80px 32px' }}>
+      {/* ── ROLE ACCESS MATRIX / ARCHITECTURE ── */}
+      <section id="architecture" style={{ background: 'white', borderTop: '1px solid rgba(99,102,241,0.1)', borderBottom: '1px solid rgba(99,102,241,0.1)', padding: '80px 32px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 56 }}>
-            <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em', color: '#1e1b4b', marginBottom: 14 }}>Simple, transparent pricing</h2>
-            <p style={{ fontSize: 17, color: '#64748b' }}>No hidden fees — upgrade as your team grows.</p>
+            <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em', color: '#1e1b4b', marginBottom: 14 }}>Role-Based Access Control</h2>
+            <p style={{ fontSize: 17, color: '#64748b' }}>Every department has a tailored, secure workspace layout designed for their specific function.</p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, maxWidth: 900, margin: '0 auto' }}>
             {[
-              { plan: 'Starter', price: '$29', period: '/mo', desc: 'Up to 5 users, basic workflows, invoicing.', cta: 'Start Free Trial', highlight: false, features: ['5 users', 'Task boards', 'Basic invoicing', 'Email support'] },
-              { plan: 'Growth', price: '$79', period: '/mo', desc: 'Advanced automation, CRM, and analytics for scaling teams.', cta: 'Choose Growth', highlight: true, features: ['Unlimited users', 'CRM pipeline', 'Advanced analytics', 'Priority support', 'Integrations'] },
-              { plan: 'Enterprise', price: 'Custom', period: '', desc: 'Custom limits, SSO, priority support, and onboarding.', cta: 'Contact Sales', highlight: false, features: ['Custom limits', 'SSO / SAML', 'Dedicated CSM', 'Custom integrations'] },
+              { plan: 'Operational Staff', price: 'Employee', period: ' Workspace', desc: 'Task check-ins, subtask logs, daily shift tracking, and real-time team direct messaging.', cta: 'Access Employee Desk', highlight: false, features: ['Daily shift timers', 'Live team presence search', 'Direct messaging with attachments', 'Sprint checklists'] },
+              { plan: 'Department Lead', price: 'Manager', period: ' Dashboard', desc: 'Approve CRM workflows, oversee active team allocation, and review operational statistics.', cta: 'Access Manager Desk', highlight: true, features: ['Deal approval desk', 'Personnel management ranking', 'Live statistics charts', 'Priority support channels'] },
+              { plan: 'Platform Control', price: 'System Admin', period: ' Panel', desc: 'Manage system-wide configurations, audit logs CRUD, and platform health.', cta: 'Access Admin Controls', highlight: false, features: ['Comprehensive audit trail', 'Create, suspend, or delete users', 'Maintenance mode configurations', 'System cache controls'] },
             ].map((p, i) => (
               <div key={i} style={{ position: 'relative', background: p.highlight ? 'linear-gradient(135deg, #4338ca 0%, #6366f1 100%)' : 'linear-gradient(135deg, #f8f9ff 0%, #eef0fb 100%)', borderRadius: 20, padding: '32px', border: p.highlight ? 'none' : '1.5px solid rgba(99,102,241,0.12)', boxShadow: p.highlight ? '0 12px 40px rgba(99,102,241,0.4)' : '0 2px 12px rgba(99,102,241,0.06)', transform: p.highlight ? 'scale(1.03)' : 'none', zIndex: p.highlight ? 1 : 0 }}>
                 {p.highlight && (
-                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', color: '#92400e', fontSize: 10, fontWeight: 800, padding: '4px 14px', borderRadius: 99, letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Most Popular</div>
+                  <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', color: '#92400e', fontSize: 10, fontWeight: 800, padding: '4px 14px', borderRadius: 99, letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Recommended Role</div>
                 )}
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: p.highlight ? 'rgba(255,255,255,0.7)' : '#94a3b8', marginBottom: 16 }}>{p.plan}</div>
-                <div style={{ fontSize: 44, fontWeight: 800, color: p.highlight ? 'white' : '#1e1b4b', letterSpacing: '-0.03em', marginBottom: 6, lineHeight: 1 }}>{p.price}<span style={{ fontSize: 16, fontWeight: 500, color: p.highlight ? 'rgba(255,255,255,0.6)' : '#94a3b8' }}>{p.period}</span></div>
-                <p style={{ fontSize: 13.5, color: p.highlight ? 'rgba(255,255,255,0.75)' : '#64748b', marginBottom: 24, lineHeight: 1.6 }}>{p.desc}</p>
+                <div style={{ fontSize: 32, fontWeight: 800, color: p.highlight ? 'white' : '#1e1b4b', letterSpacing: '-0.03em', marginBottom: 6, lineHeight: 1.1 }}>{p.price}<span style={{ fontSize: 14, fontWeight: 500, color: p.highlight ? 'rgba(255,255,255,0.6)' : '#94a3b8' }}>{p.period}</span></div>
+                <p style={{ fontSize: 13, color: p.highlight ? 'rgba(255,255,255,0.75)' : '#64748b', marginBottom: 24, lineHeight: 1.6 }}>{p.desc}</p>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 28px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {p.features.map((feat, j) => (
-                    <li key={j} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: p.highlight ? 'rgba(255,255,255,0.85)' : '#475569' }}>
+                    <li key={j} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: p.highlight ? 'rgba(255,255,255,0.85)' : '#475569' }}>
                       <div style={{ width: 18, height: 18, borderRadius: '50%', background: p.highlight ? 'rgba(255,255,255,0.2)' : 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <Check size={10} color={p.highlight ? 'white' : '#4338ca'} strokeWidth={3} />
                       </div>
@@ -280,12 +271,12 @@ export default function LandingPage() {
           <div style={{ position: 'absolute', top: -40, right: -40, width: 300, height: 300, background: 'rgba(255,255,255,0.05)', borderRadius: '50%', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', bottom: -60, left: -60, width: 250, height: 250, background: 'rgba(255,255,255,0.05)', borderRadius: '50%', pointerEvents: 'none' }} />
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.15)', color: 'white', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 20 }}>
-            <Zap size={11} fill="white" color="white" /> Start today — free
+            <Zap size={11} fill="white" color="white" /> Secure Workspace Access
           </div>
           <h2 style={{ fontSize: 42, fontWeight: 800, color: 'white', letterSpacing: '-0.02em', marginBottom: 16, position: 'relative' }}>Ready to run better operations?</h2>
-          <p style={{ fontSize: 17, color: 'rgba(255,255,255,0.75)', marginBottom: 36, position: 'relative' }}>Start free — no credit card required. Setup in under 5 minutes.</p>
+          <p style={{ fontSize: 17, color: 'rgba(255,255,255,0.75)', marginBottom: 36, position: 'relative' }}>Sign in to access your role-based control dashboard panel.</p>
           <Link href="/login" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 10, padding: '16px 40px', background: 'white', color: '#4338ca', fontWeight: 800, borderRadius: 14, fontSize: 16, boxShadow: '0 8px 30px rgba(0,0,0,0.2)', transition: 'all 0.2s', position: 'relative' }}>
-            Get started now <ArrowRight size={18} />
+            Sign In to Workspace <ArrowRight size={18} />
           </Link>
         </div>
       </section>
@@ -307,8 +298,8 @@ export default function LandingPage() {
           </div>
           <div style={{ display: 'flex', gap: 64, flexWrap: 'wrap' }}>
             {[
-              { title: 'Product', links: [{ label: 'Features', href: '#features' }, { label: 'Pricing', href: '#pricing' }, { label: 'Dashboard', href: '/login' }] },
-              { title: 'Company', links: [{ label: 'About', href: '#' }, { label: 'Contact', href: '#' }, { label: 'Privacy', href: '#' }] },
+              { title: 'Product', links: [{ label: 'Features', href: '#features' }, { label: 'Role Access', href: '#architecture' }, { label: 'Dashboard', href: '/login' }] },
+              { title: 'Company', links: [{ label: 'About', href: '#' }, { label: 'Contact', href: '#' }] },
             ].map((col, i) => (
               <div key={i}>
                 <h4 style={{ fontWeight: 700, fontSize: 13, color: '#1e1b4b', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{col.title}</h4>

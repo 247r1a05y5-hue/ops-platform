@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
       success: true,
       profile: user,
       notifSettings: (settings as any)?.notifSettings ?? {},
+      sessionTimeout: (settings as any)?.sessionTimeout ?? '30',
     }, {
       headers: {
         'Cache-Control': 'no-store, max-age=0, must-revalidate',

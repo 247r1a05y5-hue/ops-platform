@@ -98,6 +98,9 @@ export default function Settings() {
           if (data.notifSettings && Object.keys(data.notifSettings).length > 0) {
             setNotifSettings(prev => ({ ...prev, ...data.notifSettings }));
           }
+          if (data.sessionTimeout) {
+            setSecurityData(prev => ({ ...prev, sessionTimeout: data.sessionTimeout }));
+          }
         } else if (user) {
           setFormData(prev => ({
             ...prev,

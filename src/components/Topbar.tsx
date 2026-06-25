@@ -280,7 +280,7 @@ export default function Topbar() {
                 </div>
 
                 <div className="px-2 space-y-1">
-                  <Link href={`${homeRoute}?tab=settings`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-base rounded-lg transition-colors">
+                  <Link href={user?.role === 'Admin' ? '/settings' : `${homeRoute}?tab=settings`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-base rounded-lg transition-colors">
                     <SettingsIcon size={14} /> Settings
                   </Link>
                   <div className="h-px bg-border my-1"></div>

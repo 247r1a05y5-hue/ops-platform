@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, EyeOff, Eye, Save, User, Bell, Shield, Globe,
-  Sliders, Sun, Moon
+  Sliders, Sun, Moon, X, QrCode, Clock
 } from 'lucide-react';
 
 type Role = 'manager' | 'staff' | 'marketing';
@@ -47,9 +47,6 @@ export default function SharedSettingsModule({ role }: Props) {
     fullName: '',
     email: '',
     title: defaults.title,
-    phone: '',
-    timezone: 'UTC-5 (Eastern Time)',
-    language: 'English (US)',
   });
 
   const [notifSettings, setNotifSettings] = useState({
@@ -69,18 +66,27 @@ export default function SharedSettingsModule({ role }: Props) {
     currentPass: '',
     newPass: '',
     confirmPass: '',
-    twoFactor: true,
     sessionTimeout: '30',
   });
 
-  const [preferences, setPreferences] = useState({
-    compactMode: false,
-    showAvatars: true,
-    autoSave: true,
-    soundEffects: false,
-  });
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [totpSecret, setTotpSecret] = useState('');
+  const [tfaSetupToken, setTfaSetupToken] = useState('');
+  const [tfaLoading, setTfaLoading] = useState(false);
 
   const [showPass, setShowPass] = useState(false);
+
+  const fetchTwoFAStatus = async () => {
+    try {
+      const res = await fetch('/api/auth/2fa', { credentials: 'include', cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setTwoFactorEnabled(data.enabled ?? false);
+      }
+    } catch { /* ignore */ }
+  };
 
   // Load user profile + notifSettings from the API (source of truth = DB)
   useEffect(() => {
@@ -105,6 +111,9 @@ export default function SharedSettingsModule({ role }: Props) {
           if (data.notifSettings && Object.keys(data.notifSettings).length > 0) {
             setNotifSettings(prev => ({ ...prev, ...data.notifSettings }));
           }
+          if (data.sessionTimeout) {
+            setSecurityData(prev => ({ ...prev, sessionTimeout: data.sessionTimeout }));
+          }
         } else if (user) {
           setFormData(prev => ({
             ...prev,
@@ -126,6 +135,10 @@ export default function SharedSettingsModule({ role }: Props) {
       .finally(() => setSettingsLoaded(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'Security') fetchTwoFAStatus();
+  }, [activeTab]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,9 +184,8 @@ export default function SharedSettingsModule({ role }: Props) {
         } else {
           showToast(data.error || 'Failed to update profile', 'error');
         }
-      } else {
-        // Preferences / Appearance tabs — local-only (no DB field yet)
-        showToast(`${activeTab} settings saved`, 'success');
+      } else if (activeTab === 'Appearance') {
+        showToast('Appearance settings saved', 'success');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error';
@@ -183,39 +195,75 @@ export default function SharedSettingsModule({ role }: Props) {
     }
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
+  const handleSecuritySave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!securityData.currentPass) {
-      showToast('Please enter your current password', 'warning'); return;
-    }
-    if (securityData.newPass.length < 8) {
-      showToast('New password must be at least 8 characters', 'warning'); return;
-    }
-    if (securityData.newPass !== securityData.confirmPass) {
-      showToast('New passwords do not match', 'error'); return;
-    }
     setIsSaving(true);
+    let passwordUpdated = false;
+    let timeoutUpdated = false;
+
     try {
+      // 1. Password change
+      if (securityData.currentPass || securityData.newPass || securityData.confirmPass) {
+        if (!securityData.currentPass || !securityData.newPass) {
+          showToast('Fill in current and new password to change password', 'warning');
+          setIsSaving(false);
+          return;
+        }
+        if (securityData.newPass.length < 8) {
+          showToast('New password must be at least 8 characters', 'warning');
+          setIsSaving(false);
+          return;
+        }
+        if (securityData.newPass !== securityData.confirmPass) {
+          showToast('New passwords do not match', 'error');
+          setIsSaving(false);
+          return;
+        }
+
+        const res = await fetch('/api/settings', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+          body: JSON.stringify({
+            action: 'password',
+            currentPass: securityData.currentPass,
+            newPass: securityData.newPass,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSecurityData(p => ({ ...p, currentPass: '', newPass: '', confirmPass: '' }));
+          showToast('Password updated successfully', 'success');
+          passwordUpdated = true;
+        } else {
+          showToast(data.error || 'Failed to update password', 'error');
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      // 2. Persist session timeout
       const res = await fetch('/api/settings', {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({
-          action: 'password',
-          currentPass: securityData.currentPass,
-          newPass: securityData.newPass,
+          action: 'security',
+          sessionTimeout: securityData.sessionTimeout,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setSecurityData(p => ({ ...p, currentPass: '', newPass: '', confirmPass: '' }));
-        showToast('Password updated successfully', 'success');
+        timeoutUpdated = true;
+        if (!passwordUpdated) {
+          showToast(data.message || 'Session timeout preference saved', 'success');
+        }
       } else {
-        showToast(data.error || 'Failed to update password', 'error');
+        showToast(data.error || 'Failed to save session timeout', 'error');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error';
-      showToast(`Password change failed: ${msg}`, 'error');
+      showToast(`Save failed: ${msg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -231,7 +279,6 @@ export default function SharedSettingsModule({ role }: Props) {
     { name: 'Appearance', icon: SunIcon },
     { name: 'Notifications', icon: Bell },
     { name: 'Security', icon: Shield },
-    { name: 'Preferences', icon: Sliders },
   ];
 
   const toggleNotif = (key: keyof typeof notifSettings) => {
@@ -276,7 +323,7 @@ export default function SharedSettingsModule({ role }: Props) {
             </p>
           </div>
 
-          <form onSubmit={activeTab === 'Security' ? handlePasswordChange : handleSave}>
+          <form onSubmit={activeTab === 'Security' ? handleSecuritySave : handleSave}>
             <AnimatePresence mode="wait">
 
               {/* ─── PROFILE ─── */}
@@ -318,16 +365,7 @@ export default function SharedSettingsModule({ role }: Props) {
                         className="w-full bg-surface border border-border px-4 py-2.5 rounded-lg text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Phone Number</label>
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full bg-surface border border-border px-4 py-2.5 rounded-lg text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all"
-                      />
-                    </div>
-                    <div>
+                    <div className="col-span-1 md:col-span-2">
                       <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Role / Title</label>
                       <input
                         type="text"
@@ -518,21 +556,50 @@ export default function SharedSettingsModule({ role }: Props) {
                     </div>
                   </div>
 
-                  {/* 2FA */}
+                  {/* 2FA Toggle */}
                   <div className="flex items-center justify-between p-4 bg-surface border border-border rounded-xl">
                     <div>
-                      <h4 className="text-sm font-semibold">Two-Factor Authentication</h4>
-                      <p className="text-xs text-secondary mt-0.5">Add an extra layer of security to your account</p>
+                      <h4 className="text-sm font-semibold flex items-center gap-2"><Shield size={14} className="text-accent"/> Two-Factor Authentication</h4>
+                      <p className="text-xs text-secondary mt-0.5">{twoFactorEnabled ? 'Enabled — your account is protected with TOTP.' : 'Add an extra layer of security to your account'}</p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setSecurityData(p => ({ ...p, twoFactor: !p.twoFactor }))}
-                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${securityData.twoFactor ? 'bg-accent' : 'bg-border'}`}
-                    >
-                      <span
-                        className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5"
-                        style={{ transform: securityData.twoFactor ? 'translateX(22px)' : 'translateX(0)' }}
-                      />
+                      disabled={tfaLoading}
+                      onClick={async () => {
+                        setTfaLoading(true);
+                        if (twoFactorEnabled) {
+                          // Disable 2FA
+                          if (!confirm('Are you sure you want to disable Two-Factor Authentication? This will make your account less secure.')) {
+                            setTfaLoading(false); return;
+                          }
+                          try {
+                            const res = await fetch('/api/auth/2fa', { method: 'DELETE', credentials: 'include' });
+                            const data = await res.json();
+                            if (data.success) {
+                              setTwoFactorEnabled(false);
+                              showToast('Two-Factor Authentication disabled.', 'success');
+                            } else { showToast(data.error || 'Failed to disable 2FA.', 'error'); }
+                          } catch { showToast('Network error.', 'error'); }
+                        } else {
+                          // Enable 2FA — fetch secret & QR code
+                          try {
+                            const res = await fetch('/api/auth/2fa', { credentials: 'include', cache: 'no-store' });
+                            const data = await res.json();
+                            if (data.enabled) {
+                              setTwoFactorEnabled(true);
+                              showToast('2FA is already enabled on your account.', 'info');
+                            } else if (data.secret && data.qrCodeUrl) {
+                              setTotpSecret(data.secret);
+                              setQrCodeUrl(data.qrCodeUrl);
+                              setTfaSetupToken('');
+                              setShow2FAModal(true);
+                            } else { showToast('Failed to generate 2FA secret.', 'error'); }
+                          } catch { showToast('Network error.', 'error'); }
+                        }
+                        setTfaLoading(false);
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${twoFactorEnabled ? 'bg-accent' : 'bg-border'} ${tfaLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5" style={{transform: twoFactorEnabled ? 'translateX(22px)' : 'translateX(0)'}}/>
                     </button>
                   </div>
 
@@ -576,88 +643,6 @@ export default function SharedSettingsModule({ role }: Props) {
                 </motion.div>
               )}
 
-              {/* ─── PREFERENCES ─── */}
-              {activeTab === 'Preferences' && (
-                <motion.div key="preferences" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
-                  {/* Display */}
-                  <div className="bg-surface p-6 rounded-xl border border-border space-y-4">
-                    <h3 className="font-semibold text-sm flex items-center gap-2"><Globe size={16} /> Locale & Display</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Language</label>
-                        <select
-                          value={formData.language}
-                          onChange={e => setFormData({ ...formData, language: e.target.value })}
-                          className="w-full px-4 py-2.5 border border-border bg-base rounded-lg text-sm focus:border-accent outline-none appearance-none"
-                        >
-                          <option>English (US)</option>
-                          <option>English (UK)</option>
-                          <option>Spanish</option>
-                          <option>French</option>
-                          <option>German</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Timezone</label>
-                        <select
-                          value={formData.timezone}
-                          onChange={e => setFormData({ ...formData, timezone: e.target.value })}
-                          className="w-full px-4 py-2.5 border border-border bg-base rounded-lg text-sm focus:border-accent outline-none appearance-none"
-                        >
-                          <option>UTC-5 (Eastern Time)</option>
-                          <option>UTC-6 (Central Time)</option>
-                          <option>UTC-7 (Mountain Time)</option>
-                          <option>UTC-8 (Pacific Time)</option>
-                          <option>UTC+5:30 (IST)</option>
-                          <option>UTC+0 (GMT)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Account Preferences Toggles */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-tertiary uppercase tracking-wider px-1">Account Preferences</h3>
-                    {[
-                      { key: 'compactMode',  label: 'Compact Mode',       desc: 'Reduce spacing for higher information density' },
-                      { key: 'showAvatars',  label: 'Show Avatars',        desc: 'Display user avatars throughout the interface' },
-                      { key: 'autoSave',     label: 'Auto-Save Changes',   desc: 'Automatically save form changes as you type' },
-                      { key: 'soundEffects', label: 'Sound Effects',       desc: 'Play subtle sounds for notifications and actions' },
-                    ].map(item => (
-                      <div key={item.key} className="flex items-center justify-between p-4 bg-surface border border-border rounded-xl">
-                        <div>
-                          <h4 className="text-sm font-semibold">{item.label}</h4>
-                          <p className="text-xs text-secondary mt-0.5">{item.desc}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setPreferences(p => ({ ...p, [item.key]: !p[item.key as keyof typeof p] }))}
-                          className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${preferences[item.key as keyof typeof preferences] ? 'bg-accent' : 'bg-border'}`}
-                        >
-                          <span
-                            className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5"
-                            style={{ transform: preferences[item.key as keyof typeof preferences] ? 'translateX(22px)' : 'translateX(0)' }}
-                          />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Danger Zone */}
-                  <div className="bg-red-500/5 p-5 rounded-xl border border-red-500/20 space-y-3">
-                    <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider">Danger Zone</h3>
-                    <p className="text-xs text-secondary">These actions are irreversible. Please proceed with caution.</p>
-                    <button
-                      type="button"
-                      onClick={() => showToast('Account deletion requires System Administrator approval.', 'warning')}
-                      className="px-4 py-2 border border-red-500/30 text-red-500 text-xs font-semibold rounded-lg hover:bg-red-500/10 transition-colors"
-                    >
-                      Request Account Deletion
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
             </AnimatePresence>
 
             {/* Save Footer */}
@@ -676,6 +661,88 @@ export default function SharedSettingsModule({ role }: Props) {
           </form>
         </div>
       </div>
+
+      {/* ── 2FA Setup Modal ── */}
+      {show2FAModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:'rgba(0,0,0,0.6)',backdropFilter:'blur(8px)'}}>
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md p-8 relative">
+            <button type="button" onClick={() => setShow2FAModal(false)} className="absolute top-4 right-4 text-secondary hover:text-primary"><X size={18}/></button>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                <Shield size={18} className="text-accent"/>
+              </div>
+              <div>
+                <h3 className="font-bold text-primary">Enable Two-Factor Authentication</h3>
+                <p className="text-xs text-secondary">Scan the QR code with Google Authenticator or Authy</p>
+              </div>
+            </div>
+
+            {/* QR Code */}
+            <div className="flex justify-center mb-6">
+              {qrCodeUrl ? (
+                <div className="p-3 bg-white rounded-xl border border-border shadow-sm">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrCodeUrl} alt="2FA QR Code" width={180} height={180} />
+                </div>
+              ) : (
+                <div className="w-44 h-44 bg-border/30 rounded-xl animate-pulse"/>
+              )}
+            </div>
+
+            {/* Manual secret */}
+            <div className="mb-5">
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1">Manual entry key</label>
+              <div className="flex items-center gap-2 bg-base border border-border rounded-lg px-3 py-2">
+                <code className="text-xs text-accent font-mono flex-1 tracking-widest break-all">{totpSecret}</code>
+                <button type="button" onClick={() => {navigator.clipboard.writeText(totpSecret); showToast('Secret copied!','info');}}
+                  className="text-xs text-secondary hover:text-accent px-2 py-1 rounded border border-border bg-surface">Copy</button>
+              </div>
+            </div>
+
+            {/* Verification input */}
+            <div className="mb-6">
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Verification code from your app</label>
+              <input
+                type="text" maxLength={6} pattern="\d{6}" value={tfaSetupToken}
+                onChange={e => setTfaSetupToken(e.target.value.replace(/\D/g,''))}
+                placeholder="000000"
+                className="w-full bg-base border border-border px-4 py-3 rounded-lg text-center text-xl font-bold tracking-[0.4em] focus:border-accent outline-none text-primary"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShow2FAModal(false)}
+                className="flex-1 py-2.5 border border-border rounded-lg text-sm font-semibold hover:bg-base transition-colors bg-transparent text-primary">Cancel</button>
+              <button
+                type="button"
+                disabled={tfaSetupToken.length !== 6 || tfaLoading}
+                onClick={async () => {
+                  if (tfaSetupToken.length !== 6) return;
+                  setTfaLoading(true);
+                  try {
+                    const res = await fetch('/api/auth/2fa', {
+                      method: 'POST', credentials: 'include',
+                      headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({ token: tfaSetupToken, secret: totpSecret })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setTwoFactorEnabled(true);
+                      setShow2FAModal(false);
+                      showToast('Two-Factor Authentication enabled! 🔐', 'success');
+                    } else {
+                      showToast(data.error || 'Invalid code. Please try again.', 'error');
+                    }
+                  } catch { showToast('Network error.', 'error'); }
+                  tfaLoading && setTfaLoading(false);
+                }}
+                className="flex-1 py-2.5 bg-accent text-white rounded-lg text-sm font-bold hover:bg-indigo-600 transition-colors disabled:opacity-50">
+                {tfaLoading ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block"/> : 'Activate 2FA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
