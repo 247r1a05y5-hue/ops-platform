@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import {
   Users,
   Settings,
-  ShieldAlert,
   RefreshCw,
   Search,
   Plus,
@@ -14,7 +13,6 @@ import {
   Power,
   Server,
   Activity,
-  Check,
   X,
   UserCheck,
   UserMinus,
@@ -22,7 +20,6 @@ import {
   AlertCircle,
   Clock,
   Shield,
-  Key,
   ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';

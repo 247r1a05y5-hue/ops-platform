@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, Search, RefreshCw, ChevronLeft, ChevronRight, Download, AlertCircle, Clock, User, Activity, X, Filter } from 'lucide-react';
+import { Shield, Search, RefreshCw, ChevronLeft, ChevronRight, Download, AlertCircle } from 'lucide-react';
 
 type AuditLog = {
   _id: string; name: string; userEmail: string; userRole: string;
