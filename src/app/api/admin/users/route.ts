@@ -31,7 +31,13 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({ success: true, users });
+    const { isUserOnline } = await import('@/lib/socket-server');
+    const usersWithPresence = users.map((u: any) => ({
+      ...u,
+      isOnline: isUserOnline(u._id.toString())
+    }));
+
+    return NextResponse.json({ success: true, users: usersWithPresence });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

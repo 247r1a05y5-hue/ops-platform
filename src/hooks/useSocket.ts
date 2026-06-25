@@ -86,12 +86,13 @@ function getSharedSocket(): Socket {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-export function useSocket() {
+export function useSocket(enabled = true) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const hbRef     = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     _refCount++;
     const socket = getSharedSocket();
     socketRef.current = socket;

@@ -403,8 +403,9 @@ export default function CRM() {
   const [nlValue, setNlValue] = useState('5000');
   const [nlStatus, setNlStatus] = useState<'Hot' | 'Warm' | 'Cold'>('Warm');
   const [nlStage, setNlStage] = useState<CRMStage>('Discovery');
-  const [nlAssigned, setNlAssigned] = useState('Maya Thompson');
+  const [nlAssigned, setNlAssigned] = useState('');
   const [nlSource, setNlSource] = useState('Manual Entry');
+  const [teamMembers, setTeamMembers] = useState<{ _id: string; name: string; role: string }[]>([]);
 
   // Input states for outreach
   const [outSubject, setOutSubject] = useState('');
@@ -687,11 +688,34 @@ export default function CRM() {
     }
   };
 
+  // Fetch workspace users for the "Assign To" dropdown
+  const fetchTeamMembers = async () => {
+    try {
+      const res = await fetch('/api/users', { credentials: 'include', cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.users)) {
+          setTeamMembers(data.users);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load team members:', err);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchTemplates();
     fetchFunnelData();
+    fetchTeamMembers();
   }, []);
+
+  // Pre-fill assigned-to with the logged-in user's name when modal opens
+  useEffect(() => {
+    if (isAddModalOpen && user?.name) {
+      setNlAssigned(prev => prev || user.name);
+    }
+  }, [isAddModalOpen, user?.name]);
 
   useEffect(() => {
     if (selectedLead?._id && modalTab === 'timeline') {
@@ -2254,6 +2278,15 @@ export default function CRM() {
                       <option>Warm</option><option>Hot</option><option>Cold</option>
                     </select>
                   </div>
+                </div>
+                <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Assign To</label>
+                  <select value={nlAssigned} onChange={e => setNlAssigned(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                    {user?.name && <option value={user.name}>{user.name} (You)</option>}
+                    {teamMembers.filter(m => m.name !== user?.name).map(m => (
+                      <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
+                    ))}
+                    {teamMembers.length === 0 && !user?.name && <option value="">Unassigned</option>}
+                  </select>
                 </div>
               </div>
               <div className="p-6 border-t border-border flex justify-end gap-3 bg-base/50">

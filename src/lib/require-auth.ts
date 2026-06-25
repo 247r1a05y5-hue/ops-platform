@@ -25,12 +25,30 @@ export async function requireAuth(
     };
   }
 
-  // Instantly enforce account suspension by checking DB status
+// Cache suspension checks for 15 seconds to prevent hammering the DB during concurrent API loads
+const suspensionCache = new Map<string, { suspended: boolean; expiresAt: number }>();
+const SUSPENSION_CACHE_TTL = 15000;
+
+  // Instantly enforce account suspension by checking DB status with short-lived cache
   try {
-    const { connectDB, User } = await import('./db');
-    await connectDB();
-    const user = await User.findById(session.sub).select('suspended');
-    if (!user || user.suspended) {
+    const cachedEntry = suspensionCache.get(session.sub);
+    const now = Date.now();
+    let isSuspended = false;
+
+    if (cachedEntry && cachedEntry.expiresAt > now) {
+      isSuspended = cachedEntry.suspended;
+    } else {
+      const { connectDB, User } = await import('./db');
+      await connectDB();
+      const user = await User.findById(session.sub).select('suspended').lean() as any;
+      isSuspended = !user || !!user.suspended;
+      suspensionCache.set(session.sub, {
+        suspended: isSuspended,
+        expiresAt: now + SUSPENSION_CACHE_TTL
+      });
+    }
+
+    if (isSuspended) {
       return {
         session: null,
         error: NextResponse.json(

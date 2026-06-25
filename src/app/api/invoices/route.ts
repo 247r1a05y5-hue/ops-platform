@@ -14,13 +14,28 @@ export const revalidate = 0;
 // isolation, we resolve the current user's workspaceId and look up workspace
 // member emails, then filter invoices whose clientEmail matches a workspace
 // member. Invoices with no clientEmail are included (internally created).
+// Cache workspace member emails for 15 seconds to speed up concurrent invoice loads
+const emailCache = new Map<string, { emails: string[] | null; expiresAt: number }>();
+const EMAIL_CACHE_TTL = 15000;
+
 async function getWorkspaceMemberEmails(userId: string): Promise<string[] | null> {
+  const now = Date.now();
+  const cached = emailCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.emails;
+  }
+
   try {
     const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
-    if (!currentUser?.workspaceId) return null; // single workspace — skip filter
+    if (!currentUser?.workspaceId) {
+      emailCache.set(userId, { emails: null, expiresAt: now + EMAIL_CACHE_TTL });
+      return null; // single workspace — skip filter
+    }
     const members = await User.find({ workspaceId: currentUser.workspaceId })
       .select('email').lean() as any[];
-    return members.map((m: any) => m.email).filter(Boolean);
+    const emails = members.map((m: any) => m.email).filter(Boolean);
+    emailCache.set(userId, { emails, expiresAt: now + EMAIL_CACHE_TTL });
+    return emails;
   } catch {
     return null;
   }

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useUI } from '@/context/UIContext';
+import { useAuth } from '@/context/AuthContext';
 import { downloadCSV } from '@/utils/export';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, TrendingUp, CheckCircle, Plus, Calendar, Users, ExternalLink, MoreHorizontal, FileText, AlertCircle, Clock, X } from 'lucide-react';
@@ -31,6 +32,7 @@ interface InvoiceItem {
 
 export default function Dashboard() {
   const { showToast } = useUI();
+  const { user } = useAuth();
   const [isExporting, setIsExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('today');
   
@@ -44,6 +46,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [workspaceUsers, setWorkspaceUsers] = useState<{ _id: string; name: string; role: string; email?: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New task input states
@@ -51,7 +54,7 @@ export default function Dashboard() {
   const [taskDescription, setTaskDescription] = useState('');
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDueDate, setTaskDueDate] = useState('');
-  const [taskAssignee, setTaskAssignee] = useState('Maya Thompson');
+  const [taskAssignee, setTaskAssignee] = useState('');
 
   // New lead input states
   const [leadName, setLeadName] = useState('');
@@ -110,12 +113,15 @@ export default function Dashboard() {
     }
   };
 
-  // Load live team members with task counts
+  // Load live team members with task counts and workspace users
   const fetchTeam = async () => {
     try {
-      const res = await fetch('/api/dashboard/team', { cache: 'no-store' });
+      const res = await fetch('/api/dashboard/team');
       const data = await res.json();
-      if (data.success) setTeamMembers(data.team);
+      if (data.success) {
+        setTeamMembers(data.team);
+        if (Array.isArray(data.users)) setWorkspaceUsers(data.users);
+      }
     } catch (err) {
       console.error('Failed to load team:', err);
     }
@@ -130,6 +136,13 @@ export default function Dashboard() {
     };
     loadAll();
   }, [activeTab]);
+
+  // Pre-fill task assignee with logged-in user when modal opens
+  useEffect(() => {
+    if (isTaskModalOpen && user?.name) {
+      setTaskAssignee(prev => prev || user.name);
+    }
+  }, [isTaskModalOpen, user?.name]);
 
   const handleExport = () => {
     setIsExporting(true);
@@ -223,7 +236,7 @@ export default function Dashboard() {
           value: `$${parseFloat(leadValue).toLocaleString()}`,
           stage: 'Discovery',
           status: 'Warm',
-          assignedToName: 'Maya Thompson'
+          assignedToName: user?.name || 'Unassigned'
         })
       });
       const data = await res.json();
@@ -540,27 +553,25 @@ export default function Dashboard() {
           >
             <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
               <h2 className="text-[10px] font-bold text-secondary uppercase tracking-widest flex items-center gap-2"><Users size={12}/> System Users</h2>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-base border border-border text-tertiary">Read-only</span>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-base border border-border text-tertiary">Workspace</span>
             </div>
             <div className="space-y-4">
-              {[
-                { name: 'Maya Thompson', role: 'Admin', email: 'm.thompson@ops.co' },
-                { name: 'Mateo Rivera', role: 'Manager', email: 'm.rivera@ops.co' },
-                { name: 'Priya Patel', role: 'Employee', email: 'p.patel@ops.co' },
-              ].map((user, i) => (
+              {workspaceUsers.length === 0 ? (
+                <div className="text-center py-6 text-xs text-secondary">No users in workspace yet.</div>
+              ) : workspaceUsers.map((member, i) => (
                 <motion.div 
-                  key={i} 
+                  key={member._id} 
                   initial={{ opacity: 0 }} 
                   animate={{ opacity: 1 }} 
                   transition={{ delay: 0.5 + (i * 0.1) }}
                   className="flex items-center gap-3 p-2 hover:bg-base rounded-lg transition-colors group"
                 >
-                  <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-[9px] font-bold text-accent group-hover:bg-accent group-hover:text-white transition-all">{user.name.split(' ').map(n=>n[0]).join('')}</div>
+                  <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-[9px] font-bold text-accent group-hover:bg-accent group-hover:text-white transition-all">{member.name.split(' ').map((n: string) => n[0]).join('')}</div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-primary truncate">{user.name}</div>
-                    <div className="text-[10px] text-secondary truncate">{user.email}</div>
+                    <div className="text-xs font-bold text-primary truncate">{member.name}</div>
+                    <div className="text-[10px] text-secondary truncate">{member.email}</div>
                   </div>
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border border-border bg-base uppercase text-secondary shrink-0">{user.role}</span>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border border-border bg-base uppercase text-secondary shrink-0">{member.role}</span>
                 </motion.div>
               ))}
             </div>
@@ -577,10 +588,9 @@ export default function Dashboard() {
               <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-base border border-border text-tertiary">7d</span>
             </div>
             <div className="space-y-5">
-              {[
-                { t: 'Contract review for Beacon Health', due: 'May 9', owner: 'Jordan Lee' },
-                { t: 'Finalize Q2 pricing architecture', due: 'May 11', owner: 'Nina Gomez' },
-              ].map((d, i) => (
+              {tasks.filter(t => !t.completed && t.dueDate && t.dueDate !== 'No due date').slice(0, 3).length === 0 ? (
+                <div className="text-center py-6 text-xs text-secondary">No upcoming deadlines.</div>
+              ) : tasks.filter(t => !t.completed && t.dueDate && t.dueDate !== 'No due date').slice(0, 3).map((d, i) => (
                 <motion.div 
                   key={i} 
                   initial={{ opacity: 0, scale: 0.95 }} 
@@ -588,8 +598,8 @@ export default function Dashboard() {
                   transition={{ delay: 0.6 + (i * 0.1) }}
                   className="group relative pl-4 border-l-2 border-border hover:border-accent transition-colors cursor-pointer"
                 >
-                  <h4 className="text-xs font-bold mb-1 leading-snug group-hover:text-accent transition-colors">{d.t}</h4>
-                  <p className="text-[11px] font-semibold text-secondary">Due {d.due} · {d.owner}</p>
+                  <h4 className="text-xs font-bold mb-1 leading-snug group-hover:text-accent transition-colors">{d.title}</h4>
+                  <p className="text-[11px] font-semibold text-secondary">Due {d.dueDate} · {d.assignee}</p>
                 </motion.div>
               ))}
             </div>
@@ -631,9 +641,11 @@ export default function Dashboard() {
                   <div>
                     <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Assignee</label>
                     <select value={taskAssignee} onChange={e=>setTaskAssignee(e.target.value)} className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary font-bold text-sm">
-                      <option>Maya Thompson</option>
-                      <option>Mateo Rivera</option>
-                      <option>Priya Patel</option>
+                      {user?.name && <option value={user.name}>{user.name} (You)</option>}
+                      {workspaceUsers.filter(m => m.name !== user?.name).map(m => (
+                        <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
+                      ))}
+                      {workspaceUsers.length === 0 && !user?.name && <option value="">Unassigned</option>}
                     </select>
                   </div>
                 </div>

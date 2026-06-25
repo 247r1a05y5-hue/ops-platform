@@ -10,14 +10,29 @@ import mongoose from 'mongoose';
 // Tasks have no workspaceId field, so we scope them by restricting to assignees
 // who belong to the same workspace. When no workspace is found, no filter is applied
 // (single-tenant safe).
+// Cache workspace member identifiers for 15 seconds to speed up concurrent task loads
+const memberCache = new Map<string, { identifiers: string[] | null; expiresAt: number }>();
+const MEMBER_CACHE_TTL = 15000;
+
 async function getWorkspaceMemberNames(userId: string): Promise<string[] | null> {
+  const now = Date.now();
+  const cached = memberCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.identifiers;
+  }
+
   try {
     const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
-    if (!currentUser?.workspaceId) return null; // single workspace — no filter needed
+    if (!currentUser?.workspaceId) {
+      memberCache.set(userId, { identifiers: null, expiresAt: now + MEMBER_CACHE_TTL });
+      return null; // single workspace — no filter needed
+    }
     const members = await User.find({ workspaceId: currentUser.workspaceId })
       .select('name email').lean() as any[];
     // Return both names and emails so assignee field (which can be either) is matched
-    return members.flatMap((m: any) => [m.name, m.email].filter(Boolean));
+    const identifiers = members.flatMap((m: any) => [m.name, m.email].filter(Boolean));
+    memberCache.set(userId, { identifiers, expiresAt: now + MEMBER_CACHE_TTL });
+    return identifiers;
   } catch {
     return null;
   }

@@ -33,6 +33,7 @@ type UserObj = {
   createdAt: string;
   lastLogin?: string;
   suspended: boolean;
+  isOnline?: boolean;
 };
 
 type AuditLog = {
@@ -465,12 +466,16 @@ export default function AdminPage() {
                         <td className="px-6 py-4 text-xs text-secondary">{fmt(u.lastLogin)}</td>
                         <td className="px-6 py-4">
                           {u.suspended ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20">
                               <UserMinus className="w-3.5 h-3.5" /> Suspended
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500">
+                          ) : u.isOnline ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20 animate-pulse">
                               <UserCheck className="w-3.5 h-3.5" /> Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-500/10 px-2 py-1 rounded-full border border-slate-500/20">
+                              <UserMinus className="w-3.5 h-3.5" /> Not Active
                             </span>
                           )}
                         </td>

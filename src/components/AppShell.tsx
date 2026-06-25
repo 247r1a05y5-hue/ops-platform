@@ -10,6 +10,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useUI } from '@/context/UIContext';
 
 import { useAuth } from '@/context/AuthContext';
+import { useSocket } from '@/hooks/useSocket';
 
 // Pages that should NOT have the dashboard shell
 const PUBLIC_PATHS = ['/landing', '/login', '/', '/reset-password'];
@@ -20,6 +21,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarOpen, setSidebarOpen } = useUI();
   const { user } = useAuth();
   const isPublic = PUBLIC_PATHS.includes(pathname);
+
+  // Maintain live presence for any authenticated user on private pages
+  useSocket(!!user && !isPublic);
 
   const getSidebar = () => {
     if (!user) {

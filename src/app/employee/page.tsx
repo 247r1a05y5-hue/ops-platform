@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -515,6 +515,7 @@ function EmployeeDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadUserData() {
@@ -527,6 +528,17 @@ function EmployeeDashboard() {
         }
         const user = meData.user;
         setCurrentUser(user);
+
+        // Fetch team members dynamically
+        try {
+          const teamRes = await fetch('/api/users', { credentials: 'include', cache: 'no-store' });
+          const teamData = await teamRes.json();
+          if (teamData.success && Array.isArray(teamData.users)) {
+            setTeamMembers(teamData.users);
+          }
+        } catch (err) {
+          console.error('Failed to load active team members:', err);
+        }
 
         // Fetch tasks
         const tasksRes = await fetch('/api/tasks', { credentials: 'include', cache: 'no-store' });
@@ -846,7 +858,7 @@ function EmployeeDashboard() {
             <Card className="relative group overflow-hidden border-border/80 bg-surface">
                <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/10 transition-colors"></div>
                <h3 className="text-xs font-bold mb-4 flex items-center gap-2 relative z-10 text-orange-500 uppercase tracking-wider"><Star size={14} className="fill-orange-400 text-orange-400"/> Top Performer</h3>
-               <p className="text-xs text-secondary leading-relaxed mb-6 relative z-10 font-medium font-sans">Congratulations Priya! You&apos;ve maintained a 98% efficiency rate this week. Keep up the great work!</p>
+               <p className="text-xs text-secondary leading-relaxed mb-6 relative z-10 font-medium font-sans">Congratulations {currentUser?.name || 'User'}! You&apos;ve maintained a 98% efficiency rate this week. Keep up the great work!</p>
                <div className="flex items-center gap-3 relative z-10">
                   <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center font-black text-2xl border border-accent/20">🏆</div>
                   <div>
@@ -859,19 +871,26 @@ function EmployeeDashboard() {
             <Card>
                <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Active Team</h3>
                <div className="space-y-4">
-                  {[
-                    { name: 'Mateo Rivera', status: 'Online', color: 'bg-accent' },
-                    { name: 'Sarah Chen', status: 'Away', color: 'bg-emerald-500' },
-                    { name: 'Alex Johnson', status: 'Online', color: 'bg-orange-500' },
-                  ].map((user, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group">
-                       <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full ${user.color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>{user.name.split(' ').map(n=>n[0]).join('')}</div>
-                          <span className="text-xs font-bold text-primary">{user.name}</span>
-                       </div>
-                       <div className={`w-2 h-2 rounded-full ${user.status === 'Online' ? 'bg-emerald-500' : 'bg-orange-500'} animate-pulse`} />
-                    </div>
-                  ))}
+                  {teamMembers.length > 0 ? (
+                    teamMembers.map((user, i) => {
+                      const colors = ['bg-accent', 'bg-emerald-500', 'bg-orange-500', 'bg-indigo-500', 'bg-rose-500', 'bg-purple-500'];
+                      const color = colors[i % colors.length];
+                      const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+                      return (
+                        <div key={user._id || i} className="flex items-center justify-between p-2 hover:bg-base rounded-xl transition-colors cursor-pointer group">
+                           <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full ${color} text-white flex items-center justify-center font-bold text-[10px] shadow-sm group-hover:scale-110 transition-transform`}>
+                                {initials}
+                              </div>
+                              <span className="text-xs font-bold text-primary">{user.name}</span>
+                           </div>
+                           <div className={`w-2 h-2 rounded-full ${user.status === 'Online' ? 'bg-emerald-500' : 'bg-orange-500'} animate-pulse`} />
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-[10px] text-secondary italic">No active team members.</p>
+                  )}
                </div>
                <button onClick={() => router.push('/employee?tab=chat')} className="w-full mt-6 py-2 bg-base border border-border rounded-xl text-[10px] font-bold uppercase hover:bg-surface transition-all flex items-center justify-center gap-2">
                   <MessageSquare size={12}/> Open Team Hub

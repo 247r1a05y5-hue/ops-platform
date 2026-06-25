@@ -219,6 +219,7 @@ function ManagerDashboard() {
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [directives, setDirectives] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Filter & search states
   const [filterOwner, setFilterOwner] = useState<string>('All');
@@ -252,10 +253,7 @@ function ManagerDashboard() {
   const [newDirPriority, setNewDirPriority] = useState('Normal');
 
   const [chatMessages, setChatMessages] = useState([
-     { user: 'Sarah Chen', msg: 'Cloudflare R2 sync completed. Yield rate is operating optimally.', time: '10:42 AM', isSelf: false },
-     { user: 'Priya Patel', msg: 'Updated raw visual files compressed by 45%. Uploading to Nova now.', time: '11:15 AM', isSelf: false },
-     { user: 'Maya Thompson', msg: 'Outstanding. Please ensure Mateo is looped in for the validation.', time: '11:20 AM', isSelf: true },
-     { user: 'Mateo Rivera', msg: 'Acknowledged. Standing by.', time: '11:22 AM', isSelf: false }
+     { user: 'System Bot', msg: 'Operational logs are running normally. Chat channel ready.', time: '10:00 AM', isSelf: false }
   ]);
   const [newChatMsg, setNewChatMsg] = useState('');
 
@@ -514,6 +512,15 @@ function ManagerDashboard() {
   const loadAllData = async () => {
     setIsLoading(true);
     try {
+      try {
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        const meData = await meRes.json();
+        if (meData.success) {
+          setCurrentUser(meData.user);
+        }
+      } catch (meErr) {
+        console.error('Error fetching manager self auth:', meErr);
+      }
       await Promise.all([
         fetchDashboardData(),
         fetchApprovals(),
@@ -824,18 +831,18 @@ function ManagerDashboard() {
     const userMsg = newChatMsg;
     setChatMessages(prev => [
       ...prev,
-      { user: 'Maya Thompson', msg: userMsg, time: 'Just now', isSelf: true }
+      { user: currentUser?.name || 'Manager', msg: userMsg, time: 'Just now', isSelf: true }
     ]);
     setNewChatMsg('');
     
     setTimeout(() => {
        const replies = [
-          "On it, Maya! Task queue synced.",
+          "On it! Task queue synced.",
           "Strategic directives acknowledged, proceeding now.",
           "I will verify the validation results by EOD.",
           "Understood. Initiating recalibration protocol."
        ];
-       const names = ["Sarah Chen", "Priya Patel", "Mateo Rivera"];
+       const names = employees.length > 0 ? employees.map(emp => emp.name) : ["Team Member"];
        const randReply = replies[Math.floor(Math.random() * replies.length)];
        const randName = names[Math.floor(Math.random() * names.length)];
        
@@ -857,8 +864,10 @@ function ManagerDashboard() {
   };
 
   const handleApplyBriefingDirective = () => {
+    const firstEmp = employees[0]?.name || 'Personnel';
+    const secondEmp = employees[1]?.name || 'Staff';
     setDirectives(prev => [
-      { user: 'Executive System', msg: '[APAC Cloudflare Sync] Reallocate Alex Johnson to assist Sarah Chen on APAC-West migration nodes.', time: 'Just now', priority: 'High' },
+      { user: 'Executive System', msg: `[APAC Cloudflare Sync] Reallocate ${firstEmp} to assist ${secondEmp} on APAC-West migration nodes.`, time: 'Just now', priority: 'High' },
       ...prev
     ]);
     showToast('Briefing directive broadcasted to Department Hub!', 'success');
@@ -1018,7 +1027,7 @@ function ManagerDashboard() {
                       >
                         <option value="All">All Assignees</option>
                         {employees.map(emp => (
-                          <option key={emp.name} value={emp.name}>{emp.name}</option>
+                          <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1646,7 +1655,7 @@ function ManagerDashboard() {
                     <div className="space-y-2.5">
                       <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Strategic Allocations</h4>
                       <div className="p-3 bg-base border border-border rounded-xl flex items-center justify-between text-xs">
-                        <span className="text-secondary">Reallocate <b className="text-primary">Alex Johnson</b> to support <b className="text-primary">Sarah Chen</b></span>
+                        <span className="text-secondary">Reallocate <b className="text-primary">{employees[0]?.name || 'Personnel'}</b> to support <b className="text-primary">{employees[1]?.name || 'Staff'}</b></span>
                         <span className="font-bold text-accent text-[9px] uppercase">Actionable</span>
                       </div>
                     </div>
@@ -1802,7 +1811,7 @@ function ManagerDashboard() {
                       className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
                     >
                       {employees.map(emp => (
-                        <option key={emp.name} value={emp.name}>{emp.name}</option>
+                        <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
                       ))}
                     </select>
                   </div>
@@ -1875,7 +1884,7 @@ function ManagerDashboard() {
                       className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
                     >
                       {employees.map(emp => (
-                        <option key={emp.name} value={emp.name}>{emp.name}</option>
+                        <option key={emp.id || emp.name} value={emp.name}>{emp.name}</option>
                       ))}
                     </select>
                   </div>

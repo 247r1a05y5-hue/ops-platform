@@ -31,38 +31,39 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const period = searchParams.get('period') || 'today';
 
-    // Seed is disabled in production — use /api/admin/seed or run scripts/seed.ts
-    // const taskCount = await Task.countDocuments();
-
-    // Invoice seeding disabled — use seed script
-
-
     const startDate = getPeriodStartDate(period);
-
-
-    // Compute Metrics Dynamically via live aggregates
-    // A. Open Tasks count
-    const openTasksCount = await Task.countDocuments({ stage: { $ne: 'Done' } });
-    const openTasksChange = openTasksCount > 0 ? `+${openTasksCount}` : '0';
-
-    // B. New Leads in period
-    const newLeadsQuery = period === 'custom' ? {} : { createdAt: { $gte: startDate } };
-    const newLeadsCount = await Lead.countDocuments(newLeadsQuery);
-    const hotLeadsCount = await Lead.countDocuments({ ...newLeadsQuery, status: 'Hot' });
-    const leadsChange = hotLeadsCount > 0 ? `+${hotLeadsCount} Hot` : 'Warm';
-
-    // C. MRR (calculate standard 30-day rolling aggregate of paid invoices)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo  = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const thisMonthStart = thirtyDaysAgo;
+    const prevMonthStart = sixtyDaysAgo;
+    const newLeadsQuery = period === 'custom' ? {} : { createdAt: { $gte: startDate } };
 
-    const [currentMRRInvoices, previousMRRInvoices] = await Promise.all([
-      Invoice.find({ status: 'Paid', createdAt: { $gte: thirtyDaysAgo } }),
-      Invoice.find({ status: 'Paid', createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo } })
+    // Fire ALL queries in parallel — no waterfalling
+    const [
+      openTasksCount,
+      newLeadsCount,
+      hotLeadsCount,
+      currentMRRInvoices,
+      previousMRRInvoices,
+      totalLeads,
+      lostLeads,
+      prevTotalLeads,
+      prevLostLeads,
+    ] = await Promise.all([
+      Task.countDocuments({ stage: { $ne: 'Done' } }),
+      Lead.countDocuments(newLeadsQuery),
+      Lead.countDocuments({ ...newLeadsQuery, status: 'Hot' }),
+      Invoice.find({ status: 'Paid', createdAt: { $gte: thirtyDaysAgo } }).select('amount').lean(),
+      Invoice.find({ status: 'Paid', createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo } }).select('amount').lean(),
+      Lead.countDocuments({ createdAt: { $gte: thisMonthStart } }),
+      Lead.countDocuments({ createdAt: { $gte: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
+      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart } }),
+      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
     ]);
 
-    const mrrSum = currentMRRInvoices.reduce((acc, inv) => acc + parseAmount(inv.amount), 0);
-    const prevMRRSum = previousMRRInvoices.reduce((acc, inv) => acc + parseAmount(inv.amount), 0);
-
+    // MRR calculation
+    const mrrSum     = (currentMRRInvoices  as any[]).reduce((acc, inv) => acc + parseAmount(inv.amount), 0);
+    const prevMRRSum = (previousMRRInvoices as any[]).reduce((acc, inv) => acc + parseAmount(inv.amount), 0);
     let mrrChange = '+0.0%';
     if (prevMRRSum > 0) {
       const diff = ((mrrSum - prevMRRSum) / prevMRRSum) * 100;
@@ -71,18 +72,10 @@ export async function GET(req: NextRequest) {
       mrrChange = '+100%';
     }
 
-    // D. Churn — calculate real customer cancellations using lost leads ratio
-    //    Compare this month vs previous month to get a real trend
-    const thisMonthStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const prevMonthStart = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const openTasksChange = openTasksCount > 0 ? `+${openTasksCount}` : '0';
+    const leadsChange     = hotLeadsCount > 0 ? `+${hotLeadsCount} Hot` : 'Warm';
 
-    const [totalLeads, lostLeads, prevTotalLeads, prevLostLeads] = await Promise.all([
-      Lead.countDocuments({ createdAt: { $gte: thisMonthStart } }),
-      Lead.countDocuments({ createdAt: { $gte: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
-      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart } }),
-      Lead.countDocuments({ createdAt: { $gte: prevMonthStart, $lt: thisMonthStart }, stage: 'Closing', status: 'Cold' }),
-    ]);
-
+    // Churn calculation
     const currentChurn = totalLeads > 0 ? (lostLeads / totalLeads) * 100 : 0;
     const prevChurn    = prevTotalLeads > 0 ? (prevLostLeads / prevTotalLeads) * 100 : 0;
     const churnDelta   = currentChurn - prevChurn;
@@ -120,22 +113,15 @@ export async function GET(req: NextRequest) {
       }
     ];
 
-    return NextResponse.json({
-      success: true,
-      stats: responseData
-    }, {
+    return NextResponse.json({ success: true, stats: responseData }, {
       headers: {
-        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+        // Cache KPIs for 30s — they don't change second by second
+        'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
       }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[dashboard/stats] Error:', message);
-    return NextResponse.json({ success: false, error: message }, {
-      status: 500,
-      headers: {
-        'Cache-Control': 'no-store, max-age=0, must-revalidate',
-      }
-    });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useUI } from '@/context/UIContext';
+import { useAuth } from '@/context/AuthContext';
 import { Search, Plus, Filter, LayoutDashboard, LayoutList, GripVertical, Download, X, Folder } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadCSV } from '@/utils/export';
@@ -29,6 +30,7 @@ type Project = {
 
 export default function Tasks() {
   const { showToast } = useUI();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'board' | 'list'>('board');
   const [draggedItem, setDraggedItem] = useState<{id: string, stage: string} | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -48,16 +50,19 @@ export default function Tasks() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ _id: string; name: string; role: string }[]>([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [tRes, pRes] = await Promise.all([
+      const [tRes, pRes, uRes] = await Promise.all([
         fetch('/api/tasks', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/projects', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/users', { credentials: 'include', cache: 'no-store' }),
       ]);
-      const [tData, pData] = await Promise.all([tRes.json(), pRes.json()]);
+      const [tData, pData, uData] = await Promise.all([tRes.json(), pRes.json(), uRes.json()]);
       if (tData.success) setTasks(tData.tasks);
       if (pData.success) setProjects(pData.projects);
+      if (uData.success && Array.isArray(uData.users)) setTeamMembers(uData.users);
     } catch (err) {
       console.error('Failed to load tasks/projects:', err);
     } finally {
@@ -66,6 +71,13 @@ export default function Tasks() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Pre-fill project owner with logged-in user's name when modal opens
+  useEffect(() => {
+    if (isNewProjectOpen && user?.name) {
+      setNpOwner(prev => prev || user.name);
+    }
+  }, [isNewProjectOpen, user?.name]);
 
   const handleExport = () => {
     downloadCSV(tasks, 'Tasks_Export');
@@ -352,11 +364,13 @@ export default function Tasks() {
                       <input type="date" value={npDeadline} onChange={e=>setNpDeadline(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2">Lead Owner</label>
+                      <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2">Project Owner</label>
                       <select value={npOwner} onChange={e=>setNpOwner(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm appearance-none text-primary">
-                         <option>Maya Thompson</option>
-                         <option>Mateo Rivera</option>
-                         <option>Priya Patel</option>
+                         {user?.name && <option value={user.name}>{user.name} (You)</option>}
+                          {teamMembers.filter(m => m.name !== user?.name).map(m => (
+                            <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
+                          ))}
+                          {teamMembers.length === 0 && !user?.name && <option value="">Unassigned</option>}
                       </select>
                     </div>
                   </div>
@@ -376,7 +390,7 @@ export default function Tasks() {
                       if (data.success) {
                         setProjects(prev => [data.project, ...prev]);
                         setIsNewProjectOpen(false);
-                        setNpName(''); setNpDeadline('');
+                        setNpName(''); setNpDeadline(''); setNpOwner('');
                         showToast('Project workspace initialized!', 'success');
                       } else {
                         showToast(data.error || 'Failed to create project', 'error');
