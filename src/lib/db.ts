@@ -4,11 +4,13 @@ import dns from 'dns';
 import mongoose from 'mongoose';
 const { Schema, model, models } = mongoose;
 
-// Fix Atlas SRV DNS resolution properly for Node.js process (localhost + production)
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (err) {
-  console.warn('[MongoDB] dns.setServers failed:', err);
+// Fix Atlas SRV DNS resolution properly for Node.js process on local machines
+if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_STATIC_URL) {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+  } catch (err) {
+    console.warn('[MongoDB] dns.setServers failed:', err);
+  }
 }
 
 type MongooseCache = {
@@ -69,13 +71,13 @@ async function connectWithRetry(uri: string, maxAttempts = 3): Promise<typeof mo
 
 export async function connectDB() {
   if (cached.conn) {
-    await ensureWorkspaceAssignment();
+    ensureWorkspaceAssignment().catch(err => console.error('[Background Workspace Assignment] Error:', err));
     return cached.conn;
   }
 
   if (cached.promise) {
     const conn = await cached.promise;
-    await ensureWorkspaceAssignment();
+    ensureWorkspaceAssignment().catch(err => console.error('[Background Workspace Assignment] Error:', err));
     return conn;
   }
 
@@ -89,7 +91,7 @@ export async function connectDB() {
 
   try {
     cached.conn = await cached.promise;
-    await ensureWorkspaceAssignment();
+    ensureWorkspaceAssignment().catch(err => console.error('[Background Workspace Assignment] Error:', err));
   } catch (e) {
     cached.promise = null;
     throw e;
@@ -688,13 +690,12 @@ try {
 } catch (_) { /* already defined */ }
 
 
-// ── Workspace Auto-Assignment and Migration Helper ───────────────────────────
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users
 let _lastWorkspaceAssignAt = 0;
 
 export async function ensureWorkspaceAssignment() {
   const now = Date.now();
-  if (now - _lastWorkspaceAssignAt < 30_000) return; // debounce: 30 s (fast enough for new user onboarding)
+  if (now - _lastWorkspaceAssignAt < 300_000) return; // debounce: 5 minutes (300 s)
   _lastWorkspaceAssignAt = now;
 
   try {
@@ -705,9 +706,9 @@ export async function ensureWorkspaceAssignment() {
       console.log('[Workspace Auto-assignment] Created workspace ops-main');
     }
 
-    // 2. Assign ALL users to ops-main (idempotent — fixes stale/mismatched workspaceIds)
+    // 2. Assign only unassigned users to ops-main (idempotent — matches only users lacking workspaceId)
     const result = await User.updateMany(
-      {},  // all users
+      { $or: [{ workspaceId: { $exists: false } }, { workspaceId: null }] },
       { $set: { workspaceId: mainWs._id } }
     );
 

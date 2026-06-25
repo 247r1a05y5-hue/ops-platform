@@ -177,16 +177,14 @@ export async function POST(req: NextRequest) {
       user.firstLogin = false;
     }
 
-    // ── Ensure workspace assignment for ALL users ──────────────────────────
-    let mainWs = await (Workspace as any).findOne({ slug: 'ops-main' });
-    if (!mainWs) {
-      mainWs = await (Workspace as any).create({ name: 'Main Workspace', slug: 'ops-main' });
+    // ── Ensure workspace assignment for the logged-in user ──────────────────
+    if (!user.workspaceId) {
+      let mainWs = await (Workspace as any).findOne({ slug: 'ops-main' });
+      if (!mainWs) {
+        mainWs = await (Workspace as any).create({ name: 'Main Workspace', slug: 'ops-main' });
+      }
+      user.workspaceId = mainWs._id;
     }
-    // Bulk-assign any users not yet in this workspace (idempotent)
-    await User.updateMany(
-      { $or: [{ workspaceId: { $exists: false } }, { workspaceId: null }, { workspaceId: { $ne: mainWs._id } }] },
-      { $set: { workspaceId: mainWs._id } }
-    );
 
     user.lastLogin = new Date();
     await user.save();

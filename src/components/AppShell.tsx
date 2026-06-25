@@ -1,17 +1,20 @@
 'use client';
 import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
-import Sidebar from './Sidebar';
-import ManagerSidebar from './ManagerSidebar';
-import EmployeeSidebar from './EmployeeSidebar';
-import MRSidebar from './MRSidebar';
-import Topbar from './Topbar';
-import CommandPalette from './CommandPalette';
+import dynamic from 'next/dynamic';
 import { useTheme } from '@/context/ThemeContext';
 import { useUI } from '@/context/UIContext';
 
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+
+// Dynamically import heavy dashboard components so they are not loaded on public pages
+const Sidebar = dynamic(() => import('./Sidebar'), { ssr: false });
+const ManagerSidebar = dynamic(() => import('./ManagerSidebar'), { ssr: false });
+const EmployeeSidebar = dynamic(() => import('./EmployeeSidebar'), { ssr: false });
+const MRSidebar = dynamic(() => import('./MRSidebar'), { ssr: false });
+const Topbar = dynamic(() => import('./Topbar'), { ssr: false });
+const CommandPalette = dynamic(() => import('./CommandPalette'), { ssr: false });
 
 // Pages that should NOT have the dashboard shell
 const PUBLIC_PATHS = ['/landing', '/login', '/', '/reset-password'];

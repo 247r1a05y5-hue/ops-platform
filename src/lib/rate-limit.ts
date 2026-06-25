@@ -52,10 +52,18 @@ function isRedisConfigured(): boolean {
   return !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 }
 
+function getBlockDuration(blockCount: number): number {
+  if (blockCount <= 1) return 15 * 1000;      // 15 seconds
+  if (blockCount === 2) return 60 * 1000;      // 1 minute
+  if (blockCount === 3) return 5 * 60 * 1000;  // 5 minutes
+  return 15 * 60 * 1000;                       // 15 minutes
+}
+
 // ── Redis-backed implementation ───────────────────────────────────────────────
 async function checkRateLimitRedis(identifier: string): Promise<RateLimitResult> {
   const key      = `rl:${identifier}`;
   const blockKey = `rl:block:${identifier}`;
+  const countKey = `rl:bc:${identifier}`;
 
   try {
     // Check if blocked
@@ -72,10 +80,16 @@ async function checkRateLimitRedis(identifier: string): Promise<RateLimitResult>
     const count = raw ? parseInt(raw, 10) : 0;
 
     if (count >= MAX_ATTEMPTS) {
-      // Set block key; delete counter
-      await redisSet(blockKey, '1', BLOCK_SEC);
+      // Increment block count
+      const bcRaw = await redisGet(countKey);
+      const blockCount = (bcRaw ? parseInt(bcRaw, 10) : 0) + 1;
+      const durationSec = Math.ceil(getBlockDuration(blockCount) / 1000);
+
+      // Save progressive block count
+      await redisSet(countKey, String(blockCount), 3600); // 1 hour TTL
+      await redisSet(blockKey, '1', durationSec);
       await redisDel(key);
-      return { allowed: false, remaining: 0, retryAfterSeconds: BLOCK_SEC };
+      return { allowed: false, remaining: 0, retryAfterSeconds: durationSec };
     }
 
     const newCount = count + 1;
@@ -90,10 +104,11 @@ async function checkRateLimitRedis(identifier: string): Promise<RateLimitResult>
 async function resetRateLimitRedis(identifier: string): Promise<void> {
   await redisDel(`rl:${identifier}`).catch(() => {});
   await redisDel(`rl:block:${identifier}`).catch(() => {});
+  await redisDel(`rl:bc:${identifier}`).catch(() => {});
 }
 
 // ── In-memory fallback ────────────────────────────────────────────────────────
-interface Attempt { count: number; firstAttempt: number; blockedUntil?: number; }
+interface Attempt { count: number; firstAttempt: number; blockedUntil?: number; blockCount: number; }
 const store = new Map<string, Attempt>();
 
 // Lazy cleanup — started on first request, never during build phase
@@ -107,30 +122,33 @@ function ensureCleanup() {
       if (now - entry.firstAttempt > WINDOW_MS * 2) store.delete(key);
     }
   }, 10 * 60 * 1000);
-  // Don't block process exit
   if (typeof iv.unref === 'function') iv.unref();
 }
 
 function checkRateLimitMemory(identifier: string): RateLimitResult {
-  ensureCleanup(); // lazy-start the cleanup timer on first real request
+  ensureCleanup();
   const now   = Date.now();
-  const entry = store.get(identifier);
+  let entry = store.get(identifier);
   if (!entry) {
-    store.set(identifier, { count: 1, firstAttempt: now });
+    entry = { count: 1, firstAttempt: now, blockCount: 0 };
+    store.set(identifier, entry);
     return { allowed: true, remaining: MAX_ATTEMPTS - 1 };
   }
   if (entry.blockedUntil && now < entry.blockedUntil) {
     return { allowed: false, remaining: 0, retryAfterSeconds: Math.ceil((entry.blockedUntil - now) / 1000) };
   }
   if (now - entry.firstAttempt > WINDOW_MS) {
-    store.set(identifier, { count: 1, firstAttempt: now });
-    return { allowed: true, remaining: MAX_ATTEMPTS - 1 };
+    entry.count = 1;
+    entry.firstAttempt = now;
+  } else {
+    entry.count += 1;
   }
-  entry.count += 1;
   if (entry.count > MAX_ATTEMPTS) {
-    entry.blockedUntil = now + BLOCK_MS;
+    entry.blockCount = (entry.blockCount ?? 0) + 1;
+    const duration = getBlockDuration(entry.blockCount);
+    entry.blockedUntil = now + duration;
     store.set(identifier, entry);
-    return { allowed: false, remaining: 0, retryAfterSeconds: BLOCK_SEC };
+    return { allowed: false, remaining: 0, retryAfterSeconds: Math.ceil(duration / 1000) };
   }
   store.set(identifier, entry);
   return { allowed: true, remaining: MAX_ATTEMPTS - entry.count };

@@ -43,6 +43,7 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isInitialMount, setIsInitialMount] = useState(true);
 
   // Collapse states for widgets
   const [isTasksCollapsed, setIsTasksCollapsed] = useState(false);
@@ -116,15 +117,23 @@ export default function Dashboard() {
     }
   };
 
-  // Sync everything on mount and when active period tab changes
+  // Sync everything on mount
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
       await Promise.all([fetchStats(), fetchTasks(), fetchInvoices(), fetchTeam()]);
       setLoading(false);
+      setIsInitialMount(false);
     };
     loadAll();
-  }, [activeTab]);
+  }, []);
+
+  // Refetch KPI stats when active period tab changes
+  useEffect(() => {
+    if (!isInitialMount) {
+      fetchStats();
+    }
+  }, [activeTab, isInitialMount]);
 
   const handleExport = () => {
     setIsExporting(true);

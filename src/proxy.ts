@@ -72,6 +72,11 @@ const PUBLIC_PATHS = new Set([
 
 // ─── Proxy (Next.js 16+ convention) ─────────────────────────────────────────
 
+// In-memory cache for maintenance mode to prevent querying database on every request
+let cachedMaintenanceMode: boolean | null = null;
+let lastMaintenanceCheck = 0;
+const MAINTENANCE_CACHE_TTL = 10000; // 10 seconds
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -105,27 +110,35 @@ export async function proxy(req: NextRequest) {
   // In Railway/container environments the server cannot HTTP-call itself
   // (causes ECONNREFUSED). Read DB directly with a strict 2-second timeout
   // so Railway health checks are never blocked.
+  // Cache the value for 10 seconds to avoid querying MongoDB on every request.
   let maintenanceEnabled = false;
-  try {
-    const maintenanceCheck = new Promise<boolean>(async (resolve) => {
-      try {
-        const { connectDB, SystemConfig } = await import('@/lib/db');
-        await connectDB();
-        const config = await SystemConfig.findOne({ key: 'maintenance_mode' }).lean();
-        resolve(config ? !!(config as any).value : false);
-      } catch {
-        resolve(false); // DB unavailable → treat as maintenance OFF
-      }
-    });
+  const now = Date.now();
+  if (cachedMaintenanceMode !== null && (now - lastMaintenanceCheck < MAINTENANCE_CACHE_TTL)) {
+    maintenanceEnabled = cachedMaintenanceMode;
+  } else {
+    try {
+      const maintenanceCheck = new Promise<boolean>(async (resolve) => {
+        try {
+          const { connectDB, SystemConfig } = await import('@/lib/db');
+          await connectDB();
+          const config = await SystemConfig.findOne({ key: 'maintenance_mode' }).lean();
+          resolve(config ? !!(config as any).value : false);
+        } catch {
+          resolve(false); // DB unavailable → treat as maintenance OFF
+        }
+      });
 
-    const timeout = new Promise<boolean>((resolve) =>
-      setTimeout(() => resolve(false), 2000)
-    );
+      const timeout = new Promise<boolean>((resolve) =>
+        setTimeout(() => resolve(false), 2000)
+      );
 
-    maintenanceEnabled = await Promise.race([maintenanceCheck, timeout]);
-  } catch {
-    // Any unexpected error → default maintenance OFF, never crash middleware
-    maintenanceEnabled = false;
+      maintenanceEnabled = await Promise.race([maintenanceCheck, timeout]);
+      cachedMaintenanceMode = maintenanceEnabled;
+      lastMaintenanceCheck = now;
+    } catch {
+      // Any unexpected error → default maintenance OFF, never crash middleware
+      maintenanceEnabled = false;
+    }
   }
 
   if (maintenanceEnabled) {
