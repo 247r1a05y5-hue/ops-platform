@@ -684,6 +684,30 @@ try {
   InvModel.schema.index({ status: 1, createdAt: -1 });
 } catch (_) { /* already defined */ }
 
+// ── WebhookEvent — production delivery queue ───────────────────────────────
+const WebhookEventSchema = new Schema({
+  eventId:          { type: String, required: true, unique: true },  // UUID
+  event:            { type: String, required: true },                 // e.g. 'new_lead'
+  payload:          { type: Schema.Types.Mixed, required: true },     // full JSON body
+  targetUrl:        { type: String, required: true },                 // outbound URL
+  status:           { type: String, enum: ['pending', 'processing', 'success', 'failed', 'dead'], default: 'pending' },
+  attempts:         { type: Number, default: 0 },
+  maxAttempts:      { type: Number, default: 5 },
+  nextRetryAt:      { type: Date, default: Date.now },                // ready immediately
+  lastError:        { type: String, default: '' },
+  lastResponseCode: { type: Number, default: null },
+  lastResponseBody: { type: String, default: '' },
+  duration:         { type: Number, default: null },                  // ms
+  createdAt:        { type: Date, default: Date.now },
+  updatedAt:        { type: Date, default: Date.now },
+});
+WebhookEventSchema.index({ status: 1, nextRetryAt: 1 });    // worker claim query
+WebhookEventSchema.index({ event: 1 });
+WebhookEventSchema.index({ createdAt: -1 });
+WebhookEventSchema.index({ eventId: 1 }, { unique: true });
+
+export const WebhookEvent = (models.WebhookEvent || model('WebhookEvent', WebhookEventSchema)) as any;
+
 
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users
 let _lastWorkspaceAssignAt = 0;

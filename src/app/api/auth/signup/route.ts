@@ -116,63 +116,28 @@ export async function POST(req: NextRequest) {
       vars: { name: user.name, email: user.email, role: user.role }
     }).catch(console.error);
 
-    // 6. Trigger Zapier Webhook for additional automation (only if URL is configured)
+    // 6. Enqueue Zapier Webhook — delivery handled by the webhook queue worker
     try {
       const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
       if (!webhookUrl) {
         console.warn('[signup] ZAPIER_WEBHOOK_URL is not set — skipping Zapier notification.');
       } else {
-        console.log('[Zapier] Outbound webhook');
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        try {
-          const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              event: 'new_user_signup',
-              name: user.name.trim(),
-              email: user.email.trim().toLowerCase(),
-              role: user.role || 'User',
-              signupTime: new Date().toISOString(),
-              userId: user._id.toString()
-            }),
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          const { setLastDeliveryStatus } = await import('@/lib/zapier');
-
-          if (response.status === 200 || response.status === 201 || response.status === 202) {
-            console.log('[Zapier] Delivered');
-            setLastDeliveryStatus('success');
-          } else {
-            console.error('[Zapier] Delivery failed', {
-              status: response.status,
-              statusText: response.statusText,
-              url: webhookUrl
-            });
-            setLastDeliveryStatus('failed');
-          }
-        } catch (fetchErr: any) {
-          clearTimeout(timeoutId);
-          const { setLastDeliveryStatus } = await import('@/lib/zapier');
-          setLastDeliveryStatus('failed');
-          if (fetchErr.name === 'AbortError') {
-            console.error('[Zapier] Request timed out');
-            console.error('[Zapier] Timeout');
-          } else {
-            console.error('[Zapier] Delivery failed', {
-              error: fetchErr.message,
-              url: webhookUrl
-            });
-          }
-        }
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        await enqueueWebhook({
+          event: 'new_user_signup',
+          targetUrl: webhookUrl,
+          payload: {
+            event: 'new_user_signup',
+            name: user.name.trim(),
+            email: user.email.trim().toLowerCase(),
+            role: user.role || 'User',
+            signupTime: new Date().toISOString(),
+            userId: user._id.toString(),
+          },
+        });
       }
     } catch (err) {
-      console.error('Failed to trigger Zapier user signup webhook:', err);
+      console.error('[signup] Failed to enqueue Zapier webhook:', err);
     }
 
     // 7. Log Registration Activity
