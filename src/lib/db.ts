@@ -686,27 +686,49 @@ try {
 
 // ── WebhookEvent — production delivery queue ───────────────────────────────
 const WebhookEventSchema = new Schema({
-  eventId:          { type: String, required: true, unique: true },  // UUID
-  event:            { type: String, required: true },                 // e.g. 'new_lead'
-  payload:          { type: Schema.Types.Mixed, required: true },     // full JSON body
-  targetUrl:        { type: String, required: true },                 // outbound URL
-  status:           { type: String, enum: ['pending', 'processing', 'success', 'failed', 'dead'], default: 'pending' },
-  attempts:         { type: Number, default: 0 },
-  maxAttempts:      { type: Number, default: 5 },
-  nextRetryAt:      { type: Date, default: Date.now },                // ready immediately
-  lastError:        { type: String, default: '' },
-  lastResponseCode: { type: Number, default: null },
-  lastResponseBody: { type: String, default: '' },
-  duration:         { type: Number, default: null },                  // ms
-  createdAt:        { type: Date, default: Date.now },
-  updatedAt:        { type: Date, default: Date.now },
+  eventId:              { type: String, required: true, unique: true },  // UUID
+  event:                { type: String, required: true },                 // e.g. 'new_lead'
+  payload:              { type: Schema.Types.Mixed, required: true },     // full JSON body
+  targetUrl:            { type: String, required: true },                 // outbound URL
+  status:               { type: String, enum: ['pending', 'processing', 'success', 'failed', 'dead'], default: 'pending' },
+  attempts:             { type: Number, default: 0 },
+  maxAttempts:          { type: Number, default: 5 },
+  nextRetryAt:          { type: Date, default: Date.now },                // ready immediately
+  processingStartedAt:  { type: Date, default: null },                    // set when claimed; used for stuck-job recovery
+  lastError:            { type: String, default: '' },
+  lastResponseCode:     { type: Number, default: null },
+  lastResponseBody:     { type: String, default: '' },
+  duration:             { type: Number, default: null },                  // ms
+  enqueuedAt:           { type: Date, default: Date.now },                // for queue wait-time calculation
+  createdAt:            { type: Date, default: Date.now },
+  updatedAt:            { type: Date, default: Date.now },
 });
-WebhookEventSchema.index({ status: 1, nextRetryAt: 1 });    // worker claim query
-WebhookEventSchema.index({ event: 1 });
-WebhookEventSchema.index({ createdAt: -1 });
-WebhookEventSchema.index({ eventId: 1 }, { unique: true });
+// Primary worker claim query
+try { WebhookEventSchema.index({ status: 1, nextRetryAt: 1 }); } catch (_) {}
+// Stuck-job recovery scan
+try { WebhookEventSchema.index({ status: 1, processingStartedAt: 1 }); } catch (_) {}
+// eventId lookup (unique already set above)
+try { WebhookEventSchema.index({ event: 1 }); } catch (_) {}
+try { WebhookEventSchema.index({ createdAt: -1 }); } catch (_) {}
 
 export const WebhookEvent = (models.WebhookEvent || model('WebhookEvent', WebhookEventSchema)) as any;
+
+// ── WebhookWorkerStatus — heartbeat tracking ────────────────────────────────
+const WebhookWorkerStatusSchema = new Schema({
+  workerId:       { type: String, required: true, unique: true },   // e.g. 'cron-worker'
+  startedAt:      { type: Date, default: Date.now },
+  lastHeartbeat:  { type: Date, default: Date.now },
+  processedCount: { type: Number, default: 0 },
+  successCount:   { type: Number, default: 0 },
+  failedCount:    { type: Number, default: 0 },
+  uptime:         { type: Number, default: 0 },                     // seconds since startedAt
+  status:         { type: String, enum: ['healthy', 'idle', 'error'], default: 'idle' },
+  updatedAt:      { type: Date, default: Date.now },
+});
+WebhookWorkerStatusSchema.index({ workerId: 1 }, { unique: true });
+WebhookWorkerStatusSchema.index({ lastHeartbeat: -1 });
+
+export const WebhookWorkerStatus = (models.WebhookWorkerStatus || model('WebhookWorkerStatus', WebhookWorkerStatusSchema)) as any;
 
 
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users

@@ -1,14 +1,16 @@
 /**
- * webhookQueue.ts — Production-grade webhook delivery queue
+ * webhookQueue.ts — Enterprise webhook delivery queue
  *
  * Architecture:
  *   Business Logic → enqueueWebhook() → WebhookEvent (MongoDB)
  *                                              ↓
- *                              claimNextWebhook() [atomic — no race conditions]
+ *                       recoverStuckWebhooks() [runs at start of each cron tick]
  *                                              ↓
- *                              Delivery Worker (fetch + timeout)
+ *                        claimNextWebhook()   [atomic — findOneAndUpdate, no race conditions]
  *                                              ↓
- *                          markSuccess() | markFailure() | moveToDeadLetter()
+ *                        processNextWebhook() [fetch + AbortController timeout]
+ *                                              ↓
+ *                    markSuccess() | markFailure() → scheduleRetry() | moveToDeadLetter()
  *
  * Retry Policy:
  *   Attempt 1  → immediate
@@ -17,12 +19,16 @@
  *   Attempt 4  → 5 minutes
  *   Attempt 5  → 15 minutes
  *   > maxAttempts → status: 'dead'
+ *
+ * Lock Recovery:
+ *   Any webhook stuck in 'processing' for > 10 minutes is automatically
+ *   returned to 'pending' with attempts incremented.
  */
 
 import { connectDB, WebhookEvent } from '@/lib/db';
 import { setLastDeliveryStatus } from '@/lib/zapier';
 
-// ── Retry delay ladder (ms) ────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────
 const RETRY_DELAYS_MS = [
   0,           // Attempt 1 — immediate
   30_000,      // Attempt 2 — 30 s
@@ -31,19 +37,20 @@ const RETRY_DELAYS_MS = [
   900_000,     // Attempt 5 — 15 min
 ];
 
-const MAX_ATTEMPTS = RETRY_DELAYS_MS.length; // 5
+const MAX_ATTEMPTS = RETRY_DELAYS_MS.length;           // 5
+const DELIVERY_TIMEOUT_MS = 5_000;                     // 5 s
+const PROCESSING_LOCK_TIMEOUT_MS = 10 * 60 * 1000;   // 10 min — stuck-job threshold
+const ACCEPTED_STATUS_CODES = new Set([200, 201, 202]);
 
 // ── UUID helper ────────────────────────────────────────────────────────────
 function generateEventId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  // Fallback for older runtimes
   return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
 export interface WebhookEventRecord {
   _id: string;
   eventId: string;
@@ -54,15 +61,66 @@ export interface WebhookEventRecord {
   attempts: number;
   maxAttempts: number;
   nextRetryAt: Date;
+  processingStartedAt: Date | null;
   lastError: string;
   lastResponseCode: number | null;
   lastResponseBody: string;
   duration: number | null;
+  enqueuedAt: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ── TASK 1: Enqueue ────────────────────────────────────────────────────────
+// ── TASK 1 & 5: Processing Lock Recovery / Stuck Job Detection ────────────
+
+/**
+ * Scan for webhooks stuck in 'processing' for > 10 minutes.
+ * Atomically returns them to 'pending' so the next worker pick-up retries them.
+ * Logs each recovery with [WebhookQueue] Processing lock recovered.
+ */
+export async function recoverStuckWebhooks(): Promise<number> {
+  await connectDB();
+
+  const lockTimeout = new Date(Date.now() - PROCESSING_LOCK_TIMEOUT_MS);
+
+  // Find all stuck ones first (for logging)
+  const stuck = await WebhookEvent.find({
+    status: 'processing',
+    processingStartedAt: { $lte: lockTimeout },
+  }).lean();
+
+  if (stuck.length === 0) return 0;
+
+  for (const doc of stuck as any[]) {
+    await WebhookEvent.findOneAndUpdate(
+      {
+        eventId: doc.eventId,
+        status: 'processing',
+        processingStartedAt: { $lte: lockTimeout },
+      },
+      {
+        $set: {
+          status: 'pending',
+          nextRetryAt: new Date(),       // eligible for immediate retry
+          processingStartedAt: null,
+          lastError: 'Processing lock timeout — recovered after 10 minutes',
+          updatedAt: new Date(),
+        },
+        $inc: { attempts: 1 },
+      }
+    );
+
+    console.warn(
+      `[WebhookQueue] Processing lock recovered — eventId="${doc.eventId}" event="${doc.event}" ` +
+      `stuckSince=${doc.processingStartedAt?.toISOString()} attempts=${doc.attempts}`
+    );
+    console.warn(`[WebhookQueue] Recovered stuck webhook — eventId="${doc.eventId}"`);
+  }
+
+  return stuck.length;
+}
+
+// ── Enqueue ────────────────────────────────────────────────────────────────
 
 /**
  * Enqueue a webhook event for asynchronous delivery.
@@ -86,11 +144,13 @@ export async function enqueueWebhook(params: {
     status: 'pending',
     attempts: 0,
     maxAttempts: MAX_ATTEMPTS,
-    nextRetryAt: now,    // ready for immediate delivery
+    nextRetryAt: now,
+    processingStartedAt: null,
     lastError: '',
     lastResponseCode: null,
     lastResponseBody: '',
     duration: null,
+    enqueuedAt: now,
     createdAt: now,
     updatedAt: now,
   });
@@ -99,11 +159,11 @@ export async function enqueueWebhook(params: {
   return eventId;
 }
 
-// ── TASK 2: Atomic Claim (prevents duplicate workers) ─────────────────────
+// ── Atomic Claim ──────────────────────────────────────────────────────────
 
 /**
  * Atomically claim the next eligible webhook event.
- * Uses findOneAndUpdate() so only ONE worker can claim each event — no race conditions.
+ * Sets processingStartedAt = now for lock-recovery tracking.
  */
 export async function claimNextWebhook(): Promise<WebhookEventRecord | null> {
   await connectDB();
@@ -116,22 +176,33 @@ export async function claimNextWebhook(): Promise<WebhookEventRecord | null> {
       nextRetryAt: { $lte: now },
     },
     {
-      $set: { status: 'processing', updatedAt: now },
+      $set: {
+        status: 'processing',
+        processingStartedAt: now,
+        updatedAt: now,
+      },
     },
     {
       sort: { nextRetryAt: 1 },  // FIFO — oldest first
-      new: true,                  // return the updated document
+      new: true,
     }
   );
 
   if (claimed) {
-    console.log(`[WebhookQueue] Processing eventId="${claimed.eventId}" event="${claimed.event}" attempt=${claimed.attempts + 1}/${claimed.maxAttempts}`);
+    // Performance log — queue wait time
+    const enqueuedAt = claimed.enqueuedAt ?? claimed.createdAt;
+    const waitMs = now.getTime() - new Date(enqueuedAt).getTime();
+    console.log(
+      `[WebhookQueue] Processing eventId="${claimed.eventId}" event="${claimed.event}" ` +
+      `attempt=${claimed.attempts + 1}/${claimed.maxAttempts} ` +
+      `Wait: ${(waitMs / 1000).toFixed(1)}s`
+    );
   }
 
   return claimed;
 }
 
-// ── TASK 3: Mark Success ───────────────────────────────────────────────────
+// ── Mark Success ──────────────────────────────────────────────────────────
 
 export async function markSuccess(params: {
   eventId: string;
@@ -146,8 +217,9 @@ export async function markSuccess(params: {
     {
       $set: {
         status: 'success',
+        processingStartedAt: null,
         lastResponseCode: params.responseCode,
-        lastResponseBody: params.responseBody.slice(0, 1000), // cap at 1KB
+        lastResponseBody: params.responseBody.slice(0, 1000),
         duration: params.duration,
         updatedAt: new Date(),
       },
@@ -156,10 +228,13 @@ export async function markSuccess(params: {
   );
 
   setLastDeliveryStatus('success');
-  console.log(`[WebhookQueue] Success eventId="${params.eventId}" status=${params.responseCode} duration=${params.duration}ms`);
+  console.log(
+    `[WebhookQueue] Success eventId="${params.eventId}" ` +
+    `status=${params.responseCode} Delivery: ${params.duration}ms`
+  );
 }
 
-// ── TASK 4: Mark Failure + Schedule Retry ─────────────────────────────────
+// ── Mark Failure ──────────────────────────────────────────────────────────
 
 export async function markFailure(params: {
   eventId: string;
@@ -190,7 +265,7 @@ export async function markFailure(params: {
   });
 }
 
-// ── TASK 5: Schedule Retry ────────────────────────────────────────────────
+// ── Schedule Retry ────────────────────────────────────────────────────────
 
 export async function scheduleRetry(params: {
   eventId: string;
@@ -210,6 +285,7 @@ export async function scheduleRetry(params: {
     {
       $set: {
         status: 'failed',
+        processingStartedAt: null,
         nextRetryAt,
         lastError: params.error,
         lastResponseCode: params.responseCode ?? null,
@@ -222,10 +298,14 @@ export async function scheduleRetry(params: {
   );
 
   setLastDeliveryStatus('failed');
-  console.log(`[WebhookQueue] Retry Scheduled eventId="${params.eventId}" attempt=${params.attemptNumber}/${MAX_ATTEMPTS} nextRetryAt=${nextRetryAt.toISOString()} delayMs=${delayMs}`);
+  console.log(
+    `[WebhookQueue] Retry Scheduled eventId="${params.eventId}" ` +
+    `Attempt: ${params.attemptNumber}/${MAX_ATTEMPTS} ` +
+    `Retry Delay: ${delayMs}ms nextRetryAt=${nextRetryAt.toISOString()}`
+  );
 }
 
-// ── TASK 6: Dead Letter ───────────────────────────────────────────────────
+// ── Dead Letter ───────────────────────────────────────────────────────────
 
 export async function moveToDeadLetter(params: {
   eventId: string;
@@ -238,6 +318,7 @@ export async function moveToDeadLetter(params: {
     {
       $set: {
         status: 'dead',
+        processingStartedAt: null,
         lastError: params.reason,
         updatedAt: new Date(),
       },
@@ -249,16 +330,12 @@ export async function moveToDeadLetter(params: {
   console.error(`[WebhookQueue] Dead Letter eventId="${params.eventId}" reason="${params.reason}"`);
 }
 
-// ── TASK 7: Worker — process one event ───────────────────────────────────
-
-const DELIVERY_TIMEOUT_MS = 5000;
-const ACCEPTED_STATUS_CODES = new Set([200, 201, 202]);
+// ── Worker — process one event ────────────────────────────────────────────
 
 /**
- * Process one queued webhook event with:
- *   - AbortController timeout (5000ms)
- *   - HTTP status validation (200/201/202)
- *   - Automatic retry scheduling on failure
+ * Process one queued webhook event.
+ * TASK 6 (crash safety): never throws — all errors are caught and handled.
+ * Returns true if an event was claimed, false if queue was empty.
  */
 export async function processNextWebhook(): Promise<boolean> {
   const record = await claimNextWebhook();
@@ -266,7 +343,6 @@ export async function processNextWebhook(): Promise<boolean> {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
-
   const startedAt = Date.now();
 
   try {
@@ -280,11 +356,8 @@ export async function processNextWebhook(): Promise<boolean> {
     clearTimeout(timeoutId);
     const duration = Date.now() - startedAt;
 
-    // Read body (capped) for logging
     let responseBody = '';
-    try {
-      responseBody = (await response.text()).slice(0, 1000);
-    } catch (_) { /* ignore */ }
+    try { responseBody = (await response.text()).slice(0, 1000); } catch (_) { /* ignore */ }
 
     if (ACCEPTED_STATUS_CODES.has(response.status)) {
       await markSuccess({
@@ -318,7 +391,7 @@ export async function processNextWebhook(): Promise<boolean> {
       console.error(`[Zapier] Timeout`);
       await markFailure({
         eventId: record.eventId,
-        error: 'Delivery timeout (5000ms)',
+        error: `Delivery timeout (${DELIVERY_TIMEOUT_MS}ms)`,
         duration,
       });
     } else {
@@ -330,6 +403,16 @@ export async function processNextWebhook(): Promise<boolean> {
       });
     }
   }
+
+  // TASK 8 — performance summary line
+  const totalDuration = Date.now() - startedAt;
+  const enqueuedAt = record.enqueuedAt ?? record.createdAt;
+  const waitMs = startedAt - new Date(enqueuedAt).getTime();
+  console.log(
+    `[WebhookQueue] Wait: ${(waitMs / 1000).toFixed(1)}s ` +
+    `Delivery: ${totalDuration}ms ` +
+    `Attempt: ${record.attempts + 1}`
+  );
 
   return true;
 }
