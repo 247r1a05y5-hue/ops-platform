@@ -183,6 +183,7 @@ export async function POST(req: NextRequest) {
       if (!webhookUrl) {
         console.warn('[leads] ZAPIER_WEBHOOK_URL is not set — skipping Zapier notification.');
       } else {
+        console.log('[Zapier] Outbound webhook');
         console.log('Sending new lead data to Zapier:', {
           name: lead.name,
           email: lead.email,
@@ -193,28 +194,57 @@ export async function POST(req: NextRequest) {
           assignedTo: lead.assignedToName
         });
 
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            event: 'new_lead',
-            name: (lead.name || '').trim(),
-            email: (lead.email || '').trim().toLowerCase(),
-            company: (lead.company || '').trim(),
-            value: (lead.value || '').trim(),
-            stage: (lead.stage || '').trim(),
-            status: (lead.status || '').trim(),
-            assignedTo: (lead.assignedToName || '').trim(),
-            createdBy: (session.name || '').trim(),
-            leadId: lead._id.toString()
-          })
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        console.log('Zapier new lead webhook status:', response.status);
-        if (!response.ok) {
-          console.error('Zapier new lead webhook failed:', response.statusText);
+        try {
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              event: 'new_lead',
+              name: (lead.name || '').trim(),
+              email: (lead.email || '').trim().toLowerCase(),
+              company: (lead.company || '').trim(),
+              value: (lead.value || '').trim(),
+              stage: (lead.stage || '').trim(),
+              status: (lead.status || '').trim(),
+              assignedTo: (lead.assignedToName || '').trim(),
+              createdBy: (session.name || '').trim(),
+              leadId: lead._id.toString()
+            }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          const { setLastDeliveryStatus } = await import('@/lib/zapier');
+
+          if (response.status === 200 || response.status === 201 || response.status === 202) {
+            console.log('[Zapier] Delivered');
+            setLastDeliveryStatus('success');
+          } else {
+            console.error('[Zapier] Delivery failed', {
+              status: response.status,
+              statusText: response.statusText,
+              url: webhookUrl
+            });
+            setLastDeliveryStatus('failed');
+          }
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          const { setLastDeliveryStatus } = await import('@/lib/zapier');
+          setLastDeliveryStatus('failed');
+          if (fetchErr.name === 'AbortError') {
+            console.error('[Zapier] Request timed out');
+            console.error('[Zapier] Timeout');
+          } else {
+            console.error('[Zapier] Delivery failed', {
+              error: fetchErr.message,
+              url: webhookUrl
+            });
+          }
         }
       }
     } catch (err) {

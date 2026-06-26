@@ -106,4 +106,14 @@ if (!isBuildPhase) {
   if (!check.redisEnabled) {
     console.warn('[OPS Platform] ⚠️  UPSTASH_REDIS not configured — using in-memory rate limiter (resets on deploy).');
   }
+
+  // Zapier configuration warnings
+  const zapierUrl = process.env.ZAPIER_WEBHOOK_URL;
+  const zapierKey = process.env.ZAPIER_API_KEY;
+  if (zapierUrl && (!zapierKey || zapierKey.trim() === '')) {
+    console.warn('[OPS Platform] ⚠️  [Zapier] ZAPIER_WEBHOOK_URL is set but ZAPIER_API_KEY is missing. Inbound validation will fail or trigger security alerts.');
+  }
+  if (zapierKey && (!zapierUrl || zapierUrl.trim() === '')) {
+    console.warn('[OPS Platform] ⚠️  [Zapier] ZAPIER_API_KEY is set but ZAPIER_WEBHOOK_URL is missing. Outbound webhooks will be skipped.');
+  }
 }

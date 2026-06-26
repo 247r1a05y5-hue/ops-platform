@@ -14,9 +14,28 @@ import { sendEmail } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   try {
-    // Verify API key if authentication is required
+    console.log('[Zapier] Incoming webhook');
+
+    const serverApiKey = process.env.ZAPIER_API_KEY;
+    if (!serverApiKey || serverApiKey.trim() === '') {
+      console.error('[Zapier] Auth failed');
+      return NextResponse.json(
+        { success: false, error: 'Zapier integration is not configured.' },
+        { status: 500 }
+      );
+    }
+
     const apiKey = req.headers.get('x-api-key');
-    if (process.env.ZAPIER_API_KEY && apiKey !== process.env.ZAPIER_API_KEY) {
+    if (!apiKey) {
+      console.error('[Zapier] Auth failed');
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Missing API key' },
+        { status: 401 }
+      );
+    }
+
+    if (apiKey !== serverApiKey) {
+      console.error('[Zapier] Auth failed');
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Invalid API key' },
         { status: 401 }

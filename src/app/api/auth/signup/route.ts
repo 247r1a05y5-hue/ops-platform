@@ -122,21 +122,53 @@ export async function POST(req: NextRequest) {
       if (!webhookUrl) {
         console.warn('[signup] ZAPIER_WEBHOOK_URL is not set — skipping Zapier notification.');
       } else {
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'new_user_signup',
-            name: user.name.trim(),
-            email: user.email.trim().toLowerCase(),
-            role: user.role || 'User',
-            signupTime: new Date().toISOString(),
-            userId: user._id.toString()
-          })
-        });
-        console.log('Zapier user signup webhook status:', response.status);
-        if (!response.ok) {
-          console.error('Zapier user signup webhook failed:', response.statusText);
+        console.log('[Zapier] Outbound webhook');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        try {
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'new_user_signup',
+              name: user.name.trim(),
+              email: user.email.trim().toLowerCase(),
+              role: user.role || 'User',
+              signupTime: new Date().toISOString(),
+              userId: user._id.toString()
+            }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          const { setLastDeliveryStatus } = await import('@/lib/zapier');
+
+          if (response.status === 200 || response.status === 201 || response.status === 202) {
+            console.log('[Zapier] Delivered');
+            setLastDeliveryStatus('success');
+          } else {
+            console.error('[Zapier] Delivery failed', {
+              status: response.status,
+              statusText: response.statusText,
+              url: webhookUrl
+            });
+            setLastDeliveryStatus('failed');
+          }
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          const { setLastDeliveryStatus } = await import('@/lib/zapier');
+          setLastDeliveryStatus('failed');
+          if (fetchErr.name === 'AbortError') {
+            console.error('[Zapier] Request timed out');
+            console.error('[Zapier] Timeout');
+          } else {
+            console.error('[Zapier] Delivery failed', {
+              error: fetchErr.message,
+              url: webhookUrl
+            });
+          }
         }
       }
     } catch (err) {
