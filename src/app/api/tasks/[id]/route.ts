@@ -70,7 +70,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     }
 
     // Admin copy
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@ops.com';
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
     if (isValidEmail(adminEmail)) {
       await sendEmail({
         event: 'task_update',

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Invalid recipient: "${to}"` }, { status: 400 });
     }
 
-    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@ops.com').toLowerCase().trim();
+    const adminEmail = (process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com').toLowerCase().trim();
     const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
     const templateKey = (body.template && TEMPLATES[body.template]) ? body.template : 'activity_alert';
     const template = TEMPLATES[templateKey];
@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
     user:        process.env.SMTP_USER   || '(not set)',
     passSet:     !!process.env.SMTP_PASS,
     senderEmail: process.env.SENDER_EMAIL || process.env.SMTP_USER || '(not set)',
-    adminEmail:  process.env.ADMIN_EMAIL  || 'admin@ops.com (default)',
+    adminEmail:  process.env.ADMIN_EMAIL  || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com (default)',
   };
 
   let smtpVerified = false;

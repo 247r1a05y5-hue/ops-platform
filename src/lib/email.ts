@@ -11,6 +11,28 @@ type EmailTemplate = {
 // Global transporter cache to prevent reconnecting on every email
 let transporter: nodemailer.Transporter | null = null;
 
+// Temporary startup diagnostics to verify environment injection on Railway
+(function logStartupDiagnostics() {
+  const host = process.env.SMTP_HOST || 'missing';
+  const port = process.env.SMTP_PORT || 'missing';
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS ? 'present' : 'missing';
+  const sender = process.env.SENDER_EMAIL || 'missing';
+  const admin = process.env.ADMIN_EMAIL || 'missing';
+
+  const maskedUser = user 
+    ? (user.length <= 3 ? user + '***' : user.substring(0, 3) + '***') 
+    : 'missing';
+
+  console.log(`[email] ENV
+SMTP_HOST: ${host}
+SMTP_PORT: ${port}
+SMTP_USER: ${maskedUser}
+SMTP_PASS: ${pass}
+SENDER_EMAIL: ${sender}
+ADMIN_EMAIL: ${admin}`);
+})();
+
 /** Regex for a broadly valid email address */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -46,19 +68,13 @@ export function getTransporter() {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    // Increase timeouts for cold Brevo connections
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
+    // Timeouts tuned for Railway → Brevo latency (higher than local dev)
+    connectionTimeout: 10000, // TCP connect
+    greetingTimeout: 10000,   // SMTP 220 banner
+    socketTimeout: 15000,     // Activity timeout (prevents silent hangs on AUTH/DATA)
   });
 
-  // Verify connection configuration asynchronously — log result, don't block
-  transporter.verify().then(() => {
-    console.log('✅ SMTP server ready');
-  }).catch((err: unknown) => {
-    console.error('❌ SMTP verify failed:', sanitizeSmtpError(err));
-    // Reset cache so next call tries to reconnect
-    transporter = null;
-  });
+  console.log('[email] SMTP transporter created — ready for sendMail()');
 
   return transporter;
 }
@@ -200,9 +216,18 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
   const template = TEMPLATES[event];
   if (!template) throw new Error(`Template not found for event: ${event}`);
 
+  // Resolve admin@ops.com recipient to dynamic ADMIN_EMAIL / SENDER_EMAIL fallback
+  let targetTo = (to || '').trim();
+  if (targetTo.toLowerCase() === 'admin@ops.com') {
+    const resolvedAdmin = (process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com').trim();
+    if (resolvedAdmin && resolvedAdmin.toLowerCase() !== 'admin@ops.com') {
+      targetTo = resolvedAdmin;
+    }
+  }
+
   // Validate recipient address
-  if (!isValidEmail(to)) {
-    throw new Error(`Invalid or blocked recipient address: ${to}`);
+  if (!isValidEmail(targetTo)) {
+    throw new Error(`Invalid or blocked recipient address: ${targetTo}`);
   }
 
   const smtpTransporter = getTransporter();
@@ -215,12 +240,12 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
 
     const info = await smtpTransporter.sendMail({
       from: `"Antigravity OPS Admin" <${fromAddress}>`,
-      to,
+      to: targetTo,
       subject: template.subject,
       html: template.html(vars),
     });
 
-    console.log(`✅ Email sent to ${to} [${event}] messageId=${info.messageId}`);
+    console.log(`✅ Email sent to ${targetTo} [${event}] messageId=${info.messageId}`);
 
     try {
       await EmailLog.create({
@@ -228,7 +253,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
         template: event,
         subject: template.subject,
         role: vars.role || 'Unknown',
-        to,
+        to: targetTo,
         status: 'success',
         messageId: info.messageId,
         vars,
@@ -241,7 +266,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
   } catch (error: unknown) {
     const message = sanitizeSmtpError(error);
 
-    console.error(`❌ Email failed to ${to} [${event}]: ${message}`);
+    console.error(`❌ Email failed to ${targetTo} [${event}]: ${message}`);
 
     // If it's an auth failure, reset the cached transporter so next call reconnects
     const rawMsg = error instanceof Error ? error.message : '';
@@ -255,7 +280,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
         template: event,
         subject: template.subject,
         role: vars.role || 'Unknown',
-        to,
+        to: targetTo,
         status: 'failed',
         error: message,
         vars,

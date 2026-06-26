@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
-    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@ops.com').toLowerCase().trim();
+    const adminEmail = (process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com').toLowerCase().trim();
 
     // Build human-readable details
     const durationStr = duration

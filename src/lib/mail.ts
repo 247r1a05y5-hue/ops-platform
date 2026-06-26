@@ -43,7 +43,10 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
 }
 
 export async function sendAdminMail(subject: string, body: string, recipients?: string[]) {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@ops.com';
+  let adminEmail = (process.env.ADMIN_EMAIL || '').trim();
+  if (!adminEmail || adminEmail.toLowerCase() === 'admin@ops.com') {
+    adminEmail = (process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com').trim();
+  }
   const toAddresses = Array.isArray(recipients) && recipients.length > 0
     ? [...new Set([...recipients, adminEmail].filter(Boolean))]
     : [adminEmail];

@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     // Notify Admin of new registration
     await sendEmail({
       event: 'admin_user_signup',
-      to: process.env.ADMIN_EMAIL || 'admin@ops.com',
+      to: process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com',
       vars: { name: user.name, email: user.email, role: user.role }
     }).catch(console.error);
 
