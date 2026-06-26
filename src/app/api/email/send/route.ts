@@ -6,7 +6,7 @@ import { getGmailAccessToken } from '../../gmail/oauth/route';
 import nodemailer from 'nodemailer';
 import { logActivity } from '@/lib/activity';
 
-async function sendSystemSmtp(to: string, subject: string, html: string, emailId: string) {
+async function sendSystemEmail(to: string, subject: string, html: string, emailId: string) {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) {
     throw new Error('BREVO_API_KEY is not configured in the environment.');
@@ -152,13 +152,13 @@ export async function POST(req: NextRequest) {
             });
 
           } catch (gmailErr: unknown) {
-            console.error('[email/send] Personalized Gmail OAuth dispatch failed. Falling back to system SMTP.', gmailErr);
-            // Fall back to system SMTP
-            await sendSystemSmtp(to, subject, processedHtml, emailId);
+            console.error('[email/send] Personalized Gmail OAuth dispatch failed. Falling back to system email.', gmailErr);
+            // Fall back to system email
+            await sendSystemEmail(to, subject, processedHtml, emailId);
           }
         } else {
-          // No personalized Gmail setup found, use system SMTP
-          await sendSystemSmtp(to, subject, processedHtml, emailId);
+          // No personalized Gmail setup found, use system email
+          await sendSystemEmail(to, subject, processedHtml, emailId);
         }
       } catch (err: unknown) {
         const smtpMsg = err instanceof Error ? err.message : String(err);

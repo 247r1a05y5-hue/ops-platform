@@ -12,8 +12,17 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: 'Ops Platform',
-  description: 'Powering teams through an all-in-one ops platform',
+  title: 'OPS Platform — Enterprise Operations Management',
+  description: 'Manage tasks, CRM pipelines, invoicing, and team operations in one unified workspace.',
+  icons: {
+    icon: '/icon.svg',
+  },
+  openGraph: {
+    title: 'OPS Platform — Enterprise Operations Management',
+    description: 'Manage tasks, CRM pipelines, invoicing, and team operations in one unified workspace.',
+    type: 'website',
+    url: 'https://ops-platform.app',
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

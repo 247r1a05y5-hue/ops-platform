@@ -309,7 +309,7 @@ export default function Settings() {
                 </div>
 
                 <div className="bg-surface p-6 rounded-xl border border-accent/20 space-y-4">
-                  <h3 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">📱 Mock WhatsApp Integration</h3>
+                  <h3 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">📱 WhatsApp Notifications</h3>
                   <p className="text-xs text-secondary leading-relaxed">Route urgent task assignments, critical overdue warnings, and shift check-ins directly to your mobile phone via secure WhatsApp gateways.</p>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">

@@ -430,7 +430,6 @@ const ProposalSchema = new Schema({
 });
 ProposalSchema.index({ leadId: 1 });
 ProposalSchema.index({ status: 1 });
-ProposalSchema.index({ secureToken: 1 });
 ProposalSchema.index({ createdAt: -1 });
 
 // 15. WhatsApp Messages
@@ -463,7 +462,6 @@ if (!LeadSchema.path('updatedAt')) {
 }
 try {
   LeadSchema.index({ stage: 1, updatedAt: 1 });
-  LeadSchema.index({ assignedTo: 1 });
   LeadSchema.index({ onboardingReady: 1, paymentStatus: 1, onboardingDoneAt: 1 });
   TaskSchema.index({ dueDate: 1, stage: 1 });
   ActivityLog.schema.index({ userId: 1, actionType: 1, timestamp: -1 });
@@ -534,7 +532,6 @@ const WorkspaceSchema = new Schema({
   slug:      { type: String, required: true, unique: true },
   createdAt: { type: Date, default: Date.now },
 });
-WorkspaceSchema.index({ slug: 1 });
 
 // 17. Conversation — DM or group thread scoped to a workspace
 const ConversationSchema = new Schema({
@@ -676,8 +673,6 @@ const InvitationSchema = new Schema({
   status: { type: String, enum: ['pending', 'accepted', 'expired'], default: 'pending' },
   createdAt: { type: Date, default: Date.now },
 });
-InvitationSchema.index({ token: 1 });
-InvitationSchema.index({ email: 1 });
 InvitationSchema.index({ status: 1, expiresAt: 1 });
 
 export const Invitation = (models.Invitation || model('Invitation', InvitationSchema)) as any;

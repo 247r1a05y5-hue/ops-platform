@@ -24,9 +24,6 @@ ADMIN_EMAIL: ${admin}`);
 /** Regex for a broadly valid email address */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** Placeholder/test addresses that should never be sent to in production */
-const BLOCKED_DOMAINS = ['example.com', 'test.com', 'placeholder.com', 'mailinator.com'];
-const BLOCKED_PREFIXES = ['test@', 'placeholder@', 'noreply@', 'no-reply@'];
 
 export function isValidEmail(email: string): boolean {
   if (!email || typeof email !== 'string') return false;
