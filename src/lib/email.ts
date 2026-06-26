@@ -239,12 +239,21 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
   }
 
   const smtpTransporter = getTransporter();
+  const startTime = Date.now();
 
   try {
+    console.log(`[email] [timing] connectDB() start`);
+    const t0 = Date.now();
     await connectDB();
+    console.log(`[email] [timing] connectDB() completed in ${Date.now() - t0}ms`);
 
     // Brevo requires the actual sender email to be verified
     const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+
+    console.log(`[email] [timing] HTML template generation start`);
+    const t1 = Date.now();
+    const htmlContent = template.html(vars);
+    console.log(`[email] [timing] HTML template generation completed in ${Date.now() - t1}ms`);
 
     console.log('[email] Calling sendMail() with config:', {
       host: process.env.SMTP_HOST,
@@ -255,15 +264,18 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
       recipient: targetTo,
     });
 
+    console.log(`[email] [timing] smtpTransporter.sendMail() start`);
+    const t2 = Date.now();
     const info = await smtpTransporter.sendMail({
       from: `"Antigravity OPS Admin" <${fromAddress}>`,
       to: targetTo,
       subject: template.subject,
-      html: template.html(vars),
+      html: htmlContent,
     });
+    console.log(`[email] [timing] smtpTransporter.sendMail() completed (success) in ${Date.now() - t2}ms`);
 
-    console.log(`✅ Email sent to ${targetTo} [${event}] messageId=${info.messageId}`);
-
+    console.log(`[email] [timing] EmailLog.create() start`);
+    const t3 = Date.now();
     try {
       await EmailLog.create({
         event,
@@ -275,15 +287,18 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
         messageId: info.messageId,
         vars,
       });
+      console.log(`[email] [timing] EmailLog.create() completed in ${Date.now() - t3}ms`);
     } catch (logErr) {
-      console.error('EmailLog (success) write failed:', logErr);
+      console.error(`[email] [timing] EmailLog.create() failed in ${Date.now() - t3}ms:`, logErr);
     }
 
+    console.log(`[email] [timing] sendEmail() completed successfully in ${Date.now() - startTime}ms`);
     return info;
   } catch (error: any) {
+    const totalTime = Date.now() - startTime;
     const message = sanitizeSmtpError(error);
 
-    console.error(`❌ Email failed to ${targetTo} [${event}]: ${message}`, {
+    console.error(`❌ Email failed to ${targetTo} [${event}] after ${totalTime}ms: ${message}`, {
       code: error?.code,
       command: error?.command,
       response: error?.response,
@@ -301,6 +316,8 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
       transporter = null;
     }
 
+    console.log(`[email] [timing] EmailLog.create() failure log start`);
+    const tFail = Date.now();
     try {
       await EmailLog.create({
         event,
@@ -312,8 +329,9 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
         error: message,
         vars,
       });
+      console.log(`[email] [timing] EmailLog.create() failure log completed in ${Date.now() - tFail}ms`);
     } catch (logErr) {
-      console.error('EmailLog (failure) write failed:', logErr);
+      console.error(`[email] [timing] EmailLog.create() failure log failed in ${Date.now() - tFail}ms:`, logErr);
     }
 
     throw Object.assign(new Error(message), { isSmtpError: true });
