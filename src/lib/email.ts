@@ -78,6 +78,8 @@ export function getTransporter() {
       servername: 'smtp-relay.brevo.com',
       rejectUnauthorized: true,
     },
+    logger: true,
+    debug: true,
   } as any);
 
   console.log('[email] SMTP transporter created — ready for sendMail()');
@@ -244,6 +246,15 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     // Brevo requires the actual sender email to be verified
     const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
 
+    console.log('[email] Calling sendMail() with config:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT || '587',
+      secure: false,
+      requireTLS: true,
+      family: 4,
+      recipient: targetTo,
+    });
+
     const info = await smtpTransporter.sendMail({
       from: `"Antigravity OPS Admin" <${fromAddress}>`,
       to: targetTo,
@@ -269,10 +280,20 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     }
 
     return info;
-  } catch (error: unknown) {
+  } catch (error: any) {
     const message = sanitizeSmtpError(error);
 
-    console.error(`❌ Email failed to ${targetTo} [${event}]: ${message}`);
+    console.error(`❌ Email failed to ${targetTo} [${event}]: ${message}`, {
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+      responseCode: error?.responseCode,
+      address: error?.address,
+      port: error?.port,
+      syscall: error?.syscall,
+      errno: error?.errno,
+      stack: error?.stack,
+    });
 
     // If it's an auth failure, reset the cached transporter so next call reconnects
     const rawMsg = error instanceof Error ? error.message : '';
