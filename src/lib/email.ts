@@ -64,6 +64,7 @@ export function getTransporter() {
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: false, // true for 465, false for other ports
+    family: 4,     // Force IPv4 resolution (prevents silent IPv6 timeouts on Railway)
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -72,7 +73,12 @@ export function getTransporter() {
     connectionTimeout: 10000, // TCP connect
     greetingTimeout: 10000,   // SMTP 220 banner
     socketTimeout: 15000,     // Activity timeout (prevents silent hangs on AUTH/DATA)
-  });
+    requireTLS: true,
+    tls: {
+      servername: 'smtp-relay.brevo.com',
+      rejectUnauthorized: true,
+    },
+  } as any);
 
   console.log('[email] SMTP transporter created — ready for sendMail()');
 

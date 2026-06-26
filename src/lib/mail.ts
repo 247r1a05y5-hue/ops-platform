@@ -21,8 +21,14 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
         host,
         port,
         secure: port === 465,
+        family: 4, // Force IPv4 resolution
         auth: { user, pass },
-      });
+        requireTLS: true,
+        tls: {
+          servername: 'smtp-relay.brevo.com',
+          rejectUnauthorized: true,
+        },
+      } as any);
     } else {
       // Create Ethereal test account on the fly for development
       const testAccount = await nodemailer.createTestAccount();
