@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     console.log('[Zapier] Incoming webhook');
 
+    // ── API key auth ────────────────────────────────────────────────────────
     const serverApiKey = process.env.ZAPIER_API_KEY;
     if (!serverApiKey || serverApiKey.trim() === '') {
       console.error('[Zapier] Auth failed');
@@ -42,7 +43,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    // ── Task 2: Replay attack protection ────────────────────────────────────
+    // Read raw body as text so we can verify HMAC before parsing JSON
+    const rawBody   = await req.text();
+    const signature = req.headers.get('x-ops-signature') ?? '';
+    const timestamp = req.headers.get('x-ops-timestamp') ?? '';
+
+    // Only verify if the platform has WEBHOOK_SECRET configured
+    if (process.env.WEBHOOK_SECRET) {
+      let eventIdForReplay = 'unknown';
+      try {
+        const preview = JSON.parse(rawBody);
+        eventIdForReplay = preview?.eventId ?? 'unknown';
+      } catch (_) {}
+
+      const { verifyInboundSignature } = await import('@/lib/webhookSecurity');
+      const verify = await verifyInboundSignature(signature, timestamp, rawBody, eventIdForReplay);
+      if (!verify.ok) {
+        const vf = verify as { ok: false; reason: string; status: number };
+        console.error('[Zapier] Signature verification failed:', vf.reason);
+        return NextResponse.json(
+          { success: false, error: vf.reason },
+          { status: vf.status }
+        );
+      }
+    }
+
+    const body = JSON.parse(rawBody);
     console.log('Zapier webhook received:', body);
 
     await connectDB();
@@ -82,6 +109,7 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
 
 /**
  * Handle new user signup event from Zapier

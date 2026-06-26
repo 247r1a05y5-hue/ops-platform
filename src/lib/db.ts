@@ -730,6 +730,39 @@ WebhookWorkerStatusSchema.index({ lastHeartbeat: -1 });
 
 export const WebhookWorkerStatus = (models.WebhookWorkerStatus || model('WebhookWorkerStatus', WebhookWorkerStatusSchema)) as any;
 
+// ── WebhookSignature — replay attack protection (TTL 24h) ─────────────────
+const WebhookSignatureSchema = new Schema({
+  signature: { type: String, required: true, unique: true },  // full X-OPS-Signature value
+  timestamp:  { type: String, required: true },                // X-OPS-Timestamp echoed back
+  eventId:    { type: String, required: true },                // eventId from payload
+  createdAt:  { type: Date, default: Date.now, expires: 86400 }, // TTL: auto-delete after 24 h
+});
+try { WebhookSignatureSchema.index({ signature: 1 }, { unique: true }); } catch (_) {}
+try { WebhookSignatureSchema.index({ eventId: 1 }); } catch (_) {}
+try { WebhookSignatureSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 }); } catch (_) {}
+
+export const WebhookSignature = (models.WebhookSignature || model('WebhookSignature', WebhookSignatureSchema)) as any;
+
+// ── WebhookDeliveryLog — per-attempt delivery history ────────────────────
+const WebhookDeliveryLogSchema = new Schema({
+  eventId:      { type: String, required: true },              // UUID matching WebhookEvent.eventId
+  event:        { type: String, required: true },              // event type, e.g. 'new_lead'
+  targetUrl:    { type: String, required: true },
+  responseCode: { type: Number, default: null },
+  duration:     { type: Number, default: null },               // ms
+  attempt:      { type: Number, required: true },
+  status:       { type: String, enum: ['success', 'failed', 'timeout'], required: true },
+  responseBody: { type: String, default: '' },
+  error:        { type: String, default: '' },
+  workerId:     { type: String, default: 'cron-worker' },
+  createdAt:    { type: Date, default: Date.now },
+});
+try { WebhookDeliveryLogSchema.index({ eventId: 1 }); } catch (_) {}
+try { WebhookDeliveryLogSchema.index({ status: 1 }); } catch (_) {}
+try { WebhookDeliveryLogSchema.index({ createdAt: -1 }); } catch (_) {}
+try { WebhookDeliveryLogSchema.index({ event: 1, createdAt: -1 }); } catch (_) {}
+
+export const WebhookDeliveryLog = (models.WebhookDeliveryLog || model('WebhookDeliveryLog', WebhookDeliveryLogSchema)) as any;
 
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users
 let _lastWorkspaceAssignAt = 0;

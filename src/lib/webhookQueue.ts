@@ -1,14 +1,20 @@
 /**
- * webhookQueue.ts — Enterprise webhook delivery queue
+ * webhookQueue.ts — Enterprise webhook delivery queue (RC-5)
  *
  * Architecture:
  *   Business Logic → enqueueWebhook() → WebhookEvent (MongoDB)
  *                                              ↓
- *                       recoverStuckWebhooks() [runs at start of each cron tick]
+ *                       recoverStuckWebhooks() [stuck-job recovery]
  *                                              ↓
- *                        claimNextWebhook()   [atomic — findOneAndUpdate, no race conditions]
+ *                        claimNextWebhook()    [atomic findOneAndUpdate]
  *                                              ↓
- *                        processNextWebhook() [fetch + AbortController timeout]
+ *                        isAlreadyDelivered()  [idempotency — Task 3]
+ *                                              ↓
+ *                        signOutboundWebhook() [HMAC signing — Task 1]
+ *                                              ↓
+ *                        fetch() + AbortController timeout
+ *                                              ↓
+ *                        logDeliveryAttempt()  [delivery history — Task 4]
  *                                              ↓
  *                    markSuccess() | markFailure() → scheduleRetry() | moveToDeadLetter()
  *
@@ -19,14 +25,11 @@
  *   Attempt 4  → 5 minutes
  *   Attempt 5  → 15 minutes
  *   > maxAttempts → status: 'dead'
- *
- * Lock Recovery:
- *   Any webhook stuck in 'processing' for > 10 minutes is automatically
- *   returned to 'pending' with attempts incremented.
  */
 
-import { connectDB, WebhookEvent } from '@/lib/db';
+import { connectDB, WebhookEvent, WebhookDeliveryLog } from '@/lib/db';
 import { setLastDeliveryStatus } from '@/lib/zapier';
+import { signOutboundWebhook, isAlreadyDelivered } from '@/lib/webhookSecurity';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const RETRY_DELAYS_MS = [
@@ -37,10 +40,11 @@ const RETRY_DELAYS_MS = [
   900_000,     // Attempt 5 — 15 min
 ];
 
-const MAX_ATTEMPTS = RETRY_DELAYS_MS.length;           // 5
-const DELIVERY_TIMEOUT_MS = 5_000;                     // 5 s
-const PROCESSING_LOCK_TIMEOUT_MS = 10 * 60 * 1000;   // 10 min — stuck-job threshold
-const ACCEPTED_STATUS_CODES = new Set([200, 201, 202]);
+const MAX_ATTEMPTS             = RETRY_DELAYS_MS.length;     // 5
+const DELIVERY_TIMEOUT_MS      = 5_000;                      // 5 s
+const PROCESSING_LOCK_TIMEOUT_MS = 10 * 60 * 1000;          // 10 min stuck-job threshold
+const ACCEPTED_STATUS_CODES    = new Set([200, 201, 202]);
+const WORKER_ID                = 'cron-worker';
 
 // ── UUID helper ────────────────────────────────────────────────────────────
 function generateEventId(): string {
@@ -71,19 +75,82 @@ export interface WebhookEventRecord {
   updatedAt: Date;
 }
 
-// ── TASK 1 & 5: Processing Lock Recovery / Stuck Job Detection ────────────
+// ── Structured log helper (Task 8) ────────────────────────────────────────
 
-/**
- * Scan for webhooks stuck in 'processing' for > 10 minutes.
- * Atomically returns them to 'pending' so the next worker pick-up retries them.
- * Logs each recovery with [WebhookQueue] Processing lock recovered.
- */
+function structuredLog(
+  level: 'info' | 'warn' | 'error',
+  context: {
+    eventId?: string;
+    event?: string;
+    workerId?: string;
+    attempt?: number;
+    duration?: number;
+    queueWait?: number;
+    responseCode?: number;
+    targetUrl?: string;
+    message: string;
+    [key: string]: unknown;
+  }
+) {
+  const { message, ...fields } = context;
+  const logLine = [
+    `[WebhookQueue] ${message}`,
+    fields.eventId    ? `eventId="${fields.eventId}"`         : '',
+    fields.event      ? `event="${fields.event}"`             : '',
+    fields.workerId   ? `workerId="${fields.workerId}"`       : '',
+    fields.attempt    !== undefined ? `Attempt: ${fields.attempt}` : '',
+    fields.duration   !== undefined ? `Delivery: ${fields.duration}ms` : '',
+    fields.queueWait  !== undefined ? `Wait: ${(fields.queueWait / 1000).toFixed(1)}s` : '',
+    fields.responseCode !== undefined ? `responseCode=${fields.responseCode}` : '',
+    fields.targetUrl  ? `url=${fields.targetUrl}` : '',
+  ].filter(Boolean).join(' ');
+
+  if (level === 'error')      console.error(logLine);
+  else if (level === 'warn')  console.warn(logLine);
+  else                        console.log(logLine);
+}
+
+// ── Delivery history logger (Task 4) ─────────────────────────────────────
+
+async function logDeliveryAttempt(params: {
+  eventId: string;
+  event: string;
+  targetUrl: string;
+  responseCode: number | null;
+  duration: number | null;
+  attempt: number;
+  status: 'success' | 'failed' | 'timeout';
+  responseBody?: string;
+  error?: string;
+}): Promise<void> {
+  try {
+    await connectDB();
+    await WebhookDeliveryLog.create({
+      eventId:      params.eventId,
+      event:        params.event,
+      targetUrl:    params.targetUrl,
+      responseCode: params.responseCode,
+      duration:     params.duration,
+      attempt:      params.attempt,
+      status:       params.status,
+      responseBody: (params.responseBody ?? '').slice(0, 1000),
+      error:        params.error ?? '',
+      workerId:     WORKER_ID,
+      createdAt:    new Date(),
+    });
+  } catch (err) {
+    // Non-fatal — delivery logging must not block processing
+    console.error('[WebhookQueue] DeliveryLog write failed:', err);
+  }
+}
+
+// ── Task 1 & 5: Processing Lock Recovery ──────────────────────────────────
+
 export async function recoverStuckWebhooks(): Promise<number> {
   await connectDB();
 
   const lockTimeout = new Date(Date.now() - PROCESSING_LOCK_TIMEOUT_MS);
 
-  // Find all stuck ones first (for logging)
   const stuck = await WebhookEvent.find({
     status: 'processing',
     processingStartedAt: { $lte: lockTimeout },
@@ -101,7 +168,7 @@ export async function recoverStuckWebhooks(): Promise<number> {
       {
         $set: {
           status: 'pending',
-          nextRetryAt: new Date(),       // eligible for immediate retry
+          nextRetryAt: new Date(),
           processingStartedAt: null,
           lastError: 'Processing lock timeout — recovered after 10 minutes',
           updatedAt: new Date(),
@@ -110,10 +177,13 @@ export async function recoverStuckWebhooks(): Promise<number> {
       }
     );
 
-    console.warn(
-      `[WebhookQueue] Processing lock recovered — eventId="${doc.eventId}" event="${doc.event}" ` +
-      `stuckSince=${doc.processingStartedAt?.toISOString()} attempts=${doc.attempts}`
-    );
+    structuredLog('warn', {
+      message: 'Processing lock recovered',
+      eventId: doc.eventId,
+      event:   doc.event,
+      workerId: WORKER_ID,
+      attempt: doc.attempts,
+    });
     console.warn(`[WebhookQueue] Recovered stuck webhook — eventId="${doc.eventId}"`);
   }
 
@@ -122,10 +192,6 @@ export async function recoverStuckWebhooks(): Promise<number> {
 
 // ── Enqueue ────────────────────────────────────────────────────────────────
 
-/**
- * Enqueue a webhook event for asynchronous delivery.
- * Business logic calls this instead of fetch() directly.
- */
 export async function enqueueWebhook(params: {
   event: string;
   payload: Record<string, unknown>;
@@ -155,16 +221,19 @@ export async function enqueueWebhook(params: {
     updatedAt: now,
   });
 
-  console.log(`[WebhookQueue] Enqueued event="${params.event}" eventId="${eventId}"`);
+  structuredLog('info', {
+    message: 'Enqueued',
+    eventId,
+    event: params.event,
+    workerId: WORKER_ID,
+    targetUrl: params.targetUrl,
+  });
+
   return eventId;
 }
 
 // ── Atomic Claim ──────────────────────────────────────────────────────────
 
-/**
- * Atomically claim the next eligible webhook event.
- * Sets processingStartedAt = now for lock-recovery tracking.
- */
 export async function claimNextWebhook(): Promise<WebhookEventRecord | null> {
   await connectDB();
 
@@ -183,20 +252,23 @@ export async function claimNextWebhook(): Promise<WebhookEventRecord | null> {
       },
     },
     {
-      sort: { nextRetryAt: 1 },  // FIFO — oldest first
+      sort: { nextRetryAt: 1 },
       new: true,
     }
   );
 
   if (claimed) {
-    // Performance log — queue wait time
     const enqueuedAt = claimed.enqueuedAt ?? claimed.createdAt;
     const waitMs = now.getTime() - new Date(enqueuedAt).getTime();
-    console.log(
-      `[WebhookQueue] Processing eventId="${claimed.eventId}" event="${claimed.event}" ` +
-      `attempt=${claimed.attempts + 1}/${claimed.maxAttempts} ` +
-      `Wait: ${(waitMs / 1000).toFixed(1)}s`
-    );
+    structuredLog('info', {
+      message: 'Claimed',
+      eventId:  claimed.eventId,
+      event:    claimed.event,
+      workerId: WORKER_ID,
+      attempt:  claimed.attempts + 1,
+      queueWait: waitMs,
+      targetUrl: claimed.targetUrl,
+    });
   }
 
   return claimed;
@@ -228,10 +300,6 @@ export async function markSuccess(params: {
   );
 
   setLastDeliveryStatus('success');
-  console.log(
-    `[WebhookQueue] Success eventId="${params.eventId}" ` +
-    `status=${params.responseCode} Delivery: ${params.duration}ms`
-  );
 }
 
 // ── Mark Failure ──────────────────────────────────────────────────────────
@@ -256,12 +324,12 @@ export async function markFailure(params: {
   }
 
   await scheduleRetry({
-    eventId: params.eventId,
+    eventId:      params.eventId,
     attemptNumber: nextAttempts,
-    error: params.error,
+    error:        params.error,
     responseCode: params.responseCode,
     responseBody: params.responseBody,
-    duration: params.duration,
+    duration:     params.duration,
   });
 }
 
@@ -277,7 +345,7 @@ export async function scheduleRetry(params: {
 }): Promise<void> {
   await connectDB();
 
-  const delayMs = RETRY_DELAYS_MS[params.attemptNumber] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+  const delayMs    = RETRY_DELAYS_MS[params.attemptNumber] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
   const nextRetryAt = new Date(Date.now() + delayMs);
 
   await WebhookEvent.findOneAndUpdate(
@@ -287,22 +355,24 @@ export async function scheduleRetry(params: {
         status: 'failed',
         processingStartedAt: null,
         nextRetryAt,
-        lastError: params.error,
+        lastError:        params.error,
         lastResponseCode: params.responseCode ?? null,
         lastResponseBody: (params.responseBody ?? '').slice(0, 1000),
-        duration: params.duration ?? null,
-        updatedAt: new Date(),
+        duration:         params.duration ?? null,
+        updatedAt:        new Date(),
       },
       $inc: { attempts: 1 },
     }
   );
 
   setLastDeliveryStatus('failed');
-  console.log(
-    `[WebhookQueue] Retry Scheduled eventId="${params.eventId}" ` +
-    `Attempt: ${params.attemptNumber}/${MAX_ATTEMPTS} ` +
-    `Retry Delay: ${delayMs}ms nextRetryAt=${nextRetryAt.toISOString()}`
-  );
+  structuredLog('warn', {
+    message: 'Retry Scheduled',
+    eventId:  params.eventId,
+    workerId: WORKER_ID,
+    attempt:  params.attemptNumber,
+    duration: params.duration,
+  });
 }
 
 // ── Dead Letter ───────────────────────────────────────────────────────────
@@ -327,29 +397,60 @@ export async function moveToDeadLetter(params: {
   );
 
   setLastDeliveryStatus('failed');
-  console.error(`[WebhookQueue] Dead Letter eventId="${params.eventId}" reason="${params.reason}"`);
+  structuredLog('error', {
+    message: 'Dead Letter',
+    eventId:  params.eventId,
+    workerId: WORKER_ID,
+  });
 }
 
 // ── Worker — process one event ────────────────────────────────────────────
 
 /**
  * Process one queued webhook event.
- * TASK 6 (crash safety): never throws — all errors are caught and handled.
- * Returns true if an event was claimed, false if queue was empty.
+ *  - Task 1: HMAC signs outbound request
+ *  - Task 3: Checks idempotency (skip if already delivered)
+ *  - Task 4: Logs every attempt to WebhookDeliveryLog
+ *  - Task 6: Crash-safe — never throws
  */
 export async function processNextWebhook(): Promise<boolean> {
   const record = await claimNextWebhook();
   if (!record) return false;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
-  const startedAt = Date.now();
+  // Task 3 — Idempotency: skip if already successfully delivered
+  const alreadyDone = await isAlreadyDelivered(record.eventId);
+  if (alreadyDone) {
+    structuredLog('warn', {
+      message:  'Skipped (already delivered)',
+      eventId:  record.eventId,
+      event:    record.event,
+      workerId: WORKER_ID,
+    });
+    // Clear processing lock without incrementing attempts
+    await WebhookEvent.findOneAndUpdate(
+      { eventId: record.eventId },
+      { $set: { status: 'success', processingStartedAt: null, updatedAt: new Date() } }
+    );
+    return true;
+  }
+
+  // Task 1 — Build signed body
+  const rawBody = JSON.stringify(record.payload);
+  const securityHeaders = signOutboundWebhook(rawBody, record.event);
+
+  const controller  = new AbortController();
+  const timeoutId   = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
+  const startedAt   = Date.now();
+  const attemptNum  = record.attempts + 1;
 
   try {
     const response = await fetch(record.targetUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record.payload),
+      headers: {
+        'Content-Type': 'application/json',
+        ...securityHeaders,
+      },
+      body: rawBody,
       signal: controller.signal,
     });
 
@@ -361,58 +462,106 @@ export async function processNextWebhook(): Promise<boolean> {
 
     if (ACCEPTED_STATUS_CODES.has(response.status)) {
       await markSuccess({
-        eventId: record.eventId,
+        eventId:      record.eventId,
         responseCode: response.status,
         responseBody,
         duration,
       });
+
+      // Task 4 — delivery log
+      await logDeliveryAttempt({
+        eventId:      record.eventId,
+        event:        record.event,
+        targetUrl:    record.targetUrl,
+        responseCode: response.status,
+        duration,
+        attempt:      attemptNum,
+        status:       'success',
+        responseBody,
+      });
+
+      structuredLog('info', {
+        message:      'Delivered',
+        eventId:      record.eventId,
+        event:        record.event,
+        workerId:     WORKER_ID,
+        attempt:      attemptNum,
+        duration,
+        responseCode: response.status,
+        targetUrl:    record.targetUrl,
+        queueWait:    startedAt - new Date(record.enqueuedAt ?? record.createdAt).getTime(),
+      });
       console.log(`[Zapier] Delivered`);
+
     } else {
       const errMsg = `HTTP ${response.status} ${response.statusText}`;
-      console.error(`[Zapier] Delivery failed`, {
-        status: response.status,
-        statusText: response.statusText,
-        url: record.targetUrl,
+
+      await logDeliveryAttempt({
+        eventId:      record.eventId,
+        event:        record.event,
+        targetUrl:    record.targetUrl,
+        responseCode: response.status,
+        duration,
+        attempt:      attemptNum,
+        status:       'failed',
+        responseBody,
+        error:        errMsg,
       });
+
+      structuredLog('error', {
+        message:      'Delivery failed',
+        eventId:      record.eventId,
+        event:        record.event,
+        workerId:     WORKER_ID,
+        attempt:      attemptNum,
+        duration,
+        responseCode: response.status,
+        targetUrl:    record.targetUrl,
+      });
+
       await markFailure({
-        eventId: record.eventId,
-        error: errMsg,
+        eventId:      record.eventId,
+        error:        errMsg,
         responseCode: response.status,
         responseBody,
         duration,
       });
     }
+
   } catch (err: any) {
     clearTimeout(timeoutId);
     const duration = Date.now() - startedAt;
+    const isTimeout = err.name === 'AbortError';
+    const errMsg    = isTimeout ? `Delivery timeout (${DELIVERY_TIMEOUT_MS}ms)` : (err.message ?? 'Unknown fetch error');
 
-    if (err.name === 'AbortError') {
-      console.error(`[Zapier] Request timed out`);
-      console.error(`[Zapier] Timeout`);
-      await markFailure({
-        eventId: record.eventId,
-        error: `Delivery timeout (${DELIVERY_TIMEOUT_MS}ms)`,
-        duration,
-      });
-    } else {
-      console.error(`[Zapier] Delivery failed`, { error: err.message, url: record.targetUrl });
-      await markFailure({
-        eventId: record.eventId,
-        error: err.message ?? 'Unknown fetch error',
-        duration,
-      });
-    }
+    await logDeliveryAttempt({
+      eventId:  record.eventId,
+      event:    record.event,
+      targetUrl: record.targetUrl,
+      responseCode: null,
+      duration,
+      attempt:  attemptNum,
+      status:   isTimeout ? 'timeout' : 'failed',
+      error:    errMsg,
+    });
+
+    structuredLog('error', {
+      message:  isTimeout ? 'Timeout' : 'Delivery failed',
+      eventId:  record.eventId,
+      event:    record.event,
+      workerId: WORKER_ID,
+      attempt:  attemptNum,
+      duration,
+      targetUrl: record.targetUrl,
+    });
+    if (isTimeout) console.error(`[Zapier] Request timed out`);
+
+    await markFailure({
+      eventId: record.eventId,
+      error:   errMsg,
+      duration,
+    });
   }
-
-  // TASK 8 — performance summary line
-  const totalDuration = Date.now() - startedAt;
-  const enqueuedAt = record.enqueuedAt ?? record.createdAt;
-  const waitMs = startedAt - new Date(enqueuedAt).getTime();
-  console.log(
-    `[WebhookQueue] Wait: ${(waitMs / 1000).toFixed(1)}s ` +
-    `Delivery: ${totalDuration}ms ` +
-    `Attempt: ${record.attempts + 1}`
-  );
 
   return true;
 }
