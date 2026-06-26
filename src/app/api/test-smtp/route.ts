@@ -39,17 +39,17 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    diagnostics.step = 'createTransport';
+    const isSecure = port === 465;
     const transporter = nodemailer.createTransport({
       host,
       port,
-      secure: false,
+      secure: isSecure,
       family: 4,
       auth: { user, pass },
       connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
-      requireTLS: true,
+      requireTLS: !isSecure,
       tls: {
         servername: 'smtp-relay.brevo.com',
         rejectUnauthorized: true,

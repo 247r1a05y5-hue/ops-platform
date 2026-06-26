@@ -60,10 +60,13 @@ export function getTransporter() {
     throw new Error('SMTP configuration is incomplete. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS.');
   }
 
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  const isSecure = port === 465;
+
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false, // true for 465, false for other ports
+    port,
+    secure: isSecure,
     family: 4,     // Force IPv4 resolution (prevents silent IPv6 timeouts on Railway)
     auth: {
       user: process.env.SMTP_USER,
@@ -73,7 +76,7 @@ export function getTransporter() {
     connectionTimeout: 10000, // TCP connect
     greetingTimeout: 10000,   // SMTP 220 banner
     socketTimeout: 15000,     // Activity timeout (prevents silent hangs on AUTH/DATA)
-    requireTLS: true,
+    requireTLS: !isSecure,
     tls: {
       servername: 'smtp-relay.brevo.com',
       rejectUnauthorized: true,

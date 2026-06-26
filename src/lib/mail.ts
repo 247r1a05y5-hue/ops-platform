@@ -23,7 +23,7 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
         secure: port === 465,
         family: 4, // Force IPv4 resolution
         auth: { user, pass },
-        requireTLS: true,
+        requireTLS: port !== 465,
         tls: {
           servername: 'smtp-relay.brevo.com',
           rejectUnauthorized: true,
