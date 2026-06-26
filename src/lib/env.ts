@@ -35,9 +35,8 @@ const CRITICAL: EnvVar[] = [
   { key: 'MONGODB_URI',   label: 'MongoDB URI' },
   { key: 'JWT_SECRET',    label: 'JWT Secret' },
   { key: 'CRON_SECRET',   label: 'Cron Secret (protects cron endpoints)' },
-  { key: 'SMTP_HOST',     label: 'SMTP Host (email delivery)' },
-  { key: 'SMTP_USER',     label: 'SMTP Username' },
-  { key: 'SMTP_PASS',     label: 'SMTP Password' },
+  { key: 'BREVO_API_KEY', label: 'Brevo Transactional API Key' },
+  { key: 'SENDER_EMAIL',  label: 'Sender Email Address' },
   { key: 'ADMIN_EMAIL',   label: 'Admin notification email' },
 ];
 

@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Admin copy
-      const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+      const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || 'admin@ops.com';
       if (isValidEmail(adminEmail)) {
         await sendEmail({
           event: 'task_update',

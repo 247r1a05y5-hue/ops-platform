@@ -1,6 +1,5 @@
 import dns from 'dns';
 import mongoose from 'mongoose';
-import nodemailer from 'nodemailer';
 import { Server as SocketIOServer } from 'socket.io';
 import http from 'http';
 import * as dotenv from 'dotenv';
@@ -35,10 +34,7 @@ async function runAudit() {
     { name: 'MONGODB_URI', required: true },
     { name: 'JWT_SECRET', required: true, minLength: 32, placeholder: 'ops_platform_change_this_to_a_long_random_secret_min_32_chars_acfd4fe2ac7c04ecbd640f445f1cdd7d' },
     { name: 'NEXT_PUBLIC_APP_URL', required: true, placeholder: 'http://localhost:3000' },
-    { name: 'SMTP_HOST', required: true },
-    { name: 'SMTP_PORT', required: true },
-    { name: 'SMTP_USER', required: true },
-    { name: 'SMTP_PASS', required: true },
+    { name: 'BREVO_API_KEY', required: true },
     { name: 'SENDER_EMAIL', required: true },
     { name: 'GOOGLE_CLIENT_ID', required: false },
     { name: 'GOOGLE_CLIENT_SECRET', required: false },
@@ -209,29 +205,36 @@ async function runAudit() {
     }
   }
 
-  // 5. Notifications & Mail Transport
-  console.log('\n📋 Auditing Notifications & SMTP configuration...');
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  // 5. Notifications & Brevo API Transport
+  console.log('\n📋 Auditing Notifications & Brevo API configuration...');
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
     report.notifications.ok = false;
-    report.notifications.items.push({ status: 'ERROR', detail: 'SMTP configuration is incomplete' });
-    console.log('  ❌ SMTP credentials are not configured');
+    report.notifications.items.push({ status: 'ERROR', detail: 'BREVO_API_KEY configuration is incomplete' });
+    console.log('  ❌ BREVO_API_KEY is not configured');
   } else {
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587', 10),
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
+      const res = await fetch('https://api.brevo.com/v3/account', {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'api-key': apiKey,
         },
       });
-      await transporter.verify();
-      report.notifications.items.push({ status: 'OK', detail: 'SMTP Server connection verified' });
-      console.log('  ✅ Nodemailer verified SMTP connection successfully!');
-    } catch (mailErr) {
+      if (res.ok) {
+        const accountInfo = await res.json();
+        report.notifications.items.push({ status: 'OK', detail: `Brevo REST API verified successfully! Account email: ${accountInfo.email}` });
+        console.log(`  ✅ Brevo REST API connection verified. Account: ${accountInfo.email}`);
+      } else {
+        const text = await res.text();
+        report.notifications.ok = false;
+        report.notifications.items.push({ status: 'ERROR', detail: `Brevo API returned HTTP ${res.status}: ${text}` });
+        console.log(`  ❌ Brevo REST API verification failed (HTTP ${res.status}): ${text}`);
+      }
+    } catch (mailErr: any) {
       report.notifications.ok = false;
       report.notifications.items.push({ status: 'ERROR', detail: mailErr.message });
-      console.log(`  ❌ Nodemailer failed to verify SMTP connection: ${mailErr.message}`);
+      console.log(`  ❌ Brevo REST API connection failed: ${mailErr.message}`);
     }
   }
 

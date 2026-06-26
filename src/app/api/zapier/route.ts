@@ -97,7 +97,7 @@ async function handleNewUserSignup(email: string, name: string, role: string) {
     });
 
     // Send admin notification
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || 'admin@ops.com';
     const adminEmailInfo = await sendEmail({
       event: 'admin_user_signup',
       to: adminEmail,
