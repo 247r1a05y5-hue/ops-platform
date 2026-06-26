@@ -1,21 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, EmailLog, GmailToken } from '@/lib/db';
-import { getTransporter, isValidEmail } from '@/lib/email';
+import { isValidEmail } from '@/lib/email';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { getGmailAccessToken } from '../../gmail/oauth/route';
 import nodemailer from 'nodemailer';
 import { logActivity } from '@/lib/activity';
 
 async function sendSystemSmtp(to: string, subject: string, html: string, emailId: string) {
-  const smtpTransporter = getTransporter();
-  const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
-  
-  await smtpTransporter.sendMail({
-    from: `"Antigravity OPS" <${fromAddress}>`,
-    to,
-    subject,
-    html
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY is not configured in the environment.');
+  }
+
+  const fromAddress = process.env.SENDER_EMAIL || 'admin@ops.com';
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'api-key': apiKey,
+    },
+    body: JSON.stringify({
+      sender: {
+        name: 'Antigravity OPS Admin',
+        email: fromAddress
+      },
+      to: [
+        {
+          email: to
+        }
+      ],
+      subject,
+      htmlContent: html,
+    }),
   });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Brevo API Error (${response.status}): ${errText}`);
+  }
 
   await EmailLog.create({
     event: 'composed_email',

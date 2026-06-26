@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, ActivityLog } from '@/lib/db';
-import { getTransporter, isValidEmail } from '@/lib/email';
+import { isValidEmail } from '@/lib/email';
 import { requireCronAuth } from '@/lib/require-auth';
 
 export const runtime = 'nodejs';
@@ -30,8 +30,12 @@ export async function GET(req: NextRequest) {
       .select('_id name email emails')
       .limit(100);
 
-    const transporter  = getTransporter();
-    const fromAddress  = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) {
+      throw new Error('BREVO_API_KEY is not configured in the environment.');
+    }
+
+    const fromAddress  = process.env.SENDER_EMAIL || 'admin@ops.com';
     let sent = 0, failed = 0;
     const errors: string[] = [];
 
@@ -49,12 +53,33 @@ export async function GET(req: NextRequest) {
         }
 
         try {
-          await transporter.sendMail({
-            from:    `"Antigravity OPS" <${fromAddress}>`,
-            to:      lead.email,
-            subject: e.subject || '(No Subject)',
-            html:    e.body    || '',
+          const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'accept': 'application/json',
+              'content-type': 'application/json',
+              'api-key': apiKey,
+            },
+            body: JSON.stringify({
+              sender: {
+                name: 'Antigravity OPS',
+                email: fromAddress
+              },
+              to: [
+                {
+                  email: lead.email
+                }
+              ],
+              subject: e.subject || '(No Subject)',
+              htmlContent: e.body    || '',
+            }),
           });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Brevo API Error (${response.status}): ${errText}`);
+          }
+
           lead.emails[i].status = 'sent' as any;
           (lead.emails[i] as any).sentAt = new Date();
           sent++; dirty = true;
@@ -63,7 +88,7 @@ export async function GET(req: NextRequest) {
           failed++; dirty = true;
           const msg = err instanceof Error ? err.message : String(err);
           errors.push(`Lead ${lead._id}: ${msg.substring(0, 120)}`);
-          console.error('[ScheduledEmails] SMTP error:', msg);
+          console.error('[ScheduledEmails] Brevo API error:', msg);
         }
       }
       if (dirty) await lead.save();

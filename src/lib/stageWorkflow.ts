@@ -9,7 +9,6 @@
 import { connectDB, Lead, ActivityLog, StageWorkflowLog, User, Invoice, Proposal, ApprovalRequest } from './db';
 import { createNotification } from './notifications';
 import { isValidEmail, sendEmail } from './email';
-import nodemailer from 'nodemailer';
 import { jsPDF } from 'jspdf';
 import { uploadToCloudinary } from './cloudinary';
 import Razorpay from 'razorpay';

@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import { connectDB, EmailLog } from './db';
 
 type TemplateVars = Record<string, string>;
@@ -8,27 +7,16 @@ type EmailTemplate = {
   html: (vars: TemplateVars) => string;
 };
 
-// Global transporter cache to prevent reconnecting on every email
-let transporter: nodemailer.Transporter | null = null;
+// Global transporter cache removed for REST API usage
 
 // Temporary startup diagnostics to verify environment injection on Railway
 (function logStartupDiagnostics() {
-  const host = process.env.SMTP_HOST || 'missing';
-  const port = process.env.SMTP_PORT || 'missing';
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS ? 'present' : 'missing';
+  const apiKey = process.env.BREVO_API_KEY;
   const sender = process.env.SENDER_EMAIL || 'missing';
   const admin = process.env.ADMIN_EMAIL || 'missing';
 
-  const maskedUser = user 
-    ? (user.length <= 3 ? user + '***' : user.substring(0, 3) + '***') 
-    : 'missing';
-
   console.log(`[email] ENV
-SMTP_HOST: ${host}
-SMTP_PORT: ${port}
-SMTP_USER: ${maskedUser}
-SMTP_PASS: ${pass}
+BREVO_API_KEY: ${apiKey ? 'present' : 'missing'}
 SENDER_EMAIL: ${sender}
 ADMIN_EMAIL: ${admin}`);
 })();
@@ -46,48 +34,35 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(lower);
 }
 
-/** Sanitize SMTP errors — strip anything that looks like a credential */
-function sanitizeSmtpError(err: unknown): string {
+/** Sanitize Brevo API errors — strip credentials */
+function sanitizeBrevoError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  // Remove anything that looks like a password/token in the message
-  return raw.replace(/pass(?:word)?[=:\s]+\S+/gi, 'pass=***').substring(0, 300);
+  return raw.replace(/key[=:\s]+\S+/gi, 'key=***').substring(0, 300);
 }
 
-export function getTransporter() {
-  if (transporter) return transporter;
-
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('SMTP configuration is incomplete. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS.');
+export async function checkBrevoHealth() {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    return { status: 'disabled', details: 'BREVO_API_KEY is not set' };
   }
-
-  const port = parseInt(process.env.SMTP_PORT || '587');
-  const isSecure = port === 465;
-
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: isSecure,
-    family: 4,     // Force IPv4 resolution (prevents silent IPv6 timeouts on Railway)
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    // Timeouts tuned for Railway → Brevo latency (higher than local dev)
-    connectionTimeout: 10000, // TCP connect
-    greetingTimeout: 10000,   // SMTP 220 banner
-    socketTimeout: 15000,     // Activity timeout (prevents silent hangs on AUTH/DATA)
-    requireTLS: !isSecure,
-    tls: {
-      servername: 'smtp-relay.brevo.com',
-      rejectUnauthorized: true,
-    },
-    logger: true,
-    debug: true,
-  } as any);
-
-  console.log('[email] SMTP transporter created — ready for sendMail()');
-
-  return transporter;
+  try {
+    const res = await fetch('https://api.brevo.com/v3/account', {
+      method: 'GET',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { status: 'configured', details: `Brevo Connected (${data.email})` };
+    } else {
+      const text = await res.text();
+      return { status: 'unhealthy', details: `HTTP ${res.status}: ${text}` };
+    }
+  } catch (err: any) {
+    return { status: 'unhealthy', details: err.message };
+  }
 }
 
 // Polished HTML Boilerplate
@@ -230,7 +205,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
   // Resolve admin@ops.com recipient to dynamic ADMIN_EMAIL / SENDER_EMAIL fallback
   let targetTo = (to || '').trim();
   if (targetTo.toLowerCase() === 'admin@ops.com') {
-    const resolvedAdmin = (process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com').trim();
+    const resolvedAdmin = (process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || 'admin@ops.com').trim();
     if (resolvedAdmin && resolvedAdmin.toLowerCase() !== 'admin@ops.com') {
       targetTo = resolvedAdmin;
     }
@@ -241,7 +216,11 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     throw new Error(`Invalid or blocked recipient address: ${targetTo}`);
   }
 
-  const smtpTransporter = getTransporter();
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY is not configured in the environment.');
+  }
+
   const startTime = Date.now();
 
   try {
@@ -251,31 +230,49 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     console.log(`[email] [timing] connectDB() completed in ${Date.now() - t0}ms`);
 
     // Brevo requires the actual sender email to be verified
-    const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+    const fromAddress = process.env.SENDER_EMAIL || 'admin@ops.com';
 
     console.log(`[email] [timing] HTML template generation start`);
     const t1 = Date.now();
     const htmlContent = template.html(vars);
     console.log(`[email] [timing] HTML template generation completed in ${Date.now() - t1}ms`);
 
-    console.log('[email] Calling sendMail() with config:', {
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT || '587',
-      secure: false,
-      requireTLS: true,
-      family: 4,
-      recipient: targetTo,
+    console.log('[email] Calling Brevo REST API endpoint...');
+    console.log(`[email] [timing] Brevo API POST start`);
+    const t2 = Date.now();
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        sender: {
+          name: 'Antigravity OPS Admin',
+          email: fromAddress
+        },
+        to: [
+          {
+            email: targetTo
+          }
+        ],
+        subject: template.subject,
+        htmlContent: htmlContent,
+      }),
     });
 
-    console.log(`[email] [timing] smtpTransporter.sendMail() start`);
-    const t2 = Date.now();
-    const info = await smtpTransporter.sendMail({
-      from: `"Antigravity OPS Admin" <${fromAddress}>`,
-      to: targetTo,
-      subject: template.subject,
-      html: htmlContent,
-    });
-    console.log(`[email] [timing] smtpTransporter.sendMail() completed (success) in ${Date.now() - t2}ms`);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Brevo API Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    const messageId = resData.messageId || `brevo-${Date.now()}`;
+    const info = { messageId };
+
+    console.log(`[email] [timing] Brevo API POST completed (success) in ${Date.now() - t2}ms. messageId=${messageId}`);
 
     console.log(`[email] [timing] EmailLog.create() start`);
     const t3 = Date.now();
@@ -287,7 +284,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
         role: vars.role || 'Unknown',
         to: targetTo,
         status: 'success',
-        messageId: info.messageId,
+        messageId: messageId,
         vars,
       });
       console.log(`[email] [timing] EmailLog.create() completed in ${Date.now() - t3}ms`);
@@ -299,25 +296,9 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     return info;
   } catch (error: any) {
     const totalTime = Date.now() - startTime;
-    const message = sanitizeSmtpError(error);
+    const message = sanitizeBrevoError(error);
 
-    console.error(`❌ Email failed to ${targetTo} [${event}] after ${totalTime}ms: ${message}`, {
-      code: error?.code,
-      command: error?.command,
-      response: error?.response,
-      responseCode: error?.responseCode,
-      address: error?.address,
-      port: error?.port,
-      syscall: error?.syscall,
-      errno: error?.errno,
-      stack: error?.stack,
-    });
-
-    // If it's an auth failure, reset the cached transporter so next call reconnects
-    const rawMsg = error instanceof Error ? error.message : '';
-    if (rawMsg.includes('535') || rawMsg.includes('authentication') || rawMsg.includes('ECONNREFUSED')) {
-      transporter = null;
-    }
+    console.error(`❌ Email failed to ${targetTo} [${event}] after ${totalTime}ms: ${message}`);
 
     console.log(`[email] [timing] EmailLog.create() failure log start`);
     const tFail = Date.now();
@@ -337,7 +318,7 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
       console.error(`[email] [timing] EmailLog.create() failure log failed in ${Date.now() - tFail}ms:`, logErr);
     }
 
-    throw Object.assign(new Error(message), { isSmtpError: true });
+    throw error;
   }
 }
 

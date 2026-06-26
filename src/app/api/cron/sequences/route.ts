@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, Sequence } from '@/lib/db';
-import { getTransporter } from '@/lib/email';
+import { isValidEmail } from '@/lib/email';
 import { requireCronAuth } from '@/lib/require-auth';
 
 // ─── GET /api/cron/sequences ──────────────────────────────────────────────────
@@ -28,8 +28,11 @@ export async function GET(req: NextRequest) {
 
     const results = { sent: 0, skipped: 0, completed: 0, errors: [] as string[] };
     const now = Date.now();
-    const transporter = getTransporter();
-    const fromAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'admin@ops.com';
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ success: false, error: 'BREVO_API_KEY is not configured in the environment.' }, { status: 500 });
+    }
+    const fromAddress = process.env.SENDER_EMAIL || 'admin@ops.com';
 
     for await (const lead of cursor) {
       try {
@@ -72,18 +75,31 @@ export async function GET(req: NextRequest) {
         }
 
         // ── Send email ──────────────────────────────────────────────────────
-        if (!lead.email) {
-          results.errors.push(`Lead ${lead._id}: no email address.`);
+        if (!lead.email || !isValidEmail(lead.email)) {
+          results.errors.push(`Lead ${lead._id}: invalid or missing email address: ${lead.email}`);
           results.skipped++;
           continue;
         }
 
-        await transporter.sendMail({
-          from:    `"Antigravity OPS" <${fromAddress}>`,
-          to:      lead.email,
-          subject: step.subject,
-          html:    step.body,
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'api-key': apiKey,
+          },
+          body: JSON.stringify({
+            sender: { name: 'Antigravity OPS', email: fromAddress },
+            to: [{ email: lead.email }],
+            subject: step.subject,
+            htmlContent: step.body,
+          }),
         });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Brevo API Error (${response.status}): ${errText}`);
+        }
 
         // Record sent email on lead
         lead.emails.push({
