@@ -8,7 +8,7 @@ import {
   Target, Mail, CreditCard, Folder, Plus, Upload,
   ChevronRight, Send, Download,
   Clock, FileText, Share2,
-  ArrowUpRight, BarChart3, X,
+  ArrowUpRight, BarChart3, X, Loader2,
   Image, Type, Paperclip, Settings, Hash, Shield, MessageSquare,
   CheckSquare, Star, Zap, UserPlus
 } from 'lucide-react';
@@ -184,11 +184,11 @@ const PipelineModule = ({
           return (
             <div 
               key={stage} 
-              className={`flex flex-col w-[320px] rounded-3xl border-2 transition-all duration-200 p-2 bg-surface/20 shrink-0 snap-center ${
+              className={`flex flex-col w-[300px] rounded-3xl border-2 transition-all duration-200 p-2.5 bg-surface/10 shrink-0 snap-center ${
                 isCurrentOver 
                   ? 'border-accent bg-accent/[0.04] shadow-lg shadow-accent/5 scale-[1.01]' 
                   : isAnyDragging 
-                    ? 'border-dashed border-border bg-surface/10' 
+                    ? 'border-dashed border-border bg-surface/5' 
                     : 'border-transparent'
               }`}
               onDragOver={(e) => {
@@ -199,9 +199,9 @@ const PipelineModule = ({
               onDrop={(e) => handleDrop(e, stage)}
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-4 mb-2">
-                <h3 className="text-xs font-extrabold text-primary uppercase tracking-widest flex items-center gap-2.5 leading-none">
-                  <div className={`w-2 h-2 rounded-full ${
+              <div className="flex items-center justify-between p-4 mb-2.5">
+                <h3 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-2.5 leading-none">
+                  <div className={`w-2.5 h-2.5 rounded-full ${
                     idx === 0 ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 
                     idx === 1 ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 
                     idx === 2 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 
@@ -211,13 +211,13 @@ const PipelineModule = ({
                   }`} />
                   {stage}
                 </h3>
-                <span className="text-[10px] font-black bg-surface border border-border text-secondary px-2.5 py-0.5 rounded-full shadow-sm leading-none">
+                <span className="text-[10px] font-black bg-base border border-border text-secondary px-2.5 py-0.5 rounded-full shadow-xs leading-none">
                   {stageLeads.length}
                 </span>
               </div>
 
               {/* Cards Container */}
-              <div className="p-2 flex flex-col gap-3 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
+              <div className="p-2 flex flex-col gap-3.5 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
                 <AnimatePresence>
                   {stageLeads.map((lead) => {
                     const initials = lead.assignedToName ? lead.assignedToName.split(' ').map(n => n[0]).join('') : 'UN';
@@ -249,7 +249,7 @@ const PipelineModule = ({
                           setDraggedId(null);
                           setDragOverStage(null);
                         }}
-                        className="bg-surface border border-border/80 p-5 rounded-2xl cursor-grab active:cursor-grabbing hover:border-accent hover:shadow-lg hover:shadow-accent/[0.03] transition-all group shadow-sm flex flex-col gap-3"
+                        className="bg-surface border border-border/80 p-5 rounded-2xl cursor-grab active:cursor-grabbing hover:border-accent hover:shadow-lg hover:shadow-accent/[0.03] transition-all duration-200 group shadow-xs flex flex-col gap-3"
                         onClick={() => onSelectLead(lead)}
                       >
                         {/* Card Header Info */}
@@ -281,12 +281,12 @@ const PipelineModule = ({
 
                         {/* Card Titles */}
                         <div>
-                          <h4 className="text-sm font-extrabold text-primary group-hover:text-accent transition-colors leading-snug tracking-tight mb-0.5 truncate">{lead.name}</h4>
+                          <h4 className="text-xs font-black text-primary group-hover:text-accent transition-colors leading-snug tracking-tight mb-0.5 truncate">{lead.name}</h4>
                           <p className="text-[10px] font-bold text-secondary truncate uppercase tracking-widest">{lead.company}</p>
                         </div>
                         
                         {/* Card Bottom Meta */}
-                        <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
+                        <div className="flex items-center justify-between pt-3 border-t border-border/80 mt-1">
                           <div className="text-sm font-black text-accent">{lead.value}</div>
                           
                           <div className="flex items-center gap-2 min-w-0">
@@ -302,6 +302,11 @@ const PipelineModule = ({
                     );
                   })}
                 </AnimatePresence>
+                {stageLeads.length === 0 && (
+                  <div className="py-12 text-center text-[10px] text-secondary/60 font-bold uppercase tracking-wider border border-dashed border-border/60 rounded-2xl bg-base/5">
+                    Stage Empty
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -429,43 +434,39 @@ const EmailModule = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border/40 pb-4">
         <h2 className="text-xl font-bold text-primary flex items-center gap-2">
           <Mail size={20} className="text-accent" />
           Media Outreach Hub
         </h2>
-        <div className="flex gap-3">
-          <button onClick={() => setIsComposerOpen(true)} className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all flex items-center gap-2 active:scale-95">
-            <Plus size={16} /> Compose Outreach
-          </button>
-        </div>
+        <button onClick={() => setIsComposerOpen(true)} className="px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all flex items-center gap-2 active:scale-95">
+          <Plus size={16} /> Compose Outreach
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
-          <Card className="p-0 overflow-hidden">
-            <div className="p-4 border-b border-border bg-base/30 flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-tertiary">Active Outreach Outbox</h3>
-              <div className="flex gap-2">
-                <Badge text="Gmail connected" type="success" />
-              </div>
+          <Card className="p-0 overflow-hidden border-border/80 shadow-sm bg-surface">
+            <div className="p-4.5 border-b border-border bg-base/20 flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-widest text-tertiary">Active Outreach Outbox</h3>
+              <Badge text="Gmail Connected" type="success" />
             </div>
             <div className="divide-y divide-border">
               {allOutreach.map((email, i) => (
-                <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors">
-                      <Send size={18} className="text-secondary group-hover:text-accent" />
+                <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors duration-150">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors shrink-0">
+                      <Send size={16} className="text-secondary group-hover:text-accent" />
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-primary">{email.leadName} ({email.company})</div>
-                      <div className="text-[10px] text-secondary font-medium mt-0.5">{email.subject}</div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-primary truncate">{email.leadName}</div>
+                      <div className="text-[10px] text-tertiary font-medium uppercase tracking-wider truncate mt-0.5">{email.company} · {email.subject}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="hidden md:flex items-center gap-4 text-[10px] font-bold text-tertiary uppercase">
-                      <span className="flex items-center gap-1"><Star size={12} className="text-orange-400 fill-orange-400"/> {email.opens} Opens</span>
-                      <span className="flex items-center gap-1"><Hash size={12} className="text-accent"/> {email.clicks} Clicks</span>
+                  <div className="flex items-center gap-6 shrink-0">
+                    <div className="hidden md:flex items-center gap-4 text-[10px] font-bold text-tertiary uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><Star size={11} className="text-orange-400 fill-orange-400"/> {email.opens} Opens</span>
+                      <span className="flex items-center gap-1"><Hash size={11} className="text-accent"/> {email.clicks} Clicks</span>
                     </div>
                     <div className="text-right">
                       <Badge text={email.status} type={email.status === 'replied' ? 'success' : email.status === 'opened' ? 'info' : 'default'} />
@@ -475,20 +476,22 @@ const EmailModule = ({
                 </div>
               ))}
               {allOutreach.length === 0 && (
-                <div className="p-8 text-center text-secondary font-semibold text-xs">No media campaign emails dispatched yet</div>
+                <div className="py-16 text-center text-secondary/60 font-bold uppercase tracking-wider text-xs border-dashed border-t border-border">
+                  No outreach emails dispatched yet
+                </div>
               )}
             </div>
           </Card>
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <h3 className="text-xs font-bold text-tertiary uppercase tracking-widest mb-4">Media Email Templates</h3>
+          <Card className="border-border/80 shadow-sm">
+            <h3 className="text-xs font-black text-tertiary uppercase tracking-widest mb-4">Quick Templates</h3>
             <div className="space-y-3">
                {[
-                 { name: 'Initial Pitch Template', subject: 'Campaign proposal for growth' },
-                 { name: 'Case Study Outreach', subject: 'How we scaled campaign performance' },
-                 { name: 'Meeting Scheduling Call', subject: 'Brief sync request next Tuesday' }
+                 { name: 'Initial Pitch Proposal', subject: 'Campaign proposal for growth' },
+                 { name: 'ROI Case Study Outreach', subject: 'How we scaled campaign performance' },
+                 { name: 'Call Schedule Sync', subject: 'Brief sync request next Tuesday' }
                ].map(t => (
                  <button 
                   key={t.name} 
@@ -498,26 +501,22 @@ const EmailModule = ({
                     setIsComposerOpen(true);
                     showToast(`Applied ${t.name}`, 'info');
                   }}
-                  className="w-full p-3 bg-base border border-border/50 rounded-xl text-xs font-bold text-primary hover:border-accent/40 hover:bg-accent/5 transition-all text-left flex items-center justify-between group"
+                  className="w-full p-3.5 bg-base/50 border border-border/80 rounded-xl text-xs font-bold text-primary hover:border-accent/40 hover:bg-accent/5 transition-all text-left flex items-center justify-between group"
                  >
-                   {t.name}
-                   <ArrowUpRight size={14} className="text-tertiary group-hover:text-accent group-hover:translate-x-0.5" />
+                   <span>{t.name}</span>
+                   <ArrowUpRight size={14} className="text-tertiary group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
                  </button>
                ))}
             </div>
           </Card>
 
-          <Card className="bg-gradient-to-br from-indigo-500/10 to-transparent border-indigo-500/20">
-            <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Zap size={14}/> Sequence Automation
+          <Card className="bg-gradient-to-br from-indigo-500/[0.04] to-transparent border-indigo-500/20 shadow-sm relative overflow-hidden">
+            <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <Zap size={14} className="fill-indigo-500/10"/> Sequence Automation
             </h3>
-            <p className="text-[11px] text-secondary leading-relaxed mb-4 font-medium">Auto-follow sequences are running. Global outreach health and link engagement tracking at healthy limits.</p>
-            <div className="flex items-center justify-between text-[9px] font-bold text-tertiary uppercase mb-2">
-              <span>Sequencer Deliverability</span>
-              <span>98.6%</span>
-            </div>
-            <div className="w-full h-1.5 bg-base rounded-full overflow-hidden">
-              <motion.div initial={{ width: 0 }} animate={{ width: '98.6%' }} transition={{ duration: 1 }} className="h-full bg-indigo-500" />
+            <p className="text-[11px] text-secondary leading-relaxed mb-4 font-medium">Auto-follow sequence is paused. Start a secure campaign sequence by attaching outreach to a lead.</p>
+            <div className="py-4 text-center border border-dashed border-border/80 rounded-xl bg-base/20">
+              <span className="text-[10px] text-tertiary font-bold uppercase tracking-wider">No Active Sequence Running</span>
             </div>
           </Card>
         </div>
@@ -552,8 +551,8 @@ const EmailModule = ({
            </div>
            <div className="space-y-1.5">
               <label className="text-[10px] font-black text-tertiary uppercase">Rich Media Composer</label>
-              <div className="border border-border rounded-2xl overflow-hidden shadow-inner">
-                 <div className="bg-base p-2 border-b border-border flex gap-2">
+              <div className="border border-border/80 rounded-2xl overflow-hidden shadow-inner">
+                 <div className="bg-base p-2.5 border-b border-border flex gap-2">
                     {[Type, Image, Paperclip, Settings].map((Icon, i) => (
                       <button key={i} className="p-1.5 hover:bg-surface rounded-lg text-tertiary hover:text-accent transition-colors"><Icon size={14}/></button>
                     ))}
@@ -567,11 +566,9 @@ const EmailModule = ({
                  />
               </div>
            </div>
-           <div className="flex items-center justify-between pt-4 border-t border-border">
-              <div className="flex gap-2">
-                <button onClick={() => setIsComposerOpen(false)} className="btn-enterprise-secondary px-4 py-2 text-[10px] font-bold uppercase">Discard</button>
-              </div>
-              <button onClick={handleSend} className="btn-enterprise-primary px-8 py-2 text-xs">Send Outreach Now</button>
+           <div className="flex items-center justify-between pt-4 border-t border-border/80">
+              <button onClick={() => setIsComposerOpen(false)} className="btn-enterprise-secondary px-4 py-2 text-[10px] font-bold uppercase">Discard</button>
+              <button onClick={handleSend} className="btn-enterprise-primary px-8 py-2.5 text-xs font-bold">Send Outreach Now</button>
            </div>
         </div>
       </Modal>
@@ -702,75 +699,89 @@ const TasksModule = ({
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 p-0 overflow-hidden bg-surface">
-          <div className="p-6 border-b border-border flex items-center justify-between bg-base/30">
-            <h3 className="text-sm font-bold flex items-center gap-2"><CheckSquare size={18} className="text-accent"/> Tasks Workflow</h3>
+        <Card className="lg:col-span-2 p-0 overflow-hidden bg-surface border-border/80 shadow-sm">
+          <div className="p-4.5 border-b border-border bg-base/20 flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase tracking-widest text-tertiary flex items-center gap-2">
+              <CheckSquare size={16} className="text-accent"/> Work Assignments
+            </h3>
           </div>
           <div className="divide-y divide-border">
-            {tasks.map((task, i) => (
-              <div key={task._id || i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors">
-                <div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[10px] font-bold text-tertiary uppercase">{task.code || `TSK-${i+1}`}</span>
-                    <Badge text={task.stage || 'Backlog'} type={task.stage === 'Done' ? 'success' : task.stage === 'Review' ? 'warning' : 'info'} />
-                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${task.priority === 'High' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-secondary bg-surface border-border'}`}>
-                      {task.priority || 'Medium'}
-                    </span>
-                  </div>
-                  <h4 className="text-xs font-bold text-primary">{task.title}</h4>
-                  <p className="text-[10px] text-secondary mt-1">{task.description}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] text-tertiary font-bold">Assignee: {task.assignee || 'Unassigned'}</div>
-                  {task.dueDate && (
-                    <div className="text-[10px] text-secondary font-semibold mt-1">Due: {new Date(task.dueDate).toLocaleDateString()}</div>
+            {tasks.map((task, i) => {
+              const isHigh = task.priority === 'High' || task.priority === 'Critical';
+              return (
+                <div key={task._id || i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-all duration-150 relative">
+                  {isHigh && (
+                    <div className="absolute left-0 top-3 bottom-3 w-1 bg-red-500 rounded-r-md" />
                   )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-tertiary uppercase">{task.code || `TSK-${i+1}`}</span>
+                      <Badge text={task.stage || 'Backlog'} type={task.stage === 'Done' ? 'success' : task.stage === 'Review' ? 'warning' : 'info'} />
+                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${isHigh ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-secondary bg-base border-border'}`}>
+                        {task.priority || 'Medium'}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-black text-primary leading-snug">{task.title}</h4>
+                    <p className="text-[10px] text-secondary mt-1 font-medium max-w-md">{task.description}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[10px] text-tertiary font-bold">Assignee: {task.assignee || 'Unassigned'}</div>
+                    {task.dueDate && (
+                      <div className="text-[10px] text-secondary font-bold mt-1 flex items-center gap-1 justify-end"><Clock size={10} className="text-accent" /> Due: {new Date(task.dueDate).toLocaleDateString()}</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {tasks.length === 0 && (
-              <div className="p-8 text-center text-secondary font-semibold text-xs">No active tasks recorded</div>
+              <div className="py-16 text-center text-secondary/60 font-bold uppercase tracking-wider text-xs border-dashed border-t border-border">
+                No active tasks recorded
+              </div>
             )}
           </div>
         </Card>
 
         <div className="space-y-6">
-          <Card className="p-0 overflow-hidden bg-surface">
-            <div className="p-6 border-b border-border bg-base/30">
-              <h3 className="text-sm font-bold flex items-center gap-2"><Clock size={18} className="text-indigo-500"/> Reminders & Alerts</h3>
+          <Card className="p-0 overflow-hidden bg-surface border-border/80 shadow-sm">
+            <div className="p-4.5 border-b border-border bg-base/20">
+              <h3 className="text-xs font-black uppercase tracking-widest text-tertiary flex items-center gap-2">
+                <Clock size={15} className="text-accent"/> Alerts & Reminders
+              </h3>
             </div>
-            <div className="divide-y divide-border max-h-80 overflow-y-auto">
+            <div className="divide-y divide-border max-h-80 overflow-y-auto custom-scrollbar">
               {reminders.map((rem, i) => (
-                <div key={rem._id || i} className={`p-4 flex items-start justify-between gap-3 ${rem.completed ? 'bg-emerald-500/5' : ''}`}>
+                <div key={rem._id || i} className={`p-4.5 flex items-start justify-between gap-3 ${rem.completed ? 'bg-emerald-500/[0.02]' : ''}`}>
                   <input
                     type="checkbox"
                     checked={rem.completed}
                     onChange={() => handleToggleReminder(rem._id, rem.completed)}
-                    className="mt-1 rounded border-border text-accent focus:ring-accent cursor-pointer"
+                    className="mt-1.5 rounded border-border text-accent focus:ring-accent cursor-pointer w-4 h-4 shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <h4 className={`text-xs font-bold text-primary ${rem.completed ? 'line-through text-secondary' : ''}`}>{rem.title}</h4>
+                    <h4 className={`text-xs font-bold text-primary ${rem.completed ? 'line-through text-secondary/65' : ''}`}>{rem.title}</h4>
                     {rem.description && (
-                      <p className="text-[10px] text-secondary mt-0.5 truncate">{rem.description}</p>
+                      <p className="text-[10px] text-secondary mt-0.5 truncate font-medium">{rem.description}</p>
                     )}
-                    <div className="text-[9px] text-tertiary font-semibold mt-1">Due: {new Date(rem.dueAt).toLocaleString()}</div>
+                    <div className="text-[9px] text-tertiary font-bold mt-1 uppercase">Due: {new Date(rem.dueAt).toLocaleString()}</div>
                   </div>
                   <button
                     onClick={() => handleDeleteReminder(rem._id)}
-                    className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-500/10 transition-all text-xs font-bold"
+                    className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-500/10 transition-all text-xs font-bold shrink-0 leading-none"
                   >
                     Delete
                   </button>
                 </div>
               ))}
               {reminders.length === 0 && (
-                <div className="p-6 text-center text-secondary font-semibold text-xs">No pending reminders</div>
+                <div className="py-10 text-center text-secondary/60 font-bold uppercase tracking-wider text-[10px]">
+                  No reminders
+                </div>
               )}
             </div>
           </Card>
 
-          <Card>
-            <h3 className="text-xs font-black text-tertiary uppercase tracking-widest mb-4">Set New Reminder</h3>
+          <Card className="border-border/80 shadow-sm bg-surface">
+            <h3 className="text-xs font-black text-tertiary uppercase tracking-widest mb-4">Set Operational Alert</h3>
             <form onSubmit={handleCreateReminder} className="space-y-4">
               <div>
                 <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Reminder Title</label>
@@ -778,8 +789,8 @@ const TasksModule = ({
                   type="text"
                   value={remTitle}
                   onChange={e => setRemTitle(e.target.value)}
-                  placeholder="e.g. Call client back"
-                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary"
+                  placeholder="e.g. Follow up on growth contract"
+                  className="input-enterprise w-full px-4 py-2.5 text-xs font-bold text-primary"
                 />
               </div>
               <div>
@@ -787,21 +798,21 @@ const TasksModule = ({
                 <textarea
                   value={remDesc}
                   onChange={e => setRemDesc(e.target.value)}
-                  placeholder="e.g. Discuss Q3 proposal details"
+                  placeholder="e.g. Discuss case study proposal details"
                   rows={2}
-                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary resize-none"
+                  className="input-enterprise w-full px-4 py-2.5 text-xs font-bold text-primary resize-none"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Due At</label>
+                <label className="text-[10px] font-black text-tertiary uppercase block mb-1.5">Alert Due Time</label>
                 <input
                   type="datetime-local"
                   value={remDueAt}
                   onChange={e => setRemDueAt(e.target.value)}
-                  className="input-enterprise w-full px-4 py-3 text-xs font-bold text-primary"
+                  className="input-enterprise w-full px-4 py-2.5 text-xs font-bold text-primary"
                 />
               </div>
-              <button type="submit" className="btn-enterprise-primary w-full py-2.5 text-xs">
+              <button type="submit" className="btn-enterprise-primary w-full py-2.5 text-xs font-bold uppercase tracking-wider">
                 <Plus size={14} /> Add Reminder
               </button>
             </form>
@@ -871,16 +882,16 @@ const FinanceModule = ({
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Pending Collections', value: `$${pendingVal.toLocaleString()}`, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Received This Month', value: `$${paidVal.toLocaleString()}`, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-          { label: 'Projected Total Revenue', value: `$${totalVal.toLocaleString()}`, color: 'text-accent', bg: 'bg-accent/10' },
+          { label: 'Pending Collections', value: `$${pendingVal.toLocaleString()}`, color: 'text-orange-500', bg: 'bg-orange-500/10 border-orange-500/10' },
+          { label: 'Received This Month', value: `$${paidVal.toLocaleString()}`, color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/10' },
+          { label: 'Projected Total Revenue', value: `$${totalVal.toLocaleString()}`, color: 'text-accent', bg: 'bg-accent/10 border-accent/10' },
         ].map((s, i) => (
-          <Card key={i} className="p-5 flex items-center gap-4 bg-surface">
-             <div className={`w-12 h-12 rounded-2xl ${s.bg} ${s.color} flex items-center justify-center shadow-sm`}>
-                <CreditCard size={24} />
+          <Card key={i} className="p-5 flex items-center gap-4 bg-surface border-border/80 shadow-xs hover:shadow-md transition-all duration-200">
+             <div className={`w-12 h-12 rounded-2xl ${s.bg} ${s.color} flex items-center justify-center shadow-xs border`}>
+                <CreditCard size={22} />
              </div>
              <div>
-                <div className="text-[10px] font-bold text-tertiary uppercase leading-none mb-1.5">{s.label}</div>
+                <div className="text-[10px] font-black text-tertiary uppercase leading-none mb-1.5">{s.label}</div>
                 <div className="text-xl font-black text-primary leading-none">{s.value}</div>
              </div>
           </Card>
@@ -888,70 +899,81 @@ const FinanceModule = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 p-0 overflow-hidden bg-surface">
-          <div className="p-6 border-b border-border flex items-center justify-between bg-base/30">
-            <h3 className="text-sm font-bold flex items-center gap-2"><BarChart3 size={18} className="text-accent"/> Media Billing Overview</h3>
+        <Card className="lg:col-span-2 p-0 overflow-hidden bg-surface border-border/80 shadow-sm">
+          <div className="p-4.5 border-b border-border bg-base/20 flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase tracking-widest text-tertiary flex items-center gap-2">
+              <BarChart3 size={16} className="text-accent"/> Media Billing Overview
+            </h3>
           </div>
           <div className="divide-y divide-border">
-             {invoices.map((inv, i) => (
-                <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors">
-                         <FileText size={18} className="text-secondary" />
-                      </div>
-                      <div>
-                         <div className="text-xs font-bold text-primary">{inv.client}</div>
-                         <div className="text-[10px] text-tertiary font-bold uppercase mt-0.5">{inv.invoiceId} · Category: {inv.category}</div>
-                      </div>
-                   </div>
-                   <div className="flex items-center gap-6">
-                      <div className="text-right">
-                         <div className="text-sm font-black text-primary">{inv.amount}</div>
-                         <Badge text={inv.status} type={inv.status === 'Paid' ? 'success' : inv.status === 'Overdue' ? 'danger' : 'warning'} />
-                      </div>
-                      {inv.paymentLink && (
-                        <button 
-                          onClick={() => window.open(inv.paymentLink, '_blank')}
-                          className="p-2 hover:bg-base border border-border rounded-lg text-accent transition-colors text-xs font-bold"
-                        >
-                          Pay
-                        </button>
-                      )}
-                   </div>
-                </div>
-             ))}
+             {invoices.map((inv, i) => {
+                const isPaid = inv.status === 'Paid';
+                const isOverdue = inv.status === 'Overdue';
+                return (
+                  <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-all duration-150 relative">
+                     <div className={`absolute left-0 top-3.5 bottom-3.5 w-1 rounded-r-md ${
+                       isPaid ? 'bg-emerald-500' : isOverdue ? 'bg-red-500' : 'bg-orange-500'
+                     }`} />
+                     <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors shrink-0">
+                           <FileText size={16} className="text-secondary" />
+                        </div>
+                        <div className="min-w-0">
+                           <div className="text-xs font-bold text-primary truncate">{inv.client}</div>
+                           <div className="text-[10px] text-tertiary font-bold uppercase tracking-wider mt-0.5 truncate">{inv.invoiceId} · Category: {inv.category}</div>
+                        </div>
+                     </div>
+                     <div className="flex items-center gap-6 shrink-0">
+                        <div className="text-right">
+                           <div className="text-sm font-black text-primary">{inv.amount}</div>
+                           <Badge text={inv.status} type={isPaid ? 'success' : isOverdue ? 'danger' : 'warning'} />
+                        </div>
+                        {inv.paymentLink && (
+                          <button 
+                            onClick={() => window.open(inv.paymentLink, '_blank')}
+                            className="px-3.5 py-1.5 bg-base border border-border rounded-xl text-accent hover:border-accent hover:bg-accent/5 transition-all text-xs font-bold shadow-xs active:scale-95"
+                          >
+                            Pay
+                          </button>
+                        )}
+                     </div>
+                  </div>
+                );
+             })}
              {invoices.length === 0 && (
-                <div className="p-8 text-center text-secondary font-semibold text-xs">No media billings recorded</div>
+                <div className="py-16 text-center text-secondary/60 font-bold uppercase tracking-wider text-xs border-dashed border-t border-border">
+                  No media billings recorded
+                </div>
              )}
           </div>
         </Card>
 
-        <Card className="bg-primary text-white border-none shadow-xl relative overflow-hidden flex flex-col justify-between">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+        <Card className="bg-slate-900 border-none shadow-xl relative overflow-hidden flex flex-col justify-between p-6">
+           <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none"></div>
            <div>
-              <h3 className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-6 relative z-10">Instant Payment Link</h3>
-              <div className="space-y-4 relative z-10">
+              <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-6 relative z-10">Outbound Billing Link</h3>
+              <div className="space-y-4.5 relative z-10">
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase text-white/40">Outbound Amount (USD)</label>
+                    <label className="text-[9px] font-bold uppercase text-slate-400">Outbound Amount (USD)</label>
                     <input 
                       type="number" 
                       value={payAmount}
                       onChange={e => setPayAmount(e.target.value)}
                       placeholder="0.00" 
-                      className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-black text-white focus:outline-none focus:ring-1 focus:ring-white/20" 
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-black text-white focus:outline-none focus:border-accent transition-colors" 
                     />
                  </div>
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase text-white/40">Client Reference Name</label>
+                    <label className="text-[9px] font-bold uppercase text-slate-400">Client Reference Name</label>
                     <input 
                       type="text" 
                       value={payClient}
                       onChange={e => setPayClient(e.target.value)}
-                      placeholder="e.g. Hexacloud" 
-                      className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-black text-white focus:outline-none focus:ring-1 focus:ring-white/20" 
-                 />
+                      placeholder="e.g. Hexacloud Media" 
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-black text-white focus:outline-none focus:border-accent transition-colors" 
+                  />
                  </div>
-                 <button onClick={handleGenerateLink} className="w-full py-3 bg-white text-primary rounded-xl text-[10px] font-bold uppercase hover:bg-slate-50 transition-all shadow-lg active:scale-95">Generate Link</button>
+                 <button onClick={handleGenerateLink} className="w-full py-3 bg-accent text-white rounded-xl text-[10px] font-bold uppercase hover:bg-indigo-600 transition-all shadow-lg shadow-accent/20 active:scale-95">Generate Link</button>
               </div>
            </div>
         </Card>
@@ -983,7 +1005,7 @@ const FinanceModule = ({
                >
                  Done
                </button>
-           </div>
+            </div>
         </div>
       </Modal>
     </div>
@@ -1083,36 +1105,38 @@ const ResourceModule = ({
     <div className="space-y-8">
        <input type="file" ref={docInputRef} className="hidden" onChange={handleUpload} />
 
-       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           {[
-            { label: 'Contracts', count: allDocs.filter(d => d.fileName.includes('.pdf')).length, icon: Shield, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-            { label: 'Campaign Proposals', count: allDocs.length, icon: FileText, color: 'text-accent', bg: 'bg-accent/10' },
-            { label: 'Shared Brand Assets', count: allDocs.filter(d => d.fileName.includes('.zip') || d.fileName.includes('.png')).length, icon: Image, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-            { label: 'Shared Assets', count: allDocs.length, icon: Share2, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+            { label: 'Contracts', count: allDocs.filter(d => d.fileName.includes('.pdf')).length, icon: Shield, color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/10' },
+            { label: 'Campaign Proposals', count: allDocs.length, icon: FileText, color: 'text-accent', bg: 'bg-accent/10 border-accent/10' },
+            { label: 'Brand Assets', count: allDocs.filter(d => d.fileName.includes('.zip') || d.fileName.includes('.png')).length, icon: Image, color: 'text-orange-500', bg: 'bg-orange-500/10 border-orange-500/10' },
+            { label: 'Shared Assets', count: allDocs.length, icon: Share2, color: 'text-indigo-500', bg: 'bg-indigo-500/10 border-indigo-500/10' },
           ].map((s, i) => (
-            <Card key={i} className="p-4 flex items-center justify-between group hover:border-accent/40 cursor-pointer bg-surface">
-               <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl ${s.bg} ${s.color} flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform`}>
-                     <s.icon size={20} />
+            <Card key={i} className="p-5 flex items-center justify-between group hover:border-accent/40 cursor-pointer bg-surface border-border/80 shadow-xs hover:shadow-md transition-all duration-200">
+               <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl ${s.bg} ${s.color} flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform shrink-0 border`}>
+                     <s.icon size={18} />
                   </div>
-                  <div>
-                     <div className="text-xs font-bold text-primary">{s.label}</div>
-                     <div className="text-[10px] text-tertiary font-bold uppercase">{s.count} Entries</div>
+                  <div className="min-w-0">
+                     <div className="text-xs font-bold text-primary truncate">{s.label}</div>
+                     <div className="text-[10px] text-tertiary font-bold uppercase mt-0.5">{s.count} Entries</div>
                   </div>
                </div>
-               <ChevronRight size={14} className="text-tertiary group-hover:translate-x-1 transition-transform" />
+               <ChevronRight size={14} className="text-secondary group-hover:translate-x-1 transition-transform shrink-0" />
             </Card>
           ))}
        </div>
 
-       <Card className="p-0 overflow-hidden bg-surface">
-          <div className="p-6 border-b border-border flex flex-col md:flex-row items-start md:items-center justify-between bg-base/30 gap-4">
-             <h3 className="text-sm font-bold flex items-center gap-2"><Folder size={18} className="text-accent"/> Secure Campaign Proposal Desk</h3>
-             <div className="flex gap-3 w-full md:w-auto">
+       <Card className="p-0 overflow-hidden bg-surface border-border/80 shadow-sm">
+          <div className="p-6 border-b border-border flex flex-col md:flex-row items-start md:items-center justify-between bg-base/20 gap-4">
+             <h3 className="text-xs font-black uppercase tracking-widest text-tertiary flex items-center gap-2">
+               <Folder size={16} className="text-accent"/> Secure Media Desk
+             </h3>
+             <div className="flex gap-3 w-full md:w-auto flex-wrap">
                 <select 
                   value={selectedLeadId}
                   onChange={e => setSelectedLeadId(e.target.value)}
-                  className="input-enterprise px-4 py-2 text-xs font-bold text-primary max-w-xs"
+                  className="input-enterprise px-4 py-2 text-xs font-bold text-primary max-w-xs focus:ring-1 focus:ring-accent outline-none"
                 >
                   <option value="">Attach upload to Lead</option>
                   {leads.map(l => (
@@ -1124,32 +1148,34 @@ const ResourceModule = ({
                     if (!selectedLeadId) { showToast('Please select a lead first to attach document', 'warning'); return; }
                     docInputRef.current?.click();
                   }}
-                  className="btn-enterprise-primary flex items-center gap-2 whitespace-nowrap"
+                  className="btn-enterprise-primary flex items-center gap-2 whitespace-nowrap text-xs font-bold px-5 py-2"
                 >
-                   <Upload size={16} /> Upload Asset
+                   <Upload size={14} /> Upload Asset
                 </button>
              </div>
           </div>
           <div className="divide-y divide-border">
              {allDocs.map((file, i) => (
-                <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors">
-                         <FileText size={18} className="text-secondary" />
+                <div key={i} className="p-5 flex items-center justify-between group hover:bg-base/30 transition-colors duration-150">
+                   <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors shrink-0">
+                         <FileText size={16} className="text-secondary" />
                       </div>
-                      <div>
-                         <div className="text-xs font-bold text-primary group-hover:text-accent transition-colors cursor-pointer" onClick={() => window.open(file.url, '_blank')}>{file.fileName}</div>
-                         <div className="text-[10px] text-tertiary font-bold uppercase mt-0.5">Lead: {file.leadName} · Size: {file.fileSize} · Shared {new Date(file.uploadedAt).toLocaleDateString()}</div>
+                      <div className="min-w-0">
+                         <div className="text-xs font-bold text-primary group-hover:text-accent transition-colors cursor-pointer truncate" onClick={() => window.open(file.url, '_blank')}>{file.fileName}</div>
+                         <div className="text-[10px] text-tertiary font-bold uppercase tracking-wider mt-0.5 truncate">Lead: {file.leadName} · Size: {file.fileSize} · Shared {new Date(file.uploadedAt).toLocaleDateString()}</div>
                       </div>
                    </div>
-                   <div className="flex items-center gap-2">
-                      <button onClick={() => window.open(file.url, '_blank')} className="p-2.5 hover:bg-surface rounded-xl text-tertiary hover:text-accent transition-all" title="View"><Share2 size={16}/></button>
-                      <button onClick={() => { downloadCSV([file], file.fileName); showToast('Downloading asset...', 'info'); }} className="p-2.5 hover:bg-surface rounded-xl text-tertiary hover:text-accent transition-all" title="Download"><Download size={16}/></button>
+                   <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => window.open(file.url, '_blank')} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-accent transition-all" title="View"><Share2 size={15}/></button>
+                      <button onClick={() => { downloadCSV([file], file.fileName); showToast('Downloading asset...', 'info'); }} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-accent transition-all" title="Download"><Download size={15}/></button>
                    </div>
                 </div>
              ))}
              {allDocs.length === 0 && (
-                <div className="p-8 text-center text-secondary font-semibold text-xs">No media assets or proposals uploaded yet</div>
+                <div className="py-16 text-center text-secondary/60 font-bold uppercase tracking-wider text-xs border-dashed border-t border-border">
+                  No media assets or proposals uploaded yet
+                </div>
              )}
           </div>
        </Card>
@@ -1237,37 +1263,91 @@ function MRDashboard() {
     );
   }
 
+  // Calculate summary metrics dynamically for the header/stats strip
+  const totalLeadsCount = leads.length;
+  const pendingInvoicesCount = invoices.filter(inv => inv.status === 'Pending').length;
+  const hotLeadsCount = leads.filter(l => l.status === 'Hot').length;
+
+  const tabItems = [
+    { id: 'leads' as const, label: 'Media Pipeline', icon: Target, count: totalLeadsCount },
+    { id: 'email' as const, label: 'Outreach Hub', icon: Mail, count: leads.flatMap(l => l.emails || []).length },
+    { id: 'finance' as const, label: 'Finance Command', icon: CreditCard, count: pendingInvoicesCount },
+    { id: 'resources' as const, label: 'Media Assets', icon: Folder, count: leads.flatMap(l => l.documents || []).length },
+    { id: 'tasks' as const, label: 'Tasks & Reminders', icon: CheckSquare },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto px-8 py-10 min-h-screen bg-base text-primary">
+    <div className="max-w-7xl mx-auto px-6 lg:px-8 py-10 min-h-screen bg-base text-primary">
       
       {/* Header */}
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 border-b border-border/40 pb-6">
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-10 pb-6 border-b border-border/40"
+      >
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2.5">
              <Badge text="Media Representative" type="info" />
              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-             <span className="text-[10px] font-bold text-accent uppercase tracking-widest leading-none">Media Ops Command</span>
+             <span className="text-[10px] font-black text-accent uppercase tracking-widest leading-none">Media Command Hub</span>
           </div>
-          <h1 className="text-3xl font-bold text-primary tracking-tight">Media Desk</h1>
-          <p className="text-secondary text-sm mt-1 font-medium font-sans">Pipeline management, Outreach automation, and Financial tracking.</p>
+          <h1 className="text-3xl font-black text-primary tracking-tight">Media Desk</h1>
+          <p className="text-secondary text-sm mt-1 font-medium font-sans">Pipeline management, outreach sequences, and billing tracking.</p>
         </div>
+
+        {/* Dynamic header stats strip */}
+        {!loading && !fetchError && (
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="bg-surface border border-border/80 px-4 py-2 rounded-xl flex flex-col shadow-xs min-w-[100px]">
+              <span className="text-[8px] font-black text-secondary uppercase tracking-wider">Total Leads</span>
+              <span className="text-sm font-black text-primary mt-0.5">{totalLeadsCount}</span>
+            </div>
+            <div className="bg-surface border border-border/80 px-4 py-2 rounded-xl flex flex-col shadow-xs min-w-[100px]">
+              <span className="text-[8px] font-black text-red-500 uppercase tracking-wider">Hot Leads</span>
+              <span className="text-sm font-black text-red-500 mt-0.5">{hotLeadsCount}</span>
+            </div>
+            <div className="bg-surface border border-border/80 px-4 py-2 rounded-xl flex flex-col shadow-xs min-w-[100px]">
+              <span className="text-[8px] font-black text-orange-500 uppercase tracking-wider">Unpaid Invoices</span>
+              <span className="text-sm font-black text-orange-500 mt-0.5">{pendingInvoicesCount}</span>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex bg-surface border border-border rounded-xl p-1 mb-8 shadow-inner max-w-xl">
-        {['leads', 'email', 'finance', 'resources', 'tasks'].map(t => (
-          <button 
-            key={t} 
-            onClick={() => setActiveTab(t as any)}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all capitalize ${activeTab === t ? 'bg-base text-accent shadow-sm ring-1 ring-border/50' : 'text-secondary hover:text-primary'}`}
-          >
-            {t}
-          </button>
-        ))}
+      <div className="relative flex bg-surface border border-border rounded-xl p-1 mb-8 shadow-inner max-w-2xl overflow-x-auto custom-scrollbar">
+        {tabItems.map(item => {
+          const isActive = activeTab === item.id;
+          const IconComp = item.icon;
+          return (
+            <button 
+              key={item.id} 
+              onClick={() => setActiveTab(item.id)}
+              className={`flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-lg transition-all capitalize whitespace-nowrap flex-1 ${
+                isActive 
+                  ? 'bg-base text-accent shadow-sm ring-1 ring-border/40' 
+                  : 'text-secondary hover:text-primary hover:bg-base/30'
+              }`}
+            >
+              <IconComp size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+              <span>{item.label.split(' ')[0]}</span>
+              {item.count !== undefined && item.count > 0 && (
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
+                  isActive ? 'bg-accent/15 text-accent' : 'bg-base text-secondary border border-border'
+                }`}>
+                  {item.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
-        <div className="h-96 flex items-center justify-center text-secondary font-bold text-sm">Loading media databases...</div>
+        <div className="h-96 flex flex-col items-center justify-center gap-3">
+          <Loader2 size={24} className="animate-spin text-accent" />
+          <div className="text-secondary font-bold text-xs uppercase tracking-wider">Loading media databases...</div>
+        </div>
       ) : fetchError ? (
         <div className="h-96 flex flex-col items-center justify-center gap-4">
           <div className="text-red-500 font-bold text-sm">Failed to load media data</div>
@@ -1328,16 +1408,21 @@ function MRDashboard() {
       )}
 
       {/* Lead Detail Modal */}
-      <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title={`Lead Detail: ${selectedLead?.company}`}>
+      <Modal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} title="Lead Dossier & Audit Timeline">
          {selectedLead && (
-           <div className="space-y-8">
-              <div className="flex justify-between items-start">
-                 <div>
-                    <h4 className="text-xl font-bold text-primary">{selectedLead.company}</h4>
-                    <p className="text-sm text-secondary font-medium">{selectedLead.name} · Media Director</p>
+           <div className="space-y-6">
+              <div className="flex justify-between items-start border-b border-border/40 pb-5">
+                 <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center font-black text-accent text-lg">
+                       {selectedLead.company.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <div>
+                       <h4 className="text-sm font-black text-primary leading-none mb-1.5">{selectedLead.company}</h4>
+                       <p className="text-[11px] text-secondary font-medium font-sans">{selectedLead.name} · Media Director</p>
+                    </div>
                  </div>
                  <div className="text-right">
-                    <div className="text-2xl font-black text-accent">{selectedLead.value}</div>
+                    <div className="text-xl font-black text-accent leading-none mb-1.5">{selectedLead.value}</div>
                     <Badge text={selectedLead.stage} type="info" />
                  </div>
               </div>
@@ -1345,47 +1430,49 @@ function MRDashboard() {
               <div className="grid grid-cols-3 gap-4">
                  {[
                    { label: 'Last Activity', value: selectedLead.lastContact || 'Just now', icon: Clock },
-                   { label: 'Source', value: selectedLead.status + ' Priority', icon: Target },
-                   { label: 'Assigned To', value: selectedLead.assignedToName || 'Unassigned', icon: UserPlus },
+                   { label: 'Priority Stage', value: selectedLead.status + ' Priority', icon: Target },
+                   { label: 'Assigned Owner', value: selectedLead.assignedToName || 'Unassigned', icon: UserPlus },
                  ].map((s, i) => (
-                   <div key={i} className="p-3 bg-base border border-border rounded-2xl">
-                      <div className="flex items-center gap-2 mb-1">
-                         <s.icon size={12} className="text-tertiary" />
-                         <span className="text-[9px] font-bold text-tertiary uppercase">{s.label}</span>
+                   <div key={i} className="p-3.5 bg-base/55 border border-border/80 rounded-2xl">
+                      <div className="flex items-center gap-2 mb-1.5">
+                         <s.icon size={11} className="text-tertiary" />
+                         <span className="text-[8px] font-black text-tertiary uppercase tracking-wider">{s.label}</span>
                       </div>
-                      <div className="text-xs font-bold text-primary">{s.value}</div>
+                      <div className="text-xs font-bold text-primary truncate">{s.value}</div>
                    </div>
                  ))}
               </div>
 
               <div className="space-y-4">
-                 <h4 className="text-[10px] font-black text-tertiary uppercase tracking-widest px-2">Timeline History</h4>
-                 <div className="space-y-4 relative before:absolute before:left-5 before:top-2 before:bottom-2 before:w-px before:bg-border">
+                 <h4 className="text-[10px] font-black text-tertiary uppercase tracking-widest px-1">Lead Telemetry Timeline</h4>
+                 <div className="space-y-4 relative before:absolute before:left-5 before:top-2.5 before:bottom-2.5 before:w-px before:bg-border/80 p-1">
                     {(selectedLead.history || []).map((log, i) => (
-                       <div key={i} className="flex items-start gap-4 relative z-10 pl-2">
-                          <div className={`w-6 h-6 rounded-full bg-surface border border-border flex items-center justify-center shrink-0`}>
-                             <Target size={12} className="text-accent" />
+                       <div key={i} className="flex items-start gap-4 relative z-10 pl-1.5">
+                          <div className={`w-6.5 h-6.5 rounded-full bg-surface border border-border/85 flex items-center justify-center shrink-0 shadow-xs`}>
+                             <Target size={11} className="text-accent" />
                           </div>
                           <div>
-                             <div className="text-xs font-bold text-primary">{log.event}</div>
-                             <div className="text-[10px] text-secondary font-medium">Actor: {log.user}</div>
-                             <div className="text-[9px] text-tertiary font-bold mt-1 uppercase">{new Date(log.time).toLocaleDateString()}</div>
+                             <div className="text-xs font-bold text-primary leading-tight">{log.event}</div>
+                             <div className="text-[10px] text-secondary font-semibold mt-0.5">Operator: {log.user}</div>
+                             <div className="text-[9px] text-tertiary font-bold mt-1.5 uppercase">{new Date(log.time).toLocaleDateString()}</div>
                           </div>
                        </div>
                     ))}
                     {(selectedLead.history || []).length === 0 && (
-                      <div className="p-4 text-center text-secondary font-semibold text-xs pl-8">No audit logs logged on lead timeline</div>
+                      <div className="py-8 text-center text-secondary/60 font-bold uppercase tracking-wider text-[10px] border border-dashed border-border rounded-2xl bg-base/5">
+                        No audit logs logged on lead timeline
+                      </div>
                     )}
                  </div>
               </div>
 
-              <div className="flex gap-3 pt-6 border-t border-border">
+              <div className="flex gap-3 pt-6 border-t border-border/40">
                  <button onClick={() => { 
                    setPreselectedLeadId(selectedLead._id || '');
                    setSelectedLead(null); 
                    setActiveTab('email'); 
-                 }} className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-2">
-                    <Send size={16}/> Go to Outreach Composer
+                 }} className="flex-1 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+                    <Send size={15}/> Outreach Composer
                  </button>
                  <button onClick={async () => {
                    try {
@@ -1408,8 +1495,8 @@ function MRDashboard() {
                    } catch (err) {
                      showToast('Error sharing via WhatsApp', 'error');
                    }
-                 }} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-                    <MessageSquare size={16}/> Share via WhatsApp
+                 }} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+                    <MessageSquare size={15}/> Share via WhatsApp
                  </button>
               </div>
            </div>

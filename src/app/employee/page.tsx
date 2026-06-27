@@ -49,6 +49,10 @@ const Badge = ({ text, type = "default" }: { text: string, type?: 'default' | 's
   );
 };
 
+const Skeleton = ({ className = '' }: { className?: string }) => (
+  <div className={`bg-gradient-to-r from-base via-surface to-base bg-[length:200%_100%] animate-[shimmer_1.5s_infinite] rounded-xl ${className}`} />
+);
+
 // --- Interfaces ---
 
 interface TaskLog {
@@ -86,73 +90,95 @@ const WorkspaceModule = ({ tasks, onFullSchedule, onOpenTask }: { tasks: Employe
 
   return (
     <div className="space-y-6">
-      <Card>
-        <div className="flex justify-between items-center mb-6">
+      <Card className="overflow-hidden border-border/80 relative">
+        <div className="flex justify-between items-center mb-6 border-b border-border/40 pb-4">
           <div>
             <h3 className="text-sm font-bold text-primary">Assigned Initiatives</h3>
             <p className="text-[11px] text-secondary font-medium mt-0.5">High priority tasks requiring operational clearance.</p>
           </div>
-          <button onClick={onFullSchedule} className="text-xs font-bold text-accent uppercase tracking-wider hover:underline flex items-center gap-1">
+          <button onClick={onFullSchedule} className="text-xs font-bold text-accent uppercase tracking-wider hover:text-indigo-600 transition-colors flex items-center gap-1">
              Full Schedule <ChevronRight size={14} />
           </button>
         </div>
 
-        <div className="space-y-4">
-          {activeTasks.length > 0 ? activeTasks.map((task, i) => (
-            <motion.div 
-              key={task.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              onClick={() => onOpenTask(task)}
-              className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border bg-base/30 hover:border-accent/30 hover:bg-base/60 transition-all cursor-pointer group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-lg bg-base border border-border flex items-center justify-center shrink-0 text-indigo-500 font-extrabold text-sm group-hover:bg-accent/5">
-                  #{task.id}
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors">{task.title}</h4>
-                  <div className="flex gap-2 items-center mt-2 flex-wrap">
-                    <Badge text={task.priority} type={task.priority === 'Critical' ? 'danger' : task.priority === 'High' ? 'warning' : 'info'} />
-                    <span className="text-[9px] text-tertiary font-bold uppercase tracking-wider flex items-center gap-1">
-                      <Clock size={10} className="text-accent" /> Due {task.due}
-                    </span>
-                    <span className="text-[9px] text-tertiary font-bold uppercase tracking-wider">
-                      · {task.subtasks.filter(s => s.done).length}/{task.subtasks.length} subtasks
-                    </span>
+        <div className="space-y-3.5">
+          {activeTasks.length > 0 ? activeTasks.map((task, i) => {
+            const isCritical = task.priority === 'Critical' || task.priority === 'High';
+            return (
+              <motion.div 
+                key={task.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                onClick={() => onOpenTask(task)}
+                className={`relative flex flex-col md:flex-row md:items-center justify-between p-4.5 rounded-2xl border bg-surface/40 hover:bg-surface/90 hover:shadow-lg transition-all duration-200 cursor-pointer group ${
+                  isCritical 
+                    ? 'border-red-500/20 hover:border-red-500/40 shadow-sm' 
+                    : 'border-border/80 hover:border-accent/40 shadow-xs'
+                }`}
+              >
+                {/* Visual indicator stripe on the left for critical items */}
+                {isCritical && (
+                  <div className="absolute left-0 top-3 bottom-3 w-1 bg-gradient-to-b from-red-500 to-rose-400 rounded-r-md" />
+                )}
+
+                <div className="flex items-start gap-4">
+                  <div className={`w-10 h-10 rounded-xl bg-base border flex items-center justify-center shrink-0 font-black text-xs transition-colors ${
+                    isCritical 
+                      ? 'border-red-500/10 text-red-500 bg-red-500/5 group-hover:bg-red-500/10' 
+                      : 'border-border text-secondary group-hover:bg-accent/5 group-hover:text-accent'
+                  }`}>
+                    #{task.id}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-primary group-hover:text-accent transition-colors leading-snug">{task.title}</h4>
+                    <div className="flex gap-2.5 items-center mt-2 flex-wrap">
+                      <Badge text={task.priority} type={task.priority === 'Critical' ? 'danger' : task.priority === 'High' ? 'warning' : 'info'} />
+                      <span className="text-[10px] text-secondary font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Clock size={11} className="text-accent" /> Due {task.due}
+                      </span>
+                      <span className="text-[10px] text-tertiary font-bold uppercase tracking-wider">
+                        · {task.subtasks.filter(s => s.done).length}/{task.subtasks.length} protocols
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-4 mt-3 md:mt-0 justify-end shrink-0">
-                <div className="text-right">
-                  <div className="text-xs font-bold text-primary">{task.progress}%</div>
-                  <div className="text-[9px] text-tertiary uppercase tracking-wider font-bold">{task.status}</div>
+                <div className="flex items-center gap-4 mt-3.5 md:mt-0 justify-end shrink-0">
+                  <div className="text-right">
+                    <div className="text-xs font-black text-primary">{task.progress}%</div>
+                    <div className="text-[9px] text-tertiary uppercase tracking-wider font-extrabold">{task.status}</div>
+                  </div>
+                  <div className="w-24 h-1.5 bg-border/40 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${task.progress}%` }}
+                      transition={{ duration: 0.8, ease: 'easeOut' }}
+                      className={`h-full rounded-full ${isCritical ? 'bg-gradient-to-r from-red-500 to-rose-400' : 'bg-gradient-to-r from-accent to-indigo-400'}`}
+                    />
+                  </div>
                 </div>
-                <div className="w-24 h-1.5 bg-base border border-border/50 rounded-full overflow-hidden">
-                  <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${task.progress}%` }}></div>
-                </div>
-              </div>
-            </motion.div>
-          )) : (
-            <div className="p-10 text-center">
+              </motion.div>
+            );
+          }) : (
+            <div className="py-16 text-center border border-dashed border-border rounded-2xl bg-base/5">
               <CheckCircle size={32} className="mx-auto text-emerald-500/20 mb-3" />
-              <p className="text-xs text-tertiary font-bold uppercase">No pending assignments</p>
+              <p className="text-xs text-secondary font-bold uppercase tracking-widest">No pending assignments</p>
+              <p className="text-[10px] text-tertiary font-medium mt-1">Excellent job! You are completely caught up.</p>
             </div>
           )}
         </div>
       </Card>
 
       {completedTasks.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest px-2">History of Excellence</h3>
+        <div className="space-y-3.5">
+          <h3 className="text-[10px] font-black text-tertiary uppercase tracking-widest px-2">History of Excellence</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {completedTasks.map((task) => (
-              <Card key={task.id} className="p-4 border-dashed border-border/60 bg-base/25 hover:border-accent/30 transition-all" onClick={() => onOpenTask(task)}>
+              <Card key={task.id} className="p-4 border-dashed border-border/80 bg-base/20 hover:bg-base/40 hover:border-accent/30 transition-all duration-200" onClick={() => onOpenTask(task)}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle size={16} className="text-emerald-500" />
-                    <span className="text-xs font-bold text-secondary line-through">{task.title}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <CheckCircle size={16} className="text-emerald-500 shrink-0" />
+                    <span className="text-xs font-bold text-secondary line-through truncate">{task.title}</span>
                   </div>
                   <Badge text="Completed" type="success" />
                 </div>
@@ -177,80 +203,118 @@ const TaskModule = ({ tasks, onOpenTask }: { tasks: EmployeeTask[]; onOpenTask: 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* To Do / Blocked Column */}
-        <div className="space-y-4 bg-base/20 p-4 rounded-2xl border border-border/50">
-          <h3 className="text-[10px] font-bold text-orange-500 uppercase tracking-widest px-1 flex items-center justify-between">
-            <span>Operational queue</span>
-            <span className="bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded text-[8px] border border-orange-500/20">{tasks.filter(t => t.status === 'To Do' || t.status === 'Blocked').length}</span>
+        <div className="space-y-4 bg-base/10 p-4.5 rounded-3xl border border-border/40 backdrop-blur-sm">
+          <h3 className="text-[10px] font-black text-orange-500 uppercase tracking-widest px-1.5 flex items-center justify-between">
+            <span>Operational Queue</span>
+            <span className="bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full text-[9px] font-bold border border-orange-500/25">
+              {tasks.filter(t => t.status === 'To Do' || t.status === 'Blocked').length}
+            </span>
           </h3>
           <div className="space-y-3">
             {tasks.filter(t => t.status === 'To Do' || t.status === 'Blocked').map(task => (
-              <div key={task.id} onClick={() => onOpenTask(task)} className="p-4 bg-surface border border-border rounded-xl shadow-sm hover:border-accent/40 cursor-pointer transition-all group">
-                <div className="flex justify-between items-start gap-2 mb-2">
+              <div 
+                key={task.id} 
+                onClick={() => onOpenTask(task)} 
+                className="relative p-5 bg-surface border border-border/80 rounded-2xl shadow-xs hover:border-accent/40 hover:shadow-md cursor-pointer transition-all duration-200 group flex flex-col gap-3"
+              >
+                {task.status === 'Blocked' && (
+                  <div className="absolute left-0 top-3 bottom-3 w-1 bg-red-500 rounded-r-md" />
+                )}
+                <div className="flex justify-between items-start gap-2">
                   <Badge text={task.status} type={task.status === 'Blocked' ? 'danger' : 'default'} />
-                  <span className="text-[8px] font-bold text-tertiary uppercase">#{task.id}</span>
+                  <span className="text-[9px] font-bold text-tertiary uppercase">#{task.id}</span>
                 </div>
-                <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors mb-2 leading-snug">{task.title}</h4>
-                <div className="w-full h-1 bg-base rounded-full overflow-hidden mb-3">
-                  <div className="h-full bg-accent" style={{ width: `${task.progress}%` }}></div>
+                <h4 className="text-xs font-black text-primary group-hover:text-accent transition-colors leading-snug">{task.title}</h4>
+                <div className="w-full h-1.5 bg-border/40 rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full" style={{ width: `${task.progress}%` }}></div>
                 </div>
-                <div className="flex justify-between items-center text-[9px] text-secondary font-bold uppercase">
+                <div className="flex justify-between items-center text-[10px] text-secondary font-bold uppercase mt-1">
                   <span>Progress: {task.progress}%</span>
-                  <span>{task.due}</span>
+                  <span className="text-tertiary flex items-center gap-1"><Clock size={10} /> {task.due}</span>
                 </div>
               </div>
             ))}
+            {tasks.filter(t => t.status === 'To Do' || t.status === 'Blocked').length === 0 && (
+              <div className="text-center py-10 text-[10px] text-secondary font-bold uppercase tracking-wider bg-surface/20 border border-dashed border-border rounded-2xl">
+                Queue Clear
+              </div>
+            )}
           </div>
         </div>
 
         {/* In Progress / Review Column */}
-        <div className="space-y-4 bg-base/20 p-4 rounded-2xl border border-border/50">
-          <h3 className="text-[10px] font-bold text-accent uppercase tracking-widest px-1 flex items-center justify-between">
+        <div className="space-y-4 bg-base/10 p-4.5 rounded-3xl border border-border/40 backdrop-blur-sm">
+          <h3 className="text-[10px] font-black text-accent uppercase tracking-widest px-1.5 flex items-center justify-between">
             <span>Active Sprint</span>
-            <span className="bg-accent/10 text-accent px-1.5 py-0.5 rounded text-[8px] border border-accent/20">{tasks.filter(t => t.status === 'In Progress' || t.status === 'Under Review').length}</span>
+            <span className="bg-accent/10 text-accent px-2 py-0.5 rounded-full text-[9px] font-bold border border-accent/25">
+              {tasks.filter(t => t.status === 'In Progress' || t.status === 'Under Review').length}
+            </span>
           </h3>
           <div className="space-y-3">
             {tasks.filter(t => t.status === 'In Progress' || t.status === 'Under Review').map(task => (
-              <div key={task.id} onClick={() => onOpenTask(task)} className="p-4 bg-surface border border-border rounded-xl shadow-sm hover:border-accent/40 cursor-pointer transition-all group">
-                <div className="flex justify-between items-start gap-2 mb-2">
+              <div 
+                key={task.id} 
+                onClick={() => onOpenTask(task)} 
+                className="relative p-5 bg-surface border border-border/80 rounded-2xl shadow-xs hover:border-accent/40 hover:shadow-md cursor-pointer transition-all duration-200 group flex flex-col gap-3"
+              >
+                <div className="absolute left-0 top-3 bottom-3 w-1 bg-accent rounded-r-md" />
+                <div className="flex justify-between items-start gap-2">
                   <Badge text={task.status} type={task.status === 'Under Review' ? 'warning' : 'info'} />
-                  <span className="text-[8px] font-bold text-tertiary uppercase">#{task.id}</span>
+                  <span className="text-[9px] font-bold text-tertiary uppercase">#{task.id}</span>
                 </div>
-                <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors mb-2 leading-snug">{task.title}</h4>
-                <div className="w-full h-1 bg-base rounded-full overflow-hidden mb-3">
-                  <div className="h-full bg-accent" style={{ width: `${task.progress}%` }}></div>
+                <h4 className="text-xs font-black text-primary group-hover:text-accent transition-colors leading-snug">{task.title}</h4>
+                <div className="w-full h-1.5 bg-border/40 rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full" style={{ width: `${task.progress}%` }}></div>
                 </div>
-                <div className="flex justify-between items-center text-[9px] text-secondary font-bold uppercase">
+                <div className="flex justify-between items-center text-[10px] text-secondary font-bold uppercase mt-1">
                   <span>Progress: {task.progress}%</span>
-                  <span>{task.due}</span>
+                  <span className="text-tertiary flex items-center gap-1"><Clock size={10} /> {task.due}</span>
                 </div>
               </div>
             ))}
+            {tasks.filter(t => t.status === 'In Progress' || t.status === 'Under Review').length === 0 && (
+              <div className="text-center py-10 text-[10px] text-secondary font-bold uppercase tracking-wider bg-surface/20 border border-dashed border-border rounded-2xl">
+                No Active Tasks
+              </div>
+            )}
           </div>
         </div>
 
         {/* Done Column */}
-        <div className="space-y-4 bg-base/20 p-4 rounded-2xl border border-border/50">
-          <h3 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest px-1 flex items-center justify-between">
-            <span>Completed ledger</span>
-            <span className="bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded text-[8px] border border-emerald-500/20">{tasks.filter(t => t.status === 'Done').length}</span>
+        <div className="space-y-4 bg-base/10 p-4.5 rounded-3xl border border-border/40 backdrop-blur-sm">
+          <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest px-1.5 flex items-center justify-between">
+            <span>Completed Ledger</span>
+            <span className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full text-[9px] font-bold border border-emerald-500/25">
+              {tasks.filter(t => t.status === 'Done').length}
+            </span>
           </h3>
           <div className="space-y-3">
             {tasks.filter(t => t.status === 'Done').map(task => (
-              <div key={task.id} onClick={() => onOpenTask(task)} className="p-4 bg-surface border border-border rounded-xl shadow-sm hover:border-accent/40 cursor-pointer transition-all group opacity-85">
-                <div className="flex justify-between items-start gap-2 mb-2">
+              <div 
+                key={task.id} 
+                onClick={() => onOpenTask(task)} 
+                className="relative p-5 bg-surface border border-border/80 rounded-2xl shadow-xs hover:border-emerald-500/40 hover:shadow-md cursor-pointer transition-all duration-200 group flex flex-col gap-3 opacity-90 hover:opacity-100"
+              >
+                <div className="absolute left-0 top-3 bottom-3 w-1 bg-emerald-500 rounded-r-md" />
+                <div className="flex justify-between items-start gap-2">
                   <Badge text="Done" type="success" />
-                  <span className="text-[8px] font-bold text-tertiary uppercase">#{task.id}</span>
+                  <span className="text-[9px] font-bold text-tertiary uppercase">#{task.id}</span>
                 </div>
-                <h4 className="text-xs font-bold text-secondary line-through mb-2 leading-snug">{task.title}</h4>
-                <div className="w-full h-1 bg-base rounded-full overflow-hidden mb-3">
-                  <div className="h-full bg-emerald-500" style={{ width: '100%' }}></div>
+                <h4 className="text-xs font-bold text-secondary line-through group-hover:text-emerald-500 transition-colors leading-snug">{task.title}</h4>
+                <div className="w-full h-1.5 bg-border/40 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }}></div>
                 </div>
-                <div className="flex justify-between items-center text-[9px] text-secondary font-bold uppercase">
+                <div className="flex justify-between items-center text-[10px] text-secondary font-bold uppercase mt-1">
                   <span>Completed</span>
-                  <span>{task.due}</span>
+                  <span className="text-tertiary flex items-center gap-1"><Clock size={10} /> {task.due}</span>
                 </div>
               </div>
             ))}
+            {tasks.filter(t => t.status === 'Done').length === 0 && (
+              <div className="text-center py-10 text-[10px] text-secondary font-bold uppercase tracking-wider bg-surface/20 border border-dashed border-border rounded-2xl">
+                No Completed Tasks
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -351,52 +415,85 @@ const TimeModule = () => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-       <Card className="flex flex-col items-center justify-center py-12 relative overflow-hidden">
-          <div className="absolute inset-0 bg-accent/5 pointer-events-none"></div>
-          <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6 relative z-10">Active Session</h3>
-          <div className="text-6xl font-black text-primary tabular-nums mb-8 tracking-tighter relative z-10">
+       <Card className="flex flex-col items-center justify-center py-12 relative overflow-hidden bg-surface border-border/80 shadow-sm">
+          <div className={`absolute inset-0 bg-accent/[0.02] transition-opacity duration-300 pointer-events-none ${isRunning ? 'opacity-100' : 'opacity-0'}`}></div>
+          
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-[10px] font-black text-tertiary uppercase tracking-widest">Shift Session Timer</span>
+            {isRunning && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            )}
+          </div>
+
+          <div className={`text-6xl font-black text-primary font-mono tabular-nums mb-8 tracking-tighter relative z-10 transition-transform duration-300 ${
+            isRunning ? 'scale-105 text-accent drop-shadow-[0_0_12px_rgba(99,102,241,0.15)]' : ''
+          }`}>
             {formatTime(timer)}
           </div>
+
           <div className="flex gap-4 relative z-10">
-             <button onClick={handleToggleShift} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${isRunning ? 'bg-orange-500 shadow-orange-500/20' : 'bg-accent shadow-accent/20'}`}>
-                {isRunning ? <Pause size={24} className="text-white" /> : <Play size={24} className="text-white fill-white ml-1" />}
+             <button 
+               onClick={handleToggleShift} 
+               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 shadow-md hover:scale-105 active:scale-95 ${
+                 isRunning 
+                   ? 'bg-orange-500 text-white shadow-orange-500/20 hover:bg-orange-600' 
+                   : 'bg-accent text-white shadow-accent/20 hover:bg-indigo-600'
+               }`}
+             >
+                {isRunning ? <Pause size={22} strokeWidth={2.5} /> : <Play size={22} className="fill-white ml-1" />}
              </button>
-             <button onClick={() => setTimer(0)} className="w-14 h-14 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-base transition-all active:scale-95">
-                <RotateCcw size={24} className="text-secondary" />
+             <button 
+               onClick={() => { setTimer(0); setIsRunning(false); }} 
+               className="w-14 h-14 rounded-full bg-base border border-border/80 flex items-center justify-center hover:bg-base/80 hover:border-border transition-all duration-200 hover:scale-105 active:scale-95"
+               title="Reset Session Timer"
+             >
+                <RotateCcw size={20} className="text-secondary" />
              </button>
           </div>
+
           <button 
              onClick={handleCompleteSession}
-             className="btn-enterprise-primary w-48 mt-6 text-[10px] font-bold uppercase"
+             className="btn-enterprise-primary w-48 mt-7 text-[10px] font-bold uppercase tracking-wider py-2.5"
           >
              Log Current Shift
           </button>
-          <p className="mt-8 text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Shift Protocol: Active</p>
+          <p className="mt-8 text-[10px] font-bold text-emerald-500 uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+            Shift Protocol: {isRunning ? 'Active Tracker Running' : 'Tracker Standby'}
+          </p>
        </Card>
-       <Card>
-          <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Session History</h3>
-          <div className="space-y-4 max-h-[250px] overflow-y-auto pr-1">
-             {sessionHistory.length === 0 ? (
-                <div className="py-12 text-center text-xs text-secondary/60 italic border border-dashed border-border rounded-xl bg-base/5 flex flex-col items-center justify-center gap-2">
-                   <Clock size={20} className="text-secondary/40 animate-pulse" />
-                   <span>No logged shifts in this session.</span>
-                </div>
-             ) : (
-                sessionHistory.map((log, i) => (
-                   <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-base border border-border/50 group hover:border-accent/30 transition-all">
-                      <div>
-                         <div className="text-xs font-bold text-primary">{log.date}</div>
-                         <div className="text-[10px] text-tertiary font-bold uppercase">{log.project}</div>
-                      </div>
-                      <div className="text-right">
-                         <div className="text-sm font-black text-accent">{log.duration}</div>
-                         <div className="text-[9px] text-emerald-500 font-bold">{log.yield} Yield</div>
-                      </div>
-                   </div>
-                ))
-             )}
+
+       <Card className="bg-surface border-border/80 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-[10px] font-black text-tertiary uppercase tracking-widest mb-6">Session History Log</h3>
+            <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
+               {sessionHistory.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-secondary/60 italic border border-dashed border-border/80 rounded-2xl bg-base/5 flex flex-col items-center justify-center gap-2">
+                     <Clock size={20} className="text-secondary/40" />
+                     <span>No shifts logged in this session yet.</span>
+                  </div>
+               ) : (
+                  sessionHistory.map((log, i) => (
+                     <div key={i} className="flex items-center justify-between p-3.5 rounded-xl bg-base/40 border border-border/60 group hover:border-accent/40 hover:bg-base/70 transition-all duration-150">
+                        <div>
+                           <div className="text-xs font-black text-primary">{log.date}</div>
+                           <div className="text-[9px] text-secondary font-bold uppercase mt-0.5">{log.project}</div>
+                        </div>
+                        <div className="text-right">
+                           <div className="text-sm font-black text-accent">{log.duration}</div>
+                           <div className="text-[9px] text-emerald-500 font-extrabold">{log.yield} Yield</div>
+                        </div>
+                     </div>
+                  ))
+               )}
+            </div>
           </div>
-          <button onClick={handleExportLogs} className="btn-enterprise-secondary w-full mt-6 text-[10px] font-bold uppercase">Export Time Logs</button>
+          <button 
+            onClick={handleExportLogs} 
+            disabled={sessionHistory.length === 0}
+            className="btn-enterprise-secondary w-full mt-6 text-[10px] font-bold uppercase tracking-wider py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Export Time Logs
+          </button>
        </Card>
     </div>
   );
@@ -412,71 +509,134 @@ const PerformanceModule = () => {
       .then(d => { if (d.success) setData(d); else setErr(d.error); })
       .catch(e => setErr(e.message)).finally(() => setLoading(false));
   }, []);
-  if (loading) return <Card><div className="space-y-3 animate-pulse">{[1,2,3].map(i=><div key={i} className="h-14 bg-base rounded-xl"/>)}</div></Card>;
-  if (err || !data) return <Card><p className="text-secondary text-sm">Could not load performance: {err}</p></Card>;
+  
+  if (loading) return (
+    <div className="space-y-6">
+      <Card className="border-border/80 shadow-sm">
+        <div className="space-y-4 animate-pulse">
+          <Skeleton className="h-4 w-36" />
+          <div className="grid grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+
+  if (err || !data) return (
+    <Card className="border-red-500/20 bg-red-500/[0.02]">
+      <div className="flex items-center gap-3 text-red-500 p-2">
+        <AlertTriangle size={18} />
+        <div>
+          <h4 className="text-xs font-bold uppercase">Performance Telemetry Error</h4>
+          <p className="text-[11px] opacity-80 mt-0.5">Could not synchronize performance metrics: {err}</p>
+        </div>
+      </div>
+    </Card>
+  );
+
   const { tasks, leads, emails } = data;
   if (tasks.total === 0 && leads.assigned === 0 && emails.sentThisMonth === 0) {
     return (
-      <Card>
-         <div className="py-12 text-center text-xs text-secondary/60 italic border border-dashed border-border rounded-xl bg-base/5 flex flex-col items-center justify-center gap-2">
-            <BarChart3 size={24} className="text-secondary/40 animate-pulse" />
-            <h4 className="text-sm font-bold text-primary">Performance Track Empty</h4>
-            <p className="text-xs text-secondary font-medium">Complete assigned tasks or close leads to populate performance logs.</p>
+      <Card className="border-border/80 shadow-sm">
+         <div className="py-16 text-center border border-dashed border-border rounded-2xl bg-base/5 flex flex-col items-center justify-center gap-2">
+            <BarChart3 size={28} className="text-secondary/35 animate-pulse" />
+            <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Performance Log Empty</h4>
+            <p className="text-[10px] text-secondary font-medium">Complete assigned tasks or close leads to populate performance benchmarks.</p>
          </div>
       </Card>
     );
   }
+
   const cr = tasks.completionRate;
   const crColor = cr >= 80 ? 'text-emerald-500' : cr >= 50 ? 'text-amber-500' : 'text-red-500';
+  const crBg = cr >= 80 ? 'bg-emerald-500/10' : cr >= 50 ? 'bg-amber-500/10' : 'bg-red-500/10';
+
   return (
-    <div className="space-y-5">
-      <Card>
-        <h3 className="text-xs font-bold uppercase tracking-widest text-secondary mb-4 flex items-center gap-2"><BarChart3 size={13} className="text-accent"/> Performance Overview</h3>
-        <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-6">
+      <Card className="border-border/80 shadow-sm">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-tertiary mb-5 flex items-center gap-2">
+          <BarChart3 size={13} className="text-accent"/> Operational Performance Overview
+        </h3>
+        <div className="grid grid-cols-2 gap-4">
           {[
-            {label:'Tasks Done', value:`${tasks.done}/${tasks.total}`, sub:`${cr}% completion`, color:crColor},
-            {label:'Overdue', value:String(tasks.overdue), sub:'tasks overdue', color:tasks.overdue>0?'text-red-500':'text-emerald-500'},
-            {label:'Leads Assigned', value:String(leads.assigned), sub:`${leads.closedThisMonth} closed this month`, color:'text-accent'},
-            {label:'Emails Sent', value:String(emails.sentThisMonth), sub:'this month', color:'text-blue-500'},
-          ].map((s,i)=>(
-            <div key={i} className="bg-base border border-border rounded-xl p-3">
-              <div className="text-[10px] text-secondary uppercase font-bold tracking-wider mb-1">{s.label}</div>
-              <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-              <div className="text-[10px] text-secondary mt-0.5">{s.sub}</div>
+            { label: 'Tasks Completed', value: `${tasks.done}/${tasks.total}`, sub: `${cr}% completion rate`, color: crColor, bg: crBg },
+            { label: 'SLA Overdue', value: String(tasks.overdue), sub: 'action required', color: tasks.overdue > 0 ? 'text-red-500' : 'text-emerald-500', bg: tasks.overdue > 0 ? 'bg-red-500/10' : 'bg-emerald-500/10' },
+            { label: 'Leads Managed', value: String(leads.assigned), sub: `${leads.closedThisMonth} closed this month`, color: 'text-accent', bg: 'bg-accent/10' },
+            { label: 'Outreach Sent', value: String(emails.sentThisMonth), sub: 'current billing month', color: 'text-blue-500', bg: 'bg-blue-500/10' },
+          ].map((s, i) => (
+            <div key={i} className="bg-base/40 border border-border/60 rounded-2xl p-4.5 group hover:border-accent/30 transition-all duration-150">
+              <div className="text-[9px] text-secondary uppercase font-bold tracking-wider mb-1.5">{s.label}</div>
+              <div className="flex items-baseline gap-2">
+                <span className={`text-xl font-black ${s.color}`}>{s.value}</span>
+                <span className="text-[9px] text-tertiary font-medium">units</span>
+              </div>
+              <div className="text-[9px] text-tertiary font-bold mt-1.5 uppercase tracking-wide">{s.sub}</div>
             </div>
           ))}
         </div>
       </Card>
-      <Card>
-        <h3 className="text-xs font-bold uppercase tracking-widest text-secondary mb-3">Tasks by Stage</h3>
-        <div className="space-y-2">
-          {tasks.byStage.length === 0 && <p className="text-secondary text-sm">No tasks.</p>}
-          {tasks.byStage.map((s:any)=>(
-            <div key={s._id} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0">
-              <span className="text-sm text-primary">{s._id}</span>
-              <span className="text-sm font-bold text-accent">{s.count}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <h3 className="text-xs font-bold uppercase tracking-widest text-secondary mb-3">Pipeline</h3>
-        <div className="space-y-2">
-          {leads.byStage.map((s:any)=>(
-            <div key={s._id} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0">
-              <span className="text-sm text-primary">{s._id}</span>
-              <span className="text-sm font-bold text-accent">{s.count}</span>
-            </div>
-          ))}
-          {leads.byStage.length === 0 && <p className="text-secondary text-sm">No leads assigned.</p>}
-        </div>
-        {leads.pipelineValue > 0 && (
-          <div className="mt-3 pt-3 border-t border-border flex justify-between">
-            <span className="text-xs text-secondary uppercase font-bold tracking-wider">Pipeline Value</span>
-            <span className="font-bold text-emerald-500">${leads.pipelineValue.toLocaleString()}</span>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-border/80 shadow-sm">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-tertiary mb-4">Task Distribution by Stage</h3>
+          <div className="space-y-3.5">
+            {tasks.byStage.map((s: any, idx: number) => (
+              <div key={s._id} className="group">
+                <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
+                  <span className="text-secondary group-hover:text-primary transition-colors">{s._id}</span>
+                  <span className="text-accent">{s.count} tasks</span>
+                </div>
+                <div className="w-full h-1.5 bg-base/80 border border-border/40 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${tasks.total > 0 ? (s.count / tasks.total) * 100 : 0}%` }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                    className="h-full bg-accent rounded-full"
+                  />
+                </div>
+              </div>
+            ))}
+            {tasks.byStage.length === 0 && (
+              <p className="text-secondary/60 text-xs italic py-4 text-center">No tasks to distribute.</p>
+            )}
           </div>
-        )}
-      </Card>
+        </Card>
+
+        <Card className="border-border/80 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-tertiary mb-4">Lead Pipeline Stages</h3>
+            <div className="space-y-3.5">
+              {leads.byStage.map((s: any) => (
+                <div key={s._id} className="group">
+                  <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
+                    <span className="text-secondary group-hover:text-primary transition-colors">{s._id}</span>
+                    <span className="text-accent">{s.count} deals</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-base/80 border border-border/40 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${leads.assigned > 0 ? (s.count / leads.assigned) * 100 : 0}%` }}
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                      className="h-full bg-gradient-to-r from-accent to-indigo-400 rounded-full"
+                    />
+                  </div>
+                </div>
+              ))}
+              {leads.byStage.length === 0 && (
+                <p className="text-secondary/60 text-xs italic py-4 text-center">No deals in pipeline.</p>
+              )}
+            </div>
+          </div>
+          
+          {leads.pipelineValue > 0 && (
+            <div className="mt-5 pt-4 border-t border-border flex justify-between items-center">
+              <span className="text-[9px] text-tertiary uppercase font-extrabold tracking-wider">Pipeline Weighted Value</span>
+              <span className="font-black text-emerald-500 text-sm">${leads.pipelineValue.toLocaleString()}</span>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 };
@@ -753,30 +913,44 @@ function EmployeeDashboard() {
     );
   }
 
+  const timeOfDayGreeting = () => {
+    const hrs = new Date().getHours();
+    if (hrs < 12) return 'Good Morning';
+    if (hrs < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-8 py-10">
+    <div className="max-w-7xl mx-auto px-6 lg:px-8 py-10 min-h-screen bg-base text-primary">
       
       {/* Header */}
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 pb-6 border-b border-border/40"
+      >
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2.5">
              <Badge text="Operations Staff" type="info" />
-             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-             <span className="text-[10px] font-bold text-accent uppercase tracking-widest leading-none">Shift Status: Active</span>
+             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+             <span className="text-[10px] font-black text-accent uppercase tracking-widest leading-none">Shift Protocol Active</span>
           </div>
-          <h1 className="text-3xl font-bold text-primary tracking-tight">Staff Workspace</h1>
-          <p className="text-secondary text-sm mt-1 font-medium">Focus on your active assignments and collaborative tasks.</p>
+          <h1 className="text-3xl font-black text-primary tracking-tight">
+            {timeOfDayGreeting()}{currentUser?.name ? `, ${currentUser.name.split(' ')[0]}` : ''}
+          </h1>
+          <p className="text-secondary text-sm mt-1 font-medium font-sans">Focus on your active assignments and collaborative tasks.</p>
         </div>
+        
         <div className="flex items-center gap-4">
-           <div className="bg-surface border border-border p-3 rounded-xl flex items-center gap-4 shadow-sm">
-              <div className="text-right border-r border-border pr-4">
-                 <div className="text-[10px] font-bold text-secondary uppercase tracking-widest leading-none">Completion Rate</div>
-                 <div className="text-lg font-bold text-primary mt-1 leading-none">
-                   {tasks.length > 0 ? `${Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100)}%` : '—'}
+           <div className="bg-surface border border-border/80 px-5 py-3 rounded-2xl flex items-center gap-4 shadow-sm hover:border-accent/30 transition-colors">
+              <div className="text-right border-r border-border/80 pr-4">
+                 <div className="text-[9px] font-black text-secondary uppercase tracking-wider leading-none">Completion Rate</div>
+                 <div className="text-lg font-black text-primary mt-1.5 leading-none">
+                   {tasks.length > 0 ? `${Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100)}%` : '0%'}
                  </div>
               </div>
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                 <BarChart3 size={20} />
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/10">
+                 <BarChart3 size={18} />
               </div>
            </div>
         </div>
@@ -784,26 +958,33 @@ function EmployeeDashboard() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        <Card delay={0} className="p-4 border-border/60 cursor-pointer hover:border-accent/30 group" onClick={() => router.push('/employee?tab=tasks')}>
-           <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                 <CheckSquare size={20} />
+        <Card delay={0.02} className="p-5 border-border/80 cursor-pointer hover:border-accent/40 hover:shadow-md group transition-all duration-200" onClick={() => router.push('/employee?tab=tasks')}>
+           <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                 <div className="w-11 h-11 rounded-xl bg-accent/10 text-accent flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs border border-accent/10">
+                    <CheckSquare size={20} />
+                 </div>
+                 <div>
+                    <div className="text-[10px] font-black text-tertiary uppercase tracking-wider mb-1 leading-none">My Active Initiatives</div>
+                    <div className="text-xl font-black text-primary leading-none">{tasks.filter(t => t.status !== 'Done').length} tasks</div>
+                 </div>
               </div>
-              <div>
-                 <div className="text-[10px] font-bold text-tertiary uppercase mb-0.5 leading-none">My Active Tasks</div>
-                 <div className="text-lg font-bold text-primary mt-1 leading-none">{tasks.filter(t => t.status !== 'Done').length}</div>
-              </div>
+              <ChevronRight size={16} className="text-secondary group-hover:translate-x-1 transition-transform" />
            </div>
         </Card>
-        <Card delay={0.05} className="p-4 border-border/60 cursor-pointer hover:border-accent/30 group" onClick={() => router.push('/employee?tab=chat')}>
-           <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                 <MessageSquare size={20} />
+        
+        <Card delay={0.04} className="p-5 border-border/80 cursor-pointer hover:border-accent/40 hover:shadow-md group transition-all duration-200" onClick={() => router.push('/employee?tab=chat')}>
+           <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                 <div className="w-11 h-11 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs border border-rose-500/10">
+                    <MessageSquare size={20} />
+                 </div>
+                 <div>
+                    <div className="text-[10px] font-black text-tertiary uppercase tracking-wider mb-1 leading-none">Unread Communications</div>
+                    <div className="text-xl font-black text-primary leading-none">{unreadMessages > 0 ? `${unreadMessages} unread` : 'Clear outbox'}</div>
+                 </div>
               </div>
-              <div>
-                 <div className="text-[10px] font-bold text-tertiary uppercase mb-0.5 leading-none">Unread Messages</div>
-                 <div className="text-lg font-bold text-primary mt-1 leading-none">{unreadMessages > 0 ? unreadMessages : '—'}</div>
-              </div>
+              <ChevronRight size={16} className="text-secondary group-hover:translate-x-1 transition-transform" />
            </div>
         </Card>
       </div>
