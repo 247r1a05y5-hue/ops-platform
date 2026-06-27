@@ -59,6 +59,43 @@ export async function POST(req: NextRequest) {
     invoice.razorpaySignature = razorpay_signature;
     await invoice.save();
 
+    // Outbound webhook
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        const invoicePayload = {
+          invoiceId: invoice._id.toString(),
+          invoiceNumber: invoice.invoiceId,
+          client: invoice.client,
+          clientEmail: invoice.clientEmail || "",
+          clientPhone: invoice.clientPhone || "",
+          amount: invoice.amount,
+          category: invoice.category || "",
+          date: invoice.date || "",
+          due: invoice.due || "",
+          status: invoice.status,
+          razorpayOrderId: invoice.razorpayOrderId || "",
+          razorpayPaymentId: invoice.razorpayPaymentId || "",
+        };
+
+        console.log(`[Webhook] Enqueuing invoice_paid event for invoice ${invoice.invoiceId}`);
+        await enqueueWebhook({
+          event: 'invoice_paid',
+          targetUrl: webhookUrl,
+          payload: {
+            event: 'invoice_paid',
+            timestamp: new Date().toISOString(),
+            source: 'ops-platform',
+            version: '1.0',
+            data: invoicePayload,
+          },
+        });
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue invoice_paid webhook:', err.message);
+      }
+    }
+
     // Step 3: Log user activity
     try {
       let logUserId = session?.sub;

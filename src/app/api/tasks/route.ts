@@ -185,6 +185,73 @@ export async function POST(req: NextRequest) {
       req,
     }).catch(console.error);
 
+    // Outbound webhooks
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        const taskPayload = {
+          taskId: task._id.toString(),
+          code: task.code,
+          title: task.title,
+          description: task.description,
+          stage: task.stage,
+          priority: task.priority,
+          assignee: task.assignee || "",
+          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+          createdBy: task.createdBy || "",
+        };
+
+        // 1. task_created
+        console.log(`[Webhook] Enqueuing task_created event for task ${task.code}`);
+        await enqueueWebhook({
+          event: 'task_created',
+          targetUrl: webhookUrl,
+          payload: {
+            event: 'task_created',
+            timestamp: new Date().toISOString(),
+            source: 'ops-platform',
+            version: '1.0',
+            data: taskPayload,
+          },
+        });
+
+        // 2. task_assigned
+        if (task.assignee) {
+          console.log(`[Webhook] Enqueuing task_assigned event for task ${task.code}`);
+          await enqueueWebhook({
+            event: 'task_assigned',
+            targetUrl: webhookUrl,
+            payload: {
+              event: 'task_assigned',
+              timestamp: new Date().toISOString(),
+              source: 'ops-platform',
+              version: '1.0',
+              data: taskPayload,
+            },
+          });
+        }
+
+        // 3. task_completed
+        if (task.stage === 'Done') {
+          console.log(`[Webhook] Enqueuing task_completed event for task ${task.code}`);
+          await enqueueWebhook({
+            event: 'task_completed',
+            targetUrl: webhookUrl,
+            payload: {
+              event: 'task_completed',
+              timestamp: new Date().toISOString(),
+              source: 'ops-platform',
+              version: '1.0',
+              data: taskPayload,
+            },
+          });
+        }
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue task created/assigned/completed webhooks:', err.message);
+      }
+    }
+
     return NextResponse.json({ success: true, task }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

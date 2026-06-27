@@ -120,6 +120,43 @@ export async function PATCH(req: NextRequest) {
       await lead.save();
     }
 
+    // Outbound webhooks
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        const approvalPayload = {
+          requestId: approvalReq._id.toString(),
+          leadId: approvalReq.leadId.toString(),
+          requestedBy: approvalReq.requestedBy.toString(),
+          requestedByName: approvalReq.requestedByName,
+          reviewedBy: approvalReq.reviewedBy ? approvalReq.reviewedBy.toString() : "",
+          reviewedByName: approvalReq.reviewedByName || "",
+          reason: approvalReq.reason || "",
+          reviewNote: approvalReq.reviewNote || "",
+          dealValue: approvalReq.dealValue || "",
+          status: approvalReq.status,
+          reviewedAt: approvalReq.reviewedAt ? approvalReq.reviewedAt.toISOString() : null,
+        };
+
+        const eventName = newStatus === 'approved' ? 'workflow_approved' : 'workflow_rejected';
+        console.log(`[Webhook] Enqueuing ${eventName} event for request ${approvalReq._id}`);
+        await enqueueWebhook({
+          event: eventName,
+          targetUrl: webhookUrl,
+          payload: {
+            event: eventName,
+            timestamp: new Date().toISOString(),
+            source: 'ops-platform',
+            version: '1.0',
+            data: approvalPayload,
+          },
+        });
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue workflow approval/rejection webhook:', err.message);
+      }
+    }
+
     // Notify requester
     const requesterUser = await User.findById(approvalReq.requestedBy).select('email').lean() as any;
     if (requesterUser?.email && isValidEmail(requesterUser.email)) {

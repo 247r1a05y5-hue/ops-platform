@@ -130,6 +130,43 @@ export async function POST(req: NextRequest) {
       req,
     }).catch(console.error);
 
+    // Outbound webhook
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        const invoicePayload = {
+          invoiceId: newInvoice._id.toString(),
+          invoiceNumber: newInvoice.invoiceId,
+          client: newInvoice.client,
+          clientEmail: newInvoice.clientEmail || "",
+          clientPhone: newInvoice.clientPhone || "",
+          amount: newInvoice.amount,
+          category: newInvoice.category || "",
+          date: newInvoice.date || "",
+          due: newInvoice.due || "",
+          status: newInvoice.status,
+          razorpayOrderId: newInvoice.razorpayOrderId || "",
+          razorpayPaymentId: newInvoice.razorpayPaymentId || "",
+        };
+
+        console.log(`[Webhook] Enqueuing invoice_created event for invoice ${newInvoice.invoiceId}`);
+        await enqueueWebhook({
+          event: 'invoice_created',
+          targetUrl: webhookUrl,
+          payload: {
+            event: 'invoice_created',
+            timestamp: new Date().toISOString(),
+            source: 'ops-platform',
+            version: '1.0',
+            data: invoicePayload,
+          },
+        });
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue invoice_created webhook:', err.message);
+      }
+    }
+
     // sendWhatsAppMessage never throws — it returns a result object
     const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || '919284788141';
     const waResult = await sendWhatsAppMessage(adminPhone,
@@ -179,6 +216,43 @@ export async function PUT(req: NextRequest) {
         description: `Invoice ${invoice.invoiceId} of amount ${invoice.amount} marked as Paid by ${session.name}`,
         req,
       }).catch(console.error);
+
+      // Outbound webhook
+      const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          const { enqueueWebhook } = await import('@/lib/webhookQueue');
+          const invoicePayload = {
+            invoiceId: invoice._id.toString(),
+            invoiceNumber: invoice.invoiceId,
+            client: invoice.client,
+            clientEmail: invoice.clientEmail || "",
+            clientPhone: invoice.clientPhone || "",
+            amount: invoice.amount,
+            category: invoice.category || "",
+            date: invoice.date || "",
+            due: invoice.due || "",
+            status: invoice.status,
+            razorpayOrderId: invoice.razorpayOrderId || "",
+            razorpayPaymentId: invoice.razorpayPaymentId || "",
+          };
+
+          console.log(`[Webhook] Enqueuing invoice_paid event for invoice ${invoice.invoiceId}`);
+          await enqueueWebhook({
+            event: 'invoice_paid',
+            targetUrl: webhookUrl,
+            payload: {
+              event: 'invoice_paid',
+              timestamp: new Date().toISOString(),
+              source: 'ops-platform',
+              version: '1.0',
+              data: invoicePayload,
+            },
+          });
+        } catch (err: any) {
+          console.error('[Webhook] Failed to enqueue invoice_paid webhook:', err.message);
+        }
+      }
 
       return NextResponse.json({ success: true, invoice });
     }

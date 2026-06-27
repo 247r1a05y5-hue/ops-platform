@@ -92,6 +92,61 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       req,
     }).catch(console.error);
 
+    // Outbound webhooks
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        const taskPayload = {
+          taskId: task._id.toString(),
+          code: task.code,
+          title: task.title,
+          description: task.description,
+          stage: task.stage,
+          priority: task.priority,
+          assignee: task.assignee || "",
+          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+          createdBy: task.createdBy || "",
+        };
+
+        const stageChanged = previousTask && body.stage && previousTask.stage !== body.stage;
+        const completed    = stageChanged && body.stage === 'Done';
+        const assigned     = body.assignee && previousTask?.assignee !== body.assignee;
+
+        if (assigned) {
+          console.log(`[Webhook] Enqueuing task_assigned event for task ${task.code}`);
+          await enqueueWebhook({
+            event: 'task_assigned',
+            targetUrl: webhookUrl,
+            payload: {
+              event: 'task_assigned',
+              timestamp: new Date().toISOString(),
+              source: 'ops-platform',
+              version: '1.0',
+              data: taskPayload,
+            },
+          });
+        }
+
+        if (completed) {
+          console.log(`[Webhook] Enqueuing task_completed event for task ${task.code}`);
+          await enqueueWebhook({
+            event: 'task_completed',
+            targetUrl: webhookUrl,
+            payload: {
+              event: 'task_completed',
+              timestamp: new Date().toISOString(),
+              source: 'ops-platform',
+              version: '1.0',
+              data: taskPayload,
+            },
+          });
+        }
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue task updated webhooks:', err.message);
+      }
+    }
+
     return NextResponse.json({ success: true, task });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

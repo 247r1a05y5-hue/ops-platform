@@ -531,6 +531,43 @@ async function handleClosing(lead: any, session: WorkflowSession): Promise<strin
       razorpayOrderId: lead.razorpayOrderId || '',
     });
     actions.push(`invoice_created_${newInvoice.invoiceId}`);
+
+    // Outbound webhook
+    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const { enqueueWebhook } = await import('./webhookQueue');
+        const invoicePayload = {
+          invoiceId: newInvoice._id.toString(),
+          invoiceNumber: newInvoice.invoiceId,
+          client: newInvoice.client,
+          clientEmail: newInvoice.clientEmail || "",
+          clientPhone: newInvoice.clientPhone || "",
+          amount: newInvoice.amount,
+          category: newInvoice.category || "",
+          date: newInvoice.date || "",
+          due: newInvoice.due || "",
+          status: newInvoice.status,
+          razorpayOrderId: newInvoice.razorpayOrderId || "",
+          razorpayPaymentId: newInvoice.razorpayPaymentId || "",
+        };
+
+        console.log(`[Webhook] Enqueuing invoice_created event for auto-created invoice ${newInvoice.invoiceId}`);
+        await enqueueWebhook({
+          event: 'invoice_created',
+          targetUrl: webhookUrl,
+          payload: {
+            event: 'invoice_created',
+            timestamp: new Date().toISOString(),
+            source: 'ops-platform',
+            version: '1.0',
+            data: invoicePayload,
+          },
+        });
+      } catch (err: any) {
+        console.error('[Webhook] Failed to enqueue auto-created invoice_created webhook:', err.message);
+      }
+    }
   } catch (err) {
     console.error('[handleClosing] Failed to create invoice:', err);
   }
