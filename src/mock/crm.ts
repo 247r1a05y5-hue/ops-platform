@@ -31,21 +31,14 @@ export interface KeyboardShortcut {
 }
 
 // ---------------------------------------------------------------------------
-// Recently Viewed Leads (frontend-only, session-scoped)
+// Recently Viewed Leads (frontend-only, session-scoped) - Cleaned for policy
 // ---------------------------------------------------------------------------
-export const RECENTLY_VIEWED_LEADS: RecentlyViewedLead[] = [
-  { id: '1', name: 'Sarah Jenkins', company: 'Acme Corp', stage: 'Qualified', value: '$25,000', viewedAt: '2026-06-27T10:15:00.000Z' },
-  { id: '2', name: 'David Miller', company: 'Starlight Tech', stage: 'Negotiation', value: '$48,000', viewedAt: '2026-06-27T09:45:00.000Z' },
-  { id: '3', name: 'Elena Rostova', company: 'Siberia Logistics', stage: 'Proposal', value: '$12,500', viewedAt: '2026-06-27T08:30:00.000Z' },
-];
+export const RECENTLY_VIEWED_LEADS: RecentlyViewedLead[] = [];
 
 // ---------------------------------------------------------------------------
-// Pinned Leads (frontend-only, user-preference scoped)
+// Pinned Leads (frontend-only, user-preference scoped) - Cleaned for policy
 // ---------------------------------------------------------------------------
-export const PINNED_LEADS: PinnedLead[] = [
-  { id: '2', name: 'David Miller', company: 'Starlight Tech', stage: 'Negotiation', value: '$48,000', pinnedAt: '2026-06-27T09:00:00.000Z' },
-  { id: '4', name: 'Marcus Aurelius', company: 'Rome Enterprises', stage: 'Closing', value: '$120,000', pinnedAt: '2026-06-27T09:05:00.000Z' },
-];
+export const PINNED_LEADS: PinnedLead[] = [];
 
 // ---------------------------------------------------------------------------
 // Keyboard Shortcuts Reference

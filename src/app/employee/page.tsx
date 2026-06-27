@@ -7,7 +7,7 @@ import {
   CheckSquare, Clock, MessageSquare, Star, CheckCircle, 
   Pause, Play, RotateCcw, Save, BarChart3, 
   ChevronRight, ChevronDown, X, Paperclip, Check, ListChecks,
-  Search, Users
+  Search, Users, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
@@ -264,11 +264,7 @@ const TimeModule = () => {
   const [shiftStart, setShiftStart] = useState<Date | null>(null);
   const { showToast } = useUI();
 
-  const [sessionHistory, setSessionHistory] = useState([
-    { date: 'May 11', duration: '8h 12m', project: 'Media Campaign', yield: '98%' },
-    { date: 'May 10', duration: '7h 45m', project: 'Internal Ops', yield: '94%' },
-    { date: 'May 09', duration: '6h 20m', project: 'Global Logistics', yield: '96%' },
-  ]);
+  const [sessionHistory, setSessionHistory] = useState<any[]>([]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -380,18 +376,25 @@ const TimeModule = () => {
        <Card>
           <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-6">Session History</h3>
           <div className="space-y-4 max-h-[250px] overflow-y-auto pr-1">
-             {sessionHistory.map((log, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-base border border-border/50 group hover:border-accent/30 transition-all">
-                   <div>
-                      <div className="text-xs font-bold text-primary">{log.date}</div>
-                      <div className="text-[10px] text-tertiary font-bold uppercase">{log.project}</div>
-                   </div>
-                   <div className="text-right">
-                      <div className="text-sm font-black text-accent">{log.duration}</div>
-                      <div className="text-[9px] text-emerald-500 font-bold">{log.yield} Yield</div>
-                   </div>
+             {sessionHistory.length === 0 ? (
+                <div className="py-12 text-center text-xs text-secondary/60 italic border border-dashed border-border rounded-xl bg-base/5 flex flex-col items-center justify-center gap-2">
+                   <Clock size={20} className="text-secondary/40 animate-pulse" />
+                   <span>No logged shifts in this session.</span>
                 </div>
-             ))}
+             ) : (
+                sessionHistory.map((log, i) => (
+                   <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-base border border-border/50 group hover:border-accent/30 transition-all">
+                      <div>
+                         <div className="text-xs font-bold text-primary">{log.date}</div>
+                         <div className="text-[10px] text-tertiary font-bold uppercase">{log.project}</div>
+                      </div>
+                      <div className="text-right">
+                         <div className="text-sm font-black text-accent">{log.duration}</div>
+                         <div className="text-[9px] text-emerald-500 font-bold">{log.yield} Yield</div>
+                      </div>
+                   </div>
+                ))
+             )}
           </div>
           <button onClick={handleExportLogs} className="btn-enterprise-secondary w-full mt-6 text-[10px] font-bold uppercase">Export Time Logs</button>
        </Card>
@@ -412,6 +415,17 @@ const PerformanceModule = () => {
   if (loading) return <Card><div className="space-y-3 animate-pulse">{[1,2,3].map(i=><div key={i} className="h-14 bg-base rounded-xl"/>)}</div></Card>;
   if (err || !data) return <Card><p className="text-secondary text-sm">Could not load performance: {err}</p></Card>;
   const { tasks, leads, emails } = data;
+  if (tasks.total === 0 && leads.assigned === 0 && emails.sentThisMonth === 0) {
+    return (
+      <Card>
+         <div className="py-12 text-center text-xs text-secondary/60 italic border border-dashed border-border rounded-xl bg-base/5 flex flex-col items-center justify-center gap-2">
+            <BarChart3 size={24} className="text-secondary/40 animate-pulse" />
+            <h4 className="text-sm font-bold text-primary">Performance Track Empty</h4>
+            <p className="text-xs text-secondary font-medium">Complete assigned tasks or close leads to populate performance logs.</p>
+         </div>
+      </Card>
+    );
+  }
   const cr = tasks.completionRate;
   const crColor = cr >= 80 ? 'text-emerald-500' : cr >= 50 ? 'text-amber-500' : 'text-red-500';
   return (
@@ -526,6 +540,9 @@ function EmployeeDashboard() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [performanceData, setPerformanceData] = useState<any>(null);
+  const [loadingPerformance, setLoadingPerformance] = useState(true);
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadUserData() {
@@ -538,6 +555,21 @@ function EmployeeDashboard() {
         }
         const user = meData.user;
         setCurrentUser(user);
+
+        // Fetch performance metrics dynamically
+        try {
+          const perfRes = await fetch('/api/employee/performance', { credentials: 'include', cache: 'no-store' });
+          const perfData = await perfRes.json();
+          if (perfData.success) {
+            setPerformanceData(perfData);
+          } else {
+            setPerformanceError(perfData.error || 'Failed to load performance metrics');
+          }
+        } catch (err) {
+          setPerformanceError(err instanceof Error ? err.message : String(err));
+        } finally {
+          setLoadingPerformance(false);
+        }
 
         // Fetch team members dynamically
         try {
@@ -565,79 +597,9 @@ function EmployeeDashboard() {
         const tasksRes = await fetch('/api/tasks', { credentials: 'include', cache: 'no-store' });
         const tasksData = await tasksRes.json();
         if (tasksData.success) {
-          let userTasks = tasksData.tasks.filter((t: any) =>
+          const userTasks = tasksData.tasks.filter((t: any) =>
             t.assignee && (t.assignee.toLowerCase() === user.email.toLowerCase() || t.assignee.toLowerCase() === user.name.toLowerCase())
           );
-
-          // If no tasks are found, seed the mock ones in the DB for the user!
-          if (userTasks.length === 0) {
-            const initialMockTasks = [
-              {
-                title: 'Update media assets for Nova Retail',
-                description: 'Compress and upload all high-resolution promotional materials, print sequences, and brand videos for the Nova Retail Summer campaign.',
-                stage: 'In Progress',
-                priority: 'High',
-                progress: 65,
-                assignee: user.email,
-                tags: ['Asset Management', 'Nova Retail'],
-                subtasks: [
-                  { title: 'Compress high-res promotional sequence assets', done: true },
-                  { title: 'Validate asset scaling ratios', done: true },
-                  { title: 'Upload bundle sequences to CDN bucket', done: false }
-                ],
-                logs: [
-                  { time: '09:12 AM', author: user.name, note: 'Configured cloud bucket CDN parameters with cache headers.' },
-                  { time: '11:30 AM', author: user.name, note: 'Compressed raw summer visuals by 45%.' }
-                ]
-              },
-              {
-                title: 'Draft weekly performance overview',
-                description: 'Generate weekly analytical report outlining logistics bottlenecks, R2 migration node status, and yield ratios across active nodes.',
-                stage: 'Backlog',
-                priority: 'Medium',
-                progress: 0,
-                assignee: user.email,
-                tags: ['Reporting', 'Analytics'],
-                subtasks: [
-                  { title: 'Gather bandwidth consumption telemetry', done: false },
-                  { title: 'Calculate personnel output parameters', done: false }
-                ],
-                logs: []
-              },
-              {
-                title: 'Validate cloud storage bandwidth',
-                description: 'Verify load speeds, transfer yield, and potential egress congestion during peak hours for server cluster APAC-West.',
-                stage: 'Review',
-                priority: 'Critical',
-                progress: 95,
-                assignee: user.email,
-                tags: ['Infrastructure', 'APAC'],
-                subtasks: [
-                  { title: 'Initiate load simulation nodes', done: true },
-                  { title: 'Identify cache bypass bottlenecks', done: true },
-                  { title: 'Compile visual telemetry report', done: true }
-                ],
-                logs: [
-                  { time: 'Yesterday', author: user.name, note: 'Initiated active load simulation tests with 10k concurrent virtual users.' },
-                  { time: 'Today 08:00 AM', author: user.name, note: 'Telemetry logged. Node APAC-West is holding stable at 99.4% egress yield.' }
-                ]
-              }
-            ];
-
-            const createdTasks = [];
-            for (const mockT of initialMockTasks) {
-              const createRes = await fetch('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-                body: JSON.stringify(mockT)
-              });
-              const createData = await createRes.json();
-              if (createData.success) {
-                createdTasks.push(createData.task);
-              }
-            }
-            userTasks = createdTasks;
-          }
 
           const mappedTasks = userTasks.map((t: any) => ({
             _id: t._id,
@@ -895,22 +857,44 @@ function EmployeeDashboard() {
                       <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPerformerCollapsed ? '-rotate-90' : ''}`} />
                    </div>
                    <motion.div
-                      initial={false}
-                      animate={{ height: isPerformerCollapsed ? 0 : 'auto', opacity: isPerformerCollapsed ? 0 : 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                   >
-                      <div className="px-5 md:px-6 pb-6">
-                         <p className="text-xs text-secondary leading-relaxed mb-6 font-medium font-sans">Congratulations {currentUser?.name || 'User'}! You&apos;ve maintained a 98% efficiency rate this week. Keep up the great work!</p>
-                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center font-black text-2xl border border-accent/20">🏆</div>
-                            <div>
-                               <div className="text-[9px] font-bold uppercase tracking-widest text-tertiary leading-none mb-1">Current Streak</div>
-                               <div className="text-lg font-extrabold leading-none text-indigo-600 dark:text-indigo-400">14 Days</div>
-                            </div>
-                         </div>
-                      </div>
-                   </motion.div>
+                       initial={false}
+                       animate={{ height: isPerformerCollapsed ? 0 : 'auto', opacity: isPerformerCollapsed ? 0 : 1 }}
+                       transition={{ duration: 0.2 }}
+                       className="overflow-hidden"
+                    >
+                       <div className="px-5 md:px-6 pb-6">
+                          {loadingPerformance ? (
+                             <div className="py-6 flex flex-col items-center justify-center gap-2 border border-dashed border-border rounded-xl bg-base/5">
+                                <div className="w-5 h-5 rounded-full border border-accent border-t-transparent animate-spin" />
+                                <span className="text-[10px] text-secondary font-bold uppercase tracking-wider animate-pulse">Loading...</span>
+                             </div>
+                          ) : performanceError ? (
+                             <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-bold text-center flex items-center justify-center gap-1.5">
+                                <AlertTriangle size={12} />
+                                <span>Performance logs offline</span>
+                             </div>
+                          ) : (!performanceData || performanceData.tasks.total === 0) ? (
+                             <div className="text-center text-secondary/60 py-6 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
+                                No active performance logged.
+                             </div>
+                          ) : (
+                             <>
+                                <p className="text-xs text-secondary leading-relaxed mb-6 font-medium">
+                                   Congratulations {currentUser?.name || 'User'}! You&apos;ve maintained a {performanceData.tasks.completionRate}% efficiency rate this period. Keep up the great work!
+                                </p>
+                                <div className="flex items-center gap-3">
+                                   <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center font-black text-2xl border border-accent/20">🏆</div>
+                                   <div>
+                                      <div className="text-[9px] font-bold uppercase tracking-widest text-tertiary leading-none mb-1">Tasks Done</div>
+                                      <div className="text-lg font-extrabold leading-none text-indigo-600 dark:text-indigo-400">
+                                         {performanceData.tasks.done} / {performanceData.tasks.total}
+                                      </div>
+                                   </div>
+                                </div>
+                             </>
+                          )}
+                       </div>
+                    </motion.div>
                 </div>
              </Card>
 

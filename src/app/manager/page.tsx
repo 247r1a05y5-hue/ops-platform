@@ -586,6 +586,12 @@ function ManagerDashboard() {
                      <SectionSpinner message="Fetching Team Analytics..." />
                    ) : teamError ? (
                      <SectionError message={teamError} />
+                   ) : employees.length === 0 ? (
+                     <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                       <Users size={36} className="text-accent/30 mx-auto mb-4 animate-pulse" />
+                       <h3 className="text-sm font-bold text-primary mb-1">No Personnel Configured</h3>
+                       <p className="text-xs text-secondary font-medium">Please define department members or ranks in structural settings.</p>
+                     </div>
                    ) : (
                      <TeamModule employees={employees} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
                    )}
@@ -656,6 +662,12 @@ function ManagerDashboard() {
                        <SectionSpinner message="Fetching Performance Analytics..." />
                      ) : analyticsError ? (
                        <SectionError message={analyticsError} />
+                     ) : (tasks.length === 0 && !analytics) ? (
+                       <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                         <TrendingUp size={36} className="text-accent/30 mx-auto mb-4" />
+                         <h3 className="text-sm font-bold text-primary mb-1">Velocity Stream Empty</h3>
+                         <p className="text-xs text-secondary font-medium">Add task items or assign leads to render project charts.</p>
+                       </div>
                      ) : (
                        <>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -737,28 +749,40 @@ function ManagerDashboard() {
                       <h2 className="text-xl font-bold text-primary">Intelligence Reports</h2>
                       <p className="text-secondary text-xs">Detailed data exports and cross-departmental analysis.</p>
                    </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[
-                        { title: 'Personnel Yield Q2 Report', size: '4.2 MB', type: 'CSV Spreadsheet' },
-                        { title: 'Resource Efficiency Matrix Summary', size: '1.8 MB', type: 'CSV Spreadsheet' },
-                        { title: 'Strategic Roadmap 2026 Directives', size: '12.4 MB', type: 'CSV Spreadsheet' },
-                      ].map((report, i) => (
-                        <Card key={i} className="flex items-center justify-between p-4.5 border-border/60 hover:border-accent/40 transition-colors group">
-                           <div className="flex items-center gap-3.5">
-                              <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent/40 group-hover:text-accent transition-all shrink-0">
-                                 <FileText size={18} className="text-secondary group-hover:text-accent transition-colors" />
-                              </div>
-                              <div className="min-w-0">
-                                 <h4 className="text-xs font-bold text-primary truncate group-hover:text-accent transition-colors">{report.title}</h4>
-<p className="text-[10px] text-secondary font-semibold uppercase tracking-wider mt-0.5">{report.size} · {report.type}</p>
-                              </div>
-                           </div>
-                           <button onClick={() => handleDownloadCSV(report.title)} className="btn-enterprise-secondary p-2 group-hover:text-accent group-hover:border-accent/30 active:scale-90" title="Export CSV">
-                              <Download size={14} />
-                           </button>
-                        </Card>
-                      ))}
-                   </div>
+                   {loadingTeam ? (
+                     <SectionSpinner message="Loading Reports..." />
+                   ) : teamError ? (
+                     <SectionError message={teamError} />
+                   ) : (employees.length === 0 && tasks.length === 0) ? (
+                     <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                        <FileText size={36} className="text-accent/30 mx-auto mb-4" />
+                        <h3 className="text-sm font-bold text-primary mb-1">No Reports Available</h3>
+                        <p className="text-xs text-secondary font-medium">Add personnel or log tasks to compile system reports.</p>
+                     </div>
+                   ) : (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[
+                          { title: 'Personnel Yield Q2 Report', size: '4.2 MB', type: 'CSV Spreadsheet' },
+                          { title: 'Resource Efficiency Matrix Summary', size: '1.8 MB', type: 'CSV Spreadsheet' },
+                          { title: 'Strategic Roadmap 2026 Directives', size: '12.4 MB', type: 'CSV Spreadsheet' },
+                        ].map((report, i) => (
+                          <Card key={i} className="flex items-center justify-between p-4.5 border-border/60 hover:border-accent/40 transition-colors group">
+                             <div className="flex items-center gap-3.5">
+                                <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent/40 group-hover:text-accent transition-all shrink-0">
+                                   <FileText size={18} className="text-secondary group-hover:text-accent transition-colors" />
+                                </div>
+                                <div className="min-w-0">
+                                   <h4 className="text-xs font-bold text-primary truncate group-hover:text-accent transition-colors">{report.title}</h4>
+                                   <p className="text-[10px] text-secondary font-semibold uppercase tracking-wider mt-0.5">{report.size} · {report.type}</p>
+                                </div>
+                             </div>
+                             <button onClick={() => handleDownloadCSV(report.title)} className="btn-enterprise-secondary p-2 group-hover:text-accent group-hover:border-accent/30 active:scale-90" title="Export CSV">
+                                <Download size={14} />
+                             </button>
+                          </Card>
+                        ))}
+                     </div>
+                   )}
                 </motion.div>
               )}
            </AnimatePresence>
@@ -778,47 +802,65 @@ function ManagerDashboard() {
                    </h3>
                    <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPulseCollapsed ? '-rotate-90' : ''}`} />
                 </div>
-                <motion.div 
-                   initial={false}
-                   animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
-                   transition={{ duration: 0.2 }}
-                   className="overflow-hidden"
-                >
-                   <div className="px-5 pb-5 space-y-5">
-                      <div>
-                         <div className="flex justify-between items-center mb-2 text-xs">
-                            <span className="font-semibold text-secondary">Global Performance</span>
-                            <span className="font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+8.4%'}</span>
-                         </div>
-                         <div className="h-10 flex items-end gap-1.5 px-1">
-                            {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
-                              <div key={i} className="flex-1 bg-accent/20 rounded-t group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
-                                 <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/30 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 font-mono">Week {i+1}</div>
-                              </div>
-                            ))}
-                         </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-border/40">
-                         <div className="p-3 bg-base border border-border rounded-xl">
-                            <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Revenue</div>
-                            <div className="text-sm font-bold text-primary font-mono">
-                               {analytics?.revenue?.current
-                                 ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                                 : '₹14,50,000'}
-                            </div>
-                         </div>
-                         <div className="p-3 bg-base border border-border rounded-xl">
-                            <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Task Rate</div>
-                            <div className="text-sm font-bold text-primary font-mono">
-                               {analytics
-                                 ? `${analytics.tasks.completionRate}%`
-                                 : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 85}%`}
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                </motion.div>
+                 <motion.div 
+                    initial={false}
+                    animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                 >
+                    <div className="px-5 pb-5">
+                       {loadingAnalytics ? (
+                          <div className="py-8 flex flex-col items-center justify-center gap-2 border border-dashed border-border rounded-xl bg-base/5">
+                             <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                             <span className="text-[10px] text-secondary font-bold uppercase tracking-wider animate-pulse">Loading Pulse...</span>
+                          </div>
+                       ) : analyticsError ? (
+                          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-bold text-center flex items-center justify-center gap-1.5">
+                             <AlertTriangle size={12} />
+                             <span>Analytics System Offline</span>
+                          </div>
+                       ) : (tasks.length === 0 && !analytics) ? (
+                          <div className="text-center text-secondary/60 py-8 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
+                             No active performance data to track.
+                          </div>
+                       ) : (
+                          <div className="space-y-5">
+                             <div>
+                                <div className="flex justify-between items-center mb-2 text-xs">
+                                   <span className="font-semibold text-secondary">Global Performance</span>
+                                   <span className="font-bold text-emerald-500 font-mono">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
+                                </div>
+                                <div className="h-10 flex items-end gap-1.5 px-1">
+                                   {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
+                                     <div key={i} className="flex-1 bg-accent/20 rounded-t group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
+                                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/30 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 font-mono">Week {i+1}</div>
+                                     </div>
+                                   ))}
+                                </div>
+                             </div>
+                             
+                             <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-border/40">
+                                <div className="p-3 bg-base border border-border rounded-xl">
+                                   <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Revenue</div>
+                                   <div className="text-sm font-bold text-primary font-mono">
+                                      {analytics?.revenue?.current
+                                        ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                                        : '₹0'}
+                                   </div>
+                                </div>
+                                <div className="p-3 bg-base border border-border rounded-xl">
+                                   <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Task Rate</div>
+                                   <div className="text-sm font-bold text-primary font-mono">
+                                      {analytics
+                                        ? `${analytics.tasks.completionRate}%`
+                                        : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
+                                   </div>
+                                </div>
+                             </div>
+                          </div>
+                       )}
+                    </div>
+                 </motion.div>
              </Card>
 
              {/* Executive Insights (AI Briefing) */}
@@ -919,20 +961,33 @@ function ManagerDashboard() {
                       Recently Approved
                    </h3>
                 </div>
-                <div className="px-5 pb-5 space-y-3">
-                   {approvals.filter(a => a.status === 'Authorized').slice(0, 3).map((item, i) => (
-                      <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-accent/35 transition-colors">
-                         <div className="flex justify-between items-center gap-2">
-                            <span className="text-xs font-bold text-primary truncate">{item.user}</span>
-                            <span className="text-[8.5px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">Approved</span>
-                         </div>
-                         <p className="text-[11px] text-secondary font-medium leading-relaxed">{item.detail}</p>
-                         <div className="text-[9px] text-tertiary font-bold uppercase pt-1 tracking-wider font-mono">Authorized {item.date}</div>
+                <div className="px-5 pb-5">
+                   {loadingApprovals ? (
+                      <div className="py-6 flex flex-col items-center justify-center gap-2 border border-dashed border-border rounded-xl bg-base/5">
+                         <div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                         <span className="text-[10px] text-secondary font-bold uppercase tracking-wider animate-pulse">Loading approvals...</span>
                       </div>
-                   ))}
-                   {approvals.filter(a => a.status === 'Authorized').length === 0 && (
+                   ) : approvalsError ? (
+                      <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-bold text-center flex items-center justify-center gap-1">
+                         <AlertTriangle size={12} />
+                         <span>Approvals System Offline</span>
+                      </div>
+                   ) : approvals.filter(a => a.status === 'Authorized').length === 0 ? (
                       <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
                          No recent authorizations logged.
+                      </div>
+                   ) : (
+                      <div className="space-y-3">
+                         {approvals.filter(a => a.status === 'Authorized').slice(0, 3).map((item, i) => (
+                            <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-accent/35 transition-colors">
+                               <div className="flex justify-between items-center gap-2">
+                                  <span className="text-xs font-bold text-primary truncate">{item.user}</span>
+                                  <span className="text-[8.5px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">Approved</span>
+                               </div>
+                               <p className="text-[11px] text-secondary font-medium leading-relaxed">{item.detail}</p>
+                               <div className="text-[9px] text-tertiary font-bold uppercase pt-1 tracking-wider font-mono">Authorized {item.date}</div>
+                            </div>
+                         ))}
                       </div>
                    )}
                 </div>
