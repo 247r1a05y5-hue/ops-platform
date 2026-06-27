@@ -59,20 +59,20 @@ export default function Sidebar() {
     <motion.div
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className={`bg-base border-r border-border h-screen flex flex-col shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
+      className={`bg-surface border-r border-border/60 h-screen flex flex-col shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
     >
       {/* Logo */}
-      <div className={`h-20 flex items-center border-b border-border bg-base/50 backdrop-blur-md transition-all duration-300 ${sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-6'}`}>
+      <div className={`h-20 flex items-center border-b border-border bg-base/10 backdrop-blur-md transition-all duration-300 ${sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-6'}`}>
         <div className="flex items-center gap-3 font-black text-lg tracking-tight text-primary">
           <motion.div
-            whileHover={{ scale: 1.05, rotate: 5 }}
-            className="w-10 h-10 bg-gradient-to-br from-accent to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-accent/20"
+            whileHover={{ scale: 1.02, rotate: 2 }}
+            className="w-10 h-10 bg-gradient-to-br from-accent to-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-accent/15 shrink-0"
           >
             <Settings2 size={20} className="text-white" />
           </motion.div>
           {!sidebarCollapsed && (
             <div className="flex flex-col">
-              <span className="leading-none text-primary uppercase tracking-tighter">Ops Platform</span>
+              <span className="leading-none text-primary uppercase tracking-tighter text-sm font-extrabold">Ops Platform</span>
               <span className="text-[9px] font-black text-accent uppercase tracking-[0.3em] mt-1">Enterprise</span>
             </div>
           )}
@@ -82,7 +82,7 @@ export default function Sidebar() {
         {!sidebarCollapsed && (
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+            className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-base/60 transition-colors"
             aria-label="Close sidebar"
           >
             <X size={18} />
@@ -91,24 +91,24 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <div className={`p-4 flex-1 overflow-y-auto custom-scrollbar transition-all duration-300 ${sidebarCollapsed ? 'space-y-4 px-2' : 'space-y-8 px-4'}`}>
+      <div className={`p-3.5 flex-1 overflow-y-auto custom-scrollbar transition-all duration-300 ${sidebarCollapsed ? 'space-y-4 px-2' : 'space-y-6 px-3.5'}`}>
         <div>
-          {!sidebarCollapsed && <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-4 px-3">Primary Navigation</div>}
-          <nav className="space-y-1.5">
+          {!sidebarCollapsed && <div className="text-[10px] font-bold text-secondary/80 uppercase tracking-wider mb-3 px-3.5">Primary Navigation</div>}
+          <nav className="space-y-1">
             {adminNavItems.map((item, i) => {
               const isActive = pathname === item.href || (item.href.includes('?') && pathname + '?tab=chat' === item.href);
               const badge = (item as any).badge;
               return (
-                <motion.div key={item.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + (i * 0.05) }}>
+                <motion.div key={item.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + (i * 0.03) }}>
                   <Link
                     href={item.href}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center rounded-2xl text-sm font-bold transition-all duration-200 group relative ${
-                      sidebarCollapsed ? 'justify-center p-3' : 'gap-3 px-4 py-3'
-                    } ${isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border'}`}
+                    className={`flex items-center rounded-xl text-[13.5px] font-medium transition-all duration-150 group relative focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+                      sidebarCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-2.5'
+                    } ${isActive ? 'bg-accent/8 text-accent font-semibold dark:bg-accent/15' : 'text-secondary hover:text-primary hover:bg-base/60 border border-transparent'}`}
                     title={sidebarCollapsed ? item.name : undefined}
                   >
-                    <item.icon size={18} className={`${isActive ? 'text-white' : 'text-secondary group-hover:text-accent'} transition-colors shrink-0`} />
+                    <item.icon size={18} className={`${isActive ? 'text-accent' : 'text-secondary/80 group-hover:text-primary'} transition-colors shrink-0`} />
                     {!sidebarCollapsed && <span className="flex-1 truncate">{item.name}</span>}
                     {!sidebarCollapsed && (
                       <button
@@ -117,7 +117,7 @@ export default function Sidebar() {
                           e.stopPropagation();
                           toggleFavorite({ name: item.name, href: item.href });
                         }}
-                        className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all z-20 ${
+                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-lg transition-all z-20 focus-visible:opacity-100 ${
                           isFavorite(item.href) ? 'text-yellow-500' : 'text-tertiary hover:text-yellow-500 hover:bg-base/80'
                         }`}
                         title={isFavorite(item.href) ? "Remove from Favorites" : "Add to Favorites"}
@@ -129,12 +129,12 @@ export default function Sidebar() {
                       sidebarCollapsed ? (
                         <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 border border-base animate-pulse"></span>
                       ) : (
-                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none ${isActive ? 'bg-white text-accent' : 'bg-accent text-white'}`}>
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none ${isActive ? 'bg-accent/20 text-accent border border-accent/20' : 'bg-accent text-white'}`}>
                           {badge > 99 ? '99+' : badge}
                         </span>
                       )
                     )}
-                    {isActive && !badge && !sidebarCollapsed && <motion.span layoutId="activeNav" className="absolute left-0 w-1 h-6 bg-white rounded-r-full" />}
+                    {isActive && !badge && !sidebarCollapsed && <motion.span layoutId="activeNav" className="absolute left-0 w-0.5 h-4 bg-accent rounded-r-full" />}
                   </Link>
                 </motion.div>
               );
@@ -143,8 +143,8 @@ export default function Sidebar() {
         </div>
 
         {favorites.length > 0 && !sidebarCollapsed && (
-          <div className="space-y-3">
-            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+          <div className="space-y-2">
+            <div className="text-[10px] font-bold text-secondary/80 uppercase tracking-wider mb-2 px-3.5 flex items-center gap-1.5">
               <Star size={10} className="text-yellow-500 fill-yellow-500" /> Favorites
             </div>
             <nav className="space-y-1">
@@ -156,11 +156,11 @@ export default function Sidebar() {
                   <Link
                     key={fav.href}
                     href={fav.href}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
-                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border border-transparent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+                      isActive ? 'bg-accent/8 text-accent border-accent/25' : 'text-secondary hover:text-primary hover:bg-base/60'
                     }`}
                   >
-                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary/80'} />
                     <span className="truncate flex-1">{fav.name}</span>
                   </Link>
                 );
@@ -170,8 +170,8 @@ export default function Sidebar() {
         )}
 
         {recents.length > 0 && !sidebarCollapsed && (
-          <div className="space-y-3">
-            <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-2 px-3 flex items-center gap-1.5">
+          <div className="space-y-2">
+            <div className="text-[10px] font-bold text-secondary/80 uppercase tracking-wider mb-2 px-3.5 flex items-center gap-1.5">
               <Clock size={10} className="text-accent" /> Recents
             </div>
             <nav className="space-y-1">
@@ -183,11 +183,11 @@ export default function Sidebar() {
                   <Link
                     key={rec.href}
                     href={rec.href}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-transparent ${
-                      isActive ? 'bg-accent/10 text-accent border-accent/20' : 'text-secondary hover:text-primary hover:bg-surface'
+                    className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border border-transparent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+                      isActive ? 'bg-accent/8 text-accent border-accent/25' : 'text-secondary hover:text-primary hover:bg-base/60'
                     }`}
                   >
-                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary'} />
+                    <Icon size={14} className={isActive ? 'text-accent' : 'text-secondary/80'} />
                     <span className="truncate flex-1">{rec.name}</span>
                   </Link>
                 );
@@ -197,16 +197,16 @@ export default function Sidebar() {
         )}
 
         <div>
-          {!sidebarCollapsed && <div className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] mb-4 px-3">Support</div>}
-          <nav className="space-y-1.5">
+          {!sidebarCollapsed && <div className="text-[10px] font-bold text-secondary/80 uppercase tracking-wider mb-3 px-3.5">Support</div>}
+          <nav className="space-y-1">
             <Link 
               href="/settings" 
-              className={`flex items-center rounded-2xl text-sm font-bold text-secondary hover:text-primary hover:bg-surface border border-transparent hover:border-border transition-all ${
-                sidebarCollapsed ? 'justify-center p-3' : 'gap-3 px-4 py-3'
+              className={`flex items-center rounded-xl text-[13.5px] font-medium text-secondary hover:text-primary hover:bg-base/60 border border-transparent transition-all focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+                sidebarCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-2.5'
               }`}
               title={sidebarCollapsed ? "Settings" : undefined}
             >
-              <SettingsIcon size={18} className="shrink-0" />
+              <SettingsIcon size={18} className="shrink-0 text-secondary/80 group-hover:text-primary" />
               {!sidebarCollapsed && <span>Settings</span>}
             </Link>
           </nav>
@@ -214,22 +214,22 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className={`p-4 border-t border-border bg-surface/30 transition-all duration-300 ${sidebarCollapsed ? 'flex flex-col items-center gap-3' : ''}`}>
-        <motion.div whileHover={{ y: -2 }} className={`flex items-center bg-base border border-border rounded-2xl shadow-sm group hover:border-accent/40 transition-all cursor-pointer ${
-          sidebarCollapsed ? 'justify-center p-3 w-12 h-12' : 'gap-3 p-3 mb-4 w-full'
+      <div className={`p-4 border-t border-border bg-base/15 transition-all duration-300 ${sidebarCollapsed ? 'flex flex-col items-center gap-3' : ''}`}>
+        <motion.div whileHover={{ y: -0.5 }} className={`flex items-center bg-base/40 border border-border/50 rounded-xl shadow-xs group hover:border-border/80 transition-all cursor-pointer ${
+          sidebarCollapsed ? 'justify-center p-2.5 w-12 h-12' : 'gap-3 p-2.5 mb-3 w-full'
         }`} title={sidebarCollapsed ? (user?.name ?? 'Admin') : undefined}>
           <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-black text-xs border border-accent/20 shrink-0">
             {user ? getInitials(user.name) : 'AD'}
           </div>
           {!sidebarCollapsed && (
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-black text-primary truncate">{user?.name ?? 'Admin'}</div>
-              <div className="text-[10px] font-bold text-tertiary truncate uppercase tracking-widest">{user?.displayRole ?? 'Admin'}</div>
+              <div className="text-xs font-semibold text-primary truncate">{user?.name ?? 'Admin'}</div>
+              <div className="text-[10px] font-bold text-secondary truncate uppercase tracking-widest">{user?.displayRole ?? 'Admin'}</div>
             </div>
           )}
         </motion.div>
-        <button onClick={handleLogout} className={`flex items-center rounded-2xl text-sm font-black text-red-500 hover:bg-red-500/10 transition-all active:scale-95 border border-transparent hover:border-red-500/20 ${
-          sidebarCollapsed ? 'justify-center p-3 w-12 h-12' : 'w-full gap-3 px-4 py-3'
+        <button onClick={handleLogout} className={`flex items-center rounded-xl text-[13px] font-semibold text-red-500/90 hover:text-red-500 hover:bg-red-500/5 transition-all active:scale-98 border border-transparent hover:border-red-500/10 ${
+          sidebarCollapsed ? 'justify-center p-2.5 w-12 h-12' : 'w-full gap-3 px-3.5 py-2.5'
         }`} title={sidebarCollapsed ? "Sign Out" : undefined}>
           <LogOut size={18} className="shrink-0" /> {!sidebarCollapsed && "Sign Out"}
         </button>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { Search, Bell, Sun, Moon, Settings as SettingsIcon, LogOut, Check, Menu } from 'lucide-react';
+import { Search, Bell, Sun, Moon, Settings as SettingsIcon, LogOut, Check, Menu, ChevronRight } from 'lucide-react';
 import { useUI } from '@/context/UIContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -141,7 +141,9 @@ export default function Topbar() {
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   if (pathname === '/landing' || pathname === '/login' || pathname === '/') return null;
@@ -156,13 +158,39 @@ export default function Topbar() {
     await logout();
   };
 
-  return (
-    <div className="h-16 border-b border-border bg-base/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-50 sticky top-0 w-full shrink-0 transition-colors gap-4">
+  // Breadcrumbs parsing
+  const SEGMENT_NAMES: Record<string, string> = {
+    admin: 'Admin',
+    crm: 'CRM',
+    mr: 'Media Desk',
+    marketing: 'Marketing',
+    employee: 'Workspace',
+    invoices: 'Invoices',
+    tasks: 'Tasks',
+    catalog: 'Catalog',
+    analytics: 'Analytics',
+    integrations: 'Integrations',
+    settings: 'Settings',
+    audit: 'Audit Log',
+    chat: 'Chat Moderation',
+    pay: 'Razorpay Checkout',
+    proposals: 'Proposals',
+  };
 
-      <div className="flex items-center gap-2 flex-1 max-w-xl">
+  const segments = pathname.split('/').filter(Boolean);
+  const breadcrumbs = segments.map((seg, index) => {
+    const name = SEGMENT_NAMES[seg.toLowerCase()] || seg.charAt(0).toUpperCase() + seg.slice(1);
+    const href = '/' + segments.slice(0, index + 1).join('/');
+    return { name, href, isLast: index === segments.length - 1 };
+  });
+
+  return (
+    <div className="h-16 border-b border-border/50 bg-surface/85 backdrop-blur-md flex items-center justify-between px-6 z-50 sticky top-0 w-full shrink-0 transition-colors gap-4 select-none">
+
+      <div className="flex items-center gap-3 flex-1 max-w-xl">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+          className="lg:hidden p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-base/60 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           aria-label="Open sidebar"
         >
           <Menu size={20} />
@@ -171,20 +199,38 @@ export default function Topbar() {
         {/* Desktop Collapse Toggle */}
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="hidden lg:flex p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface border border-border bg-surface/50 shadow-sm transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+          className="hidden lg:flex p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-base/60 border border-border/40 bg-surface/40 shadow-xs transition-all duration-150 active:scale-95 cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           <Menu size={16} />
         </button>
 
-        <div className="relative group flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-accent transition-colors" size={16} />
+        {/* Dynamic Breadcrumbs */}
+        {breadcrumbs.length > 0 && (
+          <div className="hidden md:flex items-center gap-1.5 text-xs text-secondary/70 font-semibold px-2 shrink-0">
+            <span className="h-4 w-px bg-border/50 mx-1.5" />
+            {breadcrumbs.map((crumb, idx) => (
+              <div key={crumb.href} className="flex items-center gap-1.5">
+                {idx > 0 && <ChevronRight size={10} className="text-tertiary/60" />}
+                {crumb.isLast ? (
+                  <span className="text-primary font-bold tracking-tight truncate max-w-[120px]">{crumb.name}</span>
+                ) : (
+                  <Link href={crumb.href} className="hover:text-primary transition-colors truncate max-w-[100px]">{crumb.name}</Link>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Sleek Search Box */}
+        <div className="relative group flex-1 min-w-[140px] max-w-[280px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-accent transition-colors" size={14} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search workspace..."
-            className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-primary placeholder-secondary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all font-medium"
+            className="w-full bg-base/55 border border-border/40 hover:border-border/80 rounded-xl pl-9 pr-4 py-1.5 text-xs text-primary placeholder-secondary/80 focus:outline-none focus:bg-surface focus:border-accent focus:ring-1 focus:ring-accent transition-all duration-150 font-medium"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 showToast(`Searching for: ${searchQuery}`, 'info');
@@ -192,15 +238,15 @@ export default function Topbar() {
               }
             }}
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
-            <kbd className="hidden sm:inline px-1.5 py-0.5 text-[10px] bg-border text-secondary rounded font-mono">⌘K</kbd>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex gap-1">
+            <kbd className="hidden sm:inline px-1 py-0.5 text-[9px] bg-border/60 text-secondary rounded font-mono font-bold">⌘K</kbd>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 sm:gap-4">
+      <div className="flex items-center gap-1.5 sm:gap-3">
         <button
-          className="p-2 rounded-lg text-secondary hover:text-primary hover:bg-surface transition-colors"
+          className="p-2 rounded-xl text-secondary hover:text-primary hover:bg-base/60 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           onClick={() => {
             toggleTheme();
             showToast(`Switched to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`, 'info');
@@ -212,17 +258,23 @@ export default function Topbar() {
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setNotifOpen(!notifOpen)}
-            className={`relative p-2 rounded-lg transition-colors ${notifOpen ? 'bg-surface text-primary' : 'text-secondary hover:text-primary hover:bg-surface'}`}
+            className={`relative p-2 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${notifOpen ? 'bg-base text-primary' : 'text-secondary hover:text-primary hover:bg-base/60'}`}
           >
             <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-base animate-pulse"></span>
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-surface animate-pulse"></span>
             )}
           </button>
 
           <AnimatePresence>
             {notifOpen && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-96 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+              <motion.div 
+                initial={{ opacity: 0, y: 8, scale: 0.95 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                exit={{ opacity: 0, y: 8, scale: 0.95 }} 
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="absolute right-0 mt-2.5 w-96 bg-surface border border-border/80 rounded-2xl shadow-xl z-50 overflow-hidden"
+              >
                 <div className="px-4 py-3 border-b border-border flex justify-between items-center bg-base/50">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-sm">Notifications</h3>
@@ -263,30 +315,39 @@ export default function Topbar() {
         <div className="relative ml-2" ref={profileRef}>
           <button
             onClick={() => setProfileOpen(!profileOpen)}
-            className={`w-8 h-8 rounded-full border border-border flex items-center justify-center font-bold text-xs hover:ring-2 hover:ring-accent/50 transition-all ${avatarColor}`}
+            className={`w-9 h-9 rounded-full border border-border/50 flex items-center justify-center font-semibold text-xs tracking-wide shadow-sm hover:border-accent/40 active:scale-95 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none transition-all cursor-pointer ${avatarColor}`}
+            aria-expanded={profileOpen}
+            aria-haspopup="true"
+            aria-label="User profile options"
           >
             {initials}
           </button>
 
           <AnimatePresence>
             {profileOpen && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-xl shadow-2xl py-2 z-50">
-                <div className="px-4 py-3 border-b border-border mb-2">
-                  <p className="font-bold text-sm">{user?.name ?? 'User'}</p>
-                  <p className="text-xs text-secondary">{user?.email ?? ''}</p>
+              <motion.div 
+                initial={{ opacity: 0, y: 8, scale: 0.95 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                exit={{ opacity: 0, y: 8, scale: 0.95 }} 
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="absolute right-0 mt-2.5 w-60 bg-surface/95 border border-border/80 rounded-2xl shadow-xl py-2.5 z-50 backdrop-blur-md"
+              >
+                <div className="px-4 py-3 border-b border-border/60 mb-2">
+                  <p className="font-semibold text-sm text-primary">{user?.name ?? 'User'}</p>
+                  <p className="text-xs text-secondary truncate">{user?.email ?? ''}</p>
                   {user && (
-                    <p className="text-xs text-accent font-semibold mt-0.5">{user.displayRole}</p>
+                    <p className="text-[10px] font-bold tracking-widest text-accent uppercase mt-1">{user.displayRole}</p>
                   )}
                 </div>
 
-                <div className="px-2 space-y-1">
-                  <Link href={user?.role === 'Admin' ? '/settings' : `${homeRoute}?tab=settings`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-base rounded-lg transition-colors">
+                <div className="px-2 space-y-0.5">
+                  <Link href={user?.role === 'Admin' ? '/settings' : `${homeRoute}?tab=settings`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-secondary hover:text-primary hover:bg-base/60 rounded-xl transition-colors">
                     <SettingsIcon size={14} /> Settings
                   </Link>
-                  <div className="h-px bg-border my-1"></div>
+                  <div className="h-px bg-border/50 my-1"></div>
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                    className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"
                   >
                     <LogOut size={14} /> Sign Out
                   </button>
