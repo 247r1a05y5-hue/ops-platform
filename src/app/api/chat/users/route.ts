@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, User, Workspace } from '@/lib/db';
 import { isUserOnline } from '@/lib/chat-sse';
+import mongoose from 'mongoose';
 
 /**
  * GET /api/chat/users
@@ -14,22 +15,27 @@ export async function GET(req: NextRequest) {
 
   await connectDB();
 
-  // Ensure workspace exists
-  let mainWs = await (Workspace as any).findOne({ slug: 'ops-main' });
-  if (!mainWs) {
-    mainWs = await (Workspace as any).create({ name: 'Main Workspace', slug: 'ops-main' });
+  // 1. Get current user's workspace to respect tenant/workspace isolation
+  const currentUser = await User.findById(session.sub).select('workspaceId').lean() as any;
+  let workspaceId = currentUser?.workspaceId;
+
+  if (!workspaceId) {
+    let mainWs = await (Workspace as any).findOne({ slug: 'ops-main' });
+    if (!mainWs) {
+      mainWs = await (Workspace as any).create({ name: 'Main Workspace', slug: 'ops-main' });
+    }
+    workspaceId = mainWs._id;
+    // Assign the user to the main workspace in the database
+    await User.findByIdAndUpdate(session.sub, { $set: { workspaceId } });
   }
 
-  // Bulk-assign ALL users who are not yet in this workspace
-  // This guarantees newly-registered users appear immediately
-  await User.updateMany(
-    { $or: [{ workspaceId: { $exists: false } }, { workspaceId: null }, { workspaceId: { $ne: mainWs._id } }] },
-    { $set: { workspaceId: mainWs._id } }
-  );
-
-  // Fetch ALL other users in this workspace (excluding self)
+  // 2. Fetch other non-suspended users in the same workspace (with explicit ObjectId casting for self-exclusion)
   const users = await User.find(
-    { workspaceId: mainWs._id, _id: { $ne: session.sub } },
+    {
+      workspaceId,
+      _id: { $ne: new mongoose.Types.ObjectId(session.sub) },
+      suspended: { $ne: true }
+    },
     { _id: 1, name: 1, email: 1, role: 1 }
   ).lean() as any[];
 

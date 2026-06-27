@@ -75,52 +75,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Login ────────────────────────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string, twoFactorToken?: string, userId?: string) => {
-    try {
-      const body: any = {};
-      if (userId && twoFactorToken) {
-        body.userId = userId;
-        body.twoFactorToken = twoFactorToken;
-      } else {
-        body.email = email;
-        body.password = password;
-      }
+    const body: any = {};
+    if (userId && twoFactorToken) {
+      body.userId = userId;
+      body.twoFactorToken = twoFactorToken;
+    } else {
+      body.email = email;
+      body.password = password;
+    }
 
-      const res = await fetch('/api/auth/login', {
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body),
       });
-
-      const data = await res.json();
-
-      if (!data.success) {
-        return { success: false, error: data.error ?? 'Authentication failed' };
-      }
-
-      if (data.requires2FA) {
-        return { success: true, requires2FA: true, userId: data.userId };
-      }
-
-      const u = data.user;
-      setUser({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        displayRole: DB_TO_DISPLAY[u.role] ?? u.role,
-      });
-
-      const route = DB_TO_ROUTE[u.role] ?? '/dashboard';
-      router.push(route);
-
-      return { success: true };
-    } catch (err) {
+    } catch (networkErr: any) {
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Connection error. Please try again.',
+        error: 'Network error: The API server is unreachable. Please verify your internet connection.',
       };
     }
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        return { success: false, error: 'Invalid email or password.' };
+      }
+      if (res.status === 403) {
+        return { success: false, error: 'Access forbidden. Your account may be suspended.' };
+      }
+      if (res.status === 404) {
+        return { success: false, error: 'Authentication endpoint not found (404).' };
+      }
+      if (res.status >= 500) {
+        return { success: false, error: 'Internal Server Error (500). Please try again later.' };
+      }
+      return { success: false, error: `Authentication failed with status ${res.status}.` };
+    }
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch (jsonErr: any) {
+      return {
+        success: false,
+        error: 'Server protocol error: Received invalid response data format (JSON parsing failed).',
+      };
+    }
+
+    if (!data.success) {
+      return { success: false, error: data.error ?? 'Authentication failed' };
+    }
+
+    if (data.requires2FA) {
+      return { success: true, requires2FA: true, userId: data.userId };
+    }
+
+    const u = data.user;
+    setUser({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      displayRole: DB_TO_DISPLAY[u.role] ?? u.role,
+    });
+
+    const route = DB_TO_ROUTE[u.role] ?? '/dashboard';
+    router.push(route);
+
+    return { success: true };
   }, [router]);
 
   // ── Logout ───────────────────────────────────────────────────────────────

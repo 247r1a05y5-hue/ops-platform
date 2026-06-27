@@ -54,10 +54,17 @@ export default function Login() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail }),
       });
+      if (!res.ok) {
+        setError(`Password reset failed: Server returned status ${res.status}.`);
+        return;
+      }
       const data = await res.json();
       setError(data.message || data.error || 'Request submitted.');
-    } catch { setError('Connection error. Please try again.'); }
-    finally { setLoading(false); }
+    } catch {
+      setError('Network error: Unable to contact the password reset service. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,6 +85,10 @@ export default function Login() {
             role: UI_TO_DB_ROLE[role] ?? role,
           }),
         });
+        if (!res.ok) {
+          setError(`Registration failed: Server returned status ${res.status}.`);
+          return;
+        }
         const data = await res.json();
         if (!data.success) {
           setError(data.error || 'Registration failed');
@@ -85,8 +96,8 @@ export default function Login() {
           setIsRegister(false);
           setError('Account created! Please sign in.');
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Connection error.');
+      } catch (err: any) {
+        setError('Network error: Unable to reach the registration service. Please check your connection.');
       } finally {
         setLoading(false);
       }
