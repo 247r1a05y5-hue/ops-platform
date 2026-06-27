@@ -353,3 +353,13 @@ const gracefulShutdown = (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// ── Unhandled Exceptions & Rejections ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[Server] ❌ CRITICAL — Uncaught Exception:', err);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.warn('[Server] ⚠️ WARNING — Unhandled Promise Rejection at:', promise, 'reason:', reason);
+});
+

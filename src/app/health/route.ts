@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'healthy' : 'disconnected';
-  const isHealthy = dbStatus === 'healthy';
-  
   return NextResponse.json(
     {
-      status: isHealthy ? "ok" : "error",
-      database: dbStatus,
+      status: "ok",
       uptime: process.uptime(),
-      ts: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+      version: "1.0.0"
     },
-    { status: isHealthy ? 200 : 503 }
+    { status: 200 }
   );
 }
