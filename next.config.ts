@@ -43,6 +43,18 @@ const nextConfig: NextConfig = {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin',
           },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' wss: ws: https://api.razorpay.com https://api.cloudinary.com; frame-src 'self' https://meet.google.com https://api.razorpay.com https://checkout.razorpay.com; camera 'self' https://meet.google.com; microphone 'self' https://meet.google.com;",
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self "https://meet.google.com"), microphone=(self "https://meet.google.com"), geolocation=()',
+          },
         ],
       },
     ];

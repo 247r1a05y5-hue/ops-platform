@@ -9,7 +9,7 @@ import {
   FileText, CornerDownRight, MessageCircle, Loader2,
   AlertCircle, PhoneCall, PhoneOff, PhoneIncoming,
   MicOff, VideoOff, CheckCheck, Check, Mic, Camera,
-  ArrowLeft, MonitorPlay,
+  ArrowLeft, MonitorPlay, Eye,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -202,6 +202,9 @@ export default function ChatModule() {
   const [conversations, setConversations]   = useState<Conversation[]>([]);
   const [loadingConvs, setLoadingConvs]     = useState(true);
   const [activeConvId, setActiveConvId]     = useState<string | null>(null);
+
+  // ── Previews ──────────────────────────────────────────────────────────────
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
 
   // ── Messages ──────────────────────────────────────────────────────────────
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
@@ -1752,7 +1755,7 @@ export default function ChatModule() {
                       {getInitials(conv.name)}
                     </div>
                     {conv.type==='direct' ? (
-                      <span style={{
+                      <span className={isOnline && !isActive ? 'pulse-presence' : ''} style={{
                         position:'absolute', bottom:0, right:0,
                         width:9, height:9, borderRadius:'50%',
                         background: isActive ? '#fff' : (isOnline?'#22c55e':'#6b7280'),
@@ -1861,7 +1864,7 @@ export default function ChatModule() {
                       {getInitials(activeConv.name)}
                     </div>
                     {activeConv.type==='direct' && (
-                      <span style={{
+                      <span className={onlineUsers.has(activeConv.otherParticipants[0]?._id) ? 'pulse-presence' : ''} style={{
                         position:'absolute', bottom:1, right:1,
                         width:9, height:9, borderRadius:'50%',
                         background: onlineUsers.has(activeConv.otherParticipants[0]?._id) ? '#22c55e' : '#6b7280',
@@ -2109,21 +2112,29 @@ export default function ChatModule() {
                                 </div>
                               )}
                               {msg.attachments && msg.attachments.length>0 && (
-                                <div style={{ marginTop:msg.body?8:0, display:'flex', flexDirection:'column', gap:5 }}>
+                                <div style={{ marginTop:msg.body?8:0, display:'flex', flexDirection:'column', gap:6 }}>
                                   {msg.attachments.map((file,fidx)=>{
                                     const isImage = file.mimeType?.startsWith('image/');
                                     return (
-                                      <div key={fidx} style={{ borderRadius:9, overflow:'hidden', border:'1px solid rgba(255,255,255,.15)', background:'rgba(0,0,0,.1)', maxWidth:220 }}>
+                                      <div key={fidx} style={{ borderRadius:10, overflow:'hidden', border:'1px solid var(--border-subtle)', background:'rgba(0,0,0,0.06)', maxWidth:240 }} className="group relative transition-all">
                                         {isImage ? (
-                                          <a href={file.url} target="_blank" rel="noreferrer">
-                                            <img src={file.url} alt={file.name} style={{ width:'100%', maxHeight:140, objectFit:'cover', display:'block' }}/>
-                                          </a>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewImage({ url: file.url, name: file.name })}
+                                            className="w-full text-left outline-none relative block overflow-hidden"
+                                            title="Click to preview image"
+                                          >
+                                            <img src={file.url} alt={file.name} className="w-full max-h-[150px] object-cover block transition-transform duration-200 group-hover:scale-[1.03] cursor-zoom-in" />
+                                            <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold uppercase tracking-wider gap-1">
+                                              <Eye size={12}/> Preview
+                                            </div>
+                                          </button>
                                         ) : (
-                                          <a href={file.url} target="_blank" rel="noreferrer" style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', textDecoration:'none' }}>
-                                            <FileText size={15} style={{ color:isSelf?'rgba(255,255,255,.8)':'var(--accent-primary)', flexShrink:0 }}/>
+                                          <a href={file.url} target="_blank" rel="noreferrer" style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', textDecoration:'none' }}>
+                                            <FileText size={16} style={{ color:isSelf?'rgba(255,255,255,.85)':'var(--accent-primary)', flexShrink:0 }}/>
                                             <div style={{ minWidth:0 }}>
                                               <p style={{ fontSize:11, fontWeight:700, color:isSelf?'#fff':'var(--text-primary)', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{file.name}</p>
-                                              <p style={{ fontSize:10, color:isSelf?'rgba(255,255,255,.5)':'var(--text-tertiary)', margin:0 }}>{formatBytes(file.size)}</p>
+                                              <p style={{ fontSize:10, color:isSelf?'rgba(255,255,255,.55)':'var(--text-tertiary)', margin:0 }}>{formatBytes(file.size)}</p>
                                             </div>
                                           </a>
                                         )}
@@ -2615,6 +2626,38 @@ export default function ChatModule() {
               >
                 Dismiss
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ IMAGE LIGHTBOX PREVIEW ══ */}
+        {previewImage && (
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
+            <button 
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all hover:scale-105 active:scale-95"
+              title="Close Preview"
+            >
+              <X size={20} />
+            </button>
+            <div className="max-w-4xl max-h-[80vh] overflow-hidden flex items-center justify-center rounded-xl border border-white/10 shadow-2xl relative group" onClick={e => e.stopPropagation()}>
+              <img 
+                src={previewImage.url} 
+                alt={previewImage.name} 
+                className="max-w-full max-h-[80vh] object-contain select-none" 
+              />
+            </div>
+            <div className="mt-4 flex flex-col items-center gap-1.5 text-center" onClick={e => e.stopPropagation()}>
+              <p className="text-sm font-bold text-white max-w-md truncate">{previewImage.name}</p>
+              <a 
+                href={previewImage.url} 
+                download={previewImage.name}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-enterprise-primary text-xs flex items-center gap-1 px-4 py-2 mt-1"
+              >
+                <Download size={12} /> Download Original Image
+              </a>
             </div>
           </div>
         )}

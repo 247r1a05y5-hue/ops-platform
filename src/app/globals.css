@@ -387,3 +387,7 @@ body {
 @keyframes spinner-spin {
   to { transform: rotate(360deg); }
 }
+
+.pulse-presence {
+  animation: ringPulse 2s infinite ease-in-out;
+}

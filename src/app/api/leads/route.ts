@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
 
     if (id) {
-      const lead = await Lead.findById(id);
+      const lead = await Lead.findById(id).lean();
       if (!lead) {
         return NextResponse.json({ success: false, error: 'Lead not found' }, {
           status: 404,
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    let query = Lead.find(filter).sort({ createdAt: -1 });
+    let query = Lead.find(filter).sort({ createdAt: -1 }).lean();
 
     if (limit > 0) {
       query = query.skip((page - 1) * limit).limit(limit);

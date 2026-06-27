@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const tasks = await Task.find(query).sort({ createdAt: -1 });
+    const tasks = await Task.find(query).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, tasks }, {
       headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
     });

@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock, EyeOff, Eye, Save, User, Bell, Shield, Globe,
-  Sliders, Sun, Moon, X, QrCode, Clock
+  Sliders, Sun, Moon, X, QrCode, Clock, Laptop, Smartphone, Building
 } from 'lucide-react';
 
 type Role = 'manager' | 'staff' | 'marketing';
@@ -144,6 +144,10 @@ export default function SharedSettingsModule({ role }: Props) {
     e.preventDefault();
     setIsSaving(true);
     try {
+      if (activeTab === 'Workspace') {
+        showToast('Workspace settings saved locally (read-only)', 'info');
+        setIsSaving(false); return;
+      }
       if (activeTab === 'Notifications') {
         // Persist notification preferences to DB via UserSettings model
         const res = await fetch('/api/settings', {
@@ -276,6 +280,7 @@ export default function SharedSettingsModule({ role }: Props) {
 
   const tabs = [
     { name: 'Profile', icon: User },
+    { name: 'Workspace', icon: Building },
     { name: 'Appearance', icon: SunIcon },
     { name: 'Notifications', icon: Bell },
     { name: 'Security', icon: Shield },
@@ -376,6 +381,57 @@ export default function SharedSettingsModule({ role }: Props) {
                       <p className="text-[10px] text-tertiary font-medium mt-1">
                         Role can only be changed from the System Directory panel.
                       </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ─── WORKSPACE ─── */}
+              {activeTab === 'Workspace' && (
+                <motion.div key="workspace" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+                  <div className="bg-surface p-6 rounded-xl border border-border space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2 text-primary"><Building size={18} className="text-accent" /> Workspace Information</h3>
+                    <p className="text-xs text-secondary leading-relaxed">
+                      View your enterprise organization settings and environment details.
+                    </p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Workspace Name</label>
+                        <input type="text" disabled defaultValue="Main Workspace" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Workspace Slug</label>
+                        <input type="text" disabled value="ops-main" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Primary Node / Region</label>
+                        <input type="text" disabled value="ap-south-1 (Mumbai, IN)" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Tenant ID</label>
+                        <input type="text" disabled value="tenant_ops_main_9028348" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed font-mono outline-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-surface p-5 rounded-xl border border-border">
+                    <h3 className="font-semibold mb-3 text-sm text-primary flex items-center gap-2"><Globe size={14} className="text-accent" /> Network Status</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50 text-xs">
+                        <div>
+                          <span className="font-semibold text-primary">Status</span>
+                          <p className="text-[10px] text-secondary mt-0.5">Workspace cluster connectivity</p>
+                        </div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">Operational</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50 text-xs">
+                        <div>
+                          <span className="font-semibold text-primary">Isolation Mode</span>
+                          <p className="text-[10px] text-secondary mt-0.5">Data isolation type</p>
+                        </div>
+                        <span className="font-mono text-secondary">Logical Tenant Isolation</span>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -620,19 +676,24 @@ export default function SharedSettingsModule({ role }: Props) {
 
                   {/* Active Sessions */}
                   <div className="bg-surface p-5 rounded-xl border border-border">
-                    <h3 className="font-semibold mb-4 text-sm">Active Sessions</h3>
+                    <h3 className="font-semibold mb-4 text-sm text-primary">Active Sessions</h3>
                     <div className="space-y-3">
                       {[
-                        { device: 'Chrome on Windows', location: 'Mumbai, IN', time: 'Current session', active: true },
-                        { device: 'Safari on iPhone',  location: 'Delhi, IN',  time: '2 hours ago',     active: false },
+                        { device: 'Chrome on Windows', location: 'Mumbai, IN', time: 'Current session', active: true, icon: Laptop },
+                        { device: 'Safari on iPhone',  location: 'Delhi, IN',  time: '2 hours ago',     active: false, icon: Smartphone },
                       ].map((s, i) => (
                         <div key={i} className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50">
-                          <div>
-                            <div className="text-xs font-semibold">{s.device}</div>
-                            <div className="text-[10px] text-secondary">{s.location} · {s.time}</div>
+                          <div className="flex items-center gap-3">
+                            <span className="p-2 bg-surface rounded-lg border border-border/55 text-secondary">
+                              <s.icon size={16} />
+                            </span>
+                            <div>
+                              <div className="text-xs font-semibold text-primary">{s.device}</div>
+                              <div className="text-[10px] text-secondary">{s.location} · {s.time}</div>
+                            </div>
                           </div>
                           {s.active ? (
-                            <span className="text-[10px] font-bold text-emerald-500 uppercase">Active</span>
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wide flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active</span>
                           ) : (
                             <button type="button" onClick={() => showToast('Session revoked', 'success')} className="text-[10px] font-bold text-red-500 hover:underline">Revoke</button>
                           )}

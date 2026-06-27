@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
 import ChatModule from '@/components/ChatModule';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -908,7 +909,9 @@ function EmployeeDashboard() {
   if (activeTab === 'settings') {
     return (
       <div className="flex-1 flex h-full overflow-hidden">
-        <SharedSettingsModule role="staff" />
+        <ErrorBoundary moduleName="Settings Panel">
+          <SharedSettingsModule role="staff" />
+        </ErrorBoundary>
       </div>
     );
   }
@@ -1011,7 +1014,9 @@ function EmployeeDashboard() {
               )}
               {activeTab === 'chat' && (
                 <motion.div key="chat" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
-                   <ChatModule />
+                   <ErrorBoundary moduleName="Team Chat">
+                     <ChatModule />
+                   </ErrorBoundary>
                 </motion.div>
               )}
               {activeTab === 'performance' && (

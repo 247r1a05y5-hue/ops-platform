@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    let query = Invoice.find(baseFilter).sort({ createdAt: -1 });
+    let query = Invoice.find(baseFilter).sort({ createdAt: -1 }).lean();
     if (limit > 0) {
       query = query.skip((page - 1) * limit).limit(limit);
     }

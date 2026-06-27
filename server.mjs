@@ -318,3 +318,38 @@ httpServer.listen(port, '0.0.0.0', () => {
   }
 });
 
+// ── Graceful Shutdown Handler ───────────────────────────────────────────────
+const gracefulShutdown = (signal) => {
+  console.log(`[Server] Received ${signal} — starting graceful shutdown...`);
+  
+  // 1. Close HTTP server (stops accepting new connections)
+  httpServer.close(() => {
+    console.log('[Server] HTTP server closed.');
+    
+    // 2. Close Socket.IO server
+    io.close(() => {
+      console.log('[Server] Socket.IO server closed.');
+      
+      // 3. Close database connection
+      import('mongoose').then(({ default: mongoose }) => {
+        mongoose.connection.close(false).then(() => {
+          console.log('[Server] Mongoose connection closed.');
+          process.exit(0);
+        });
+      }).catch(err => {
+        console.error('[Server] Error closing Mongoose connection:', err);
+        process.exit(1);
+      });
+    });
+  });
+
+  // Force exit after 10s if graceful close hangs
+  setTimeout(() => {
+    console.error('[Server] Graceful shutdown timed out — forcing process exit.');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+

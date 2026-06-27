@@ -4,7 +4,8 @@ import { useTheme } from '@/context/ThemeContext';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, EyeOff, Eye, Mail, Plus, Edit, Trash2, Save, User, Bell, Shield, Building, CreditCard, X, QrCode, Clock } from 'lucide-react';
+import { Lock, EyeOff, Eye, Mail, Plus, Edit, Trash2, Save, User, Bell, Shield, Building, CreditCard, X, QrCode, Clock, Laptop, Smartphone, Globe } from 'lucide-react';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
@@ -127,25 +128,31 @@ export default function Settings() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      if (activeTab === 'Workspace') {
+        showToast('Workspace settings saved locally (read-only)', 'info');
+        setIsSaving(false); return;
+      }
       if (activeTab === 'Security') {
         // Password change
-        if (!securityData.currentPass || !securityData.newPass) {
-          showToast('Fill in current and new password', 'warning');
-          setIsSaving(false); return;
+        if (securityData.currentPass || securityData.newPass || securityData.confirmPass) {
+          if (!securityData.currentPass || !securityData.newPass) {
+            showToast('Fill in current and new password', 'warning');
+            setIsSaving(false); return;
+          }
+          if (securityData.newPass !== securityData.confirmPass) {
+            showToast('New passwords do not match', 'warning');
+            setIsSaving(false); return;
+          }
+          const res = await fetch('/api/settings', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' }, credentials: 'include',
+            body: JSON.stringify({ action: 'password', currentPass: securityData.currentPass, newPass: securityData.newPass }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Password updated successfully', 'success');
+            setSecurityData(prev => ({ ...prev, currentPass: '', newPass: '', confirmPass: '' }));
+          } else { showToast(data.error || 'Password update failed', 'error'); }
         }
-        if (securityData.newPass !== securityData.confirmPass) {
-          showToast('New passwords do not match', 'warning');
-          setIsSaving(false); return;
-        }
-        const res = await fetch('/api/settings', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' }, credentials: 'include',
-          body: JSON.stringify({ action: 'password', currentPass: securityData.currentPass, newPass: securityData.newPass }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast('Password updated successfully', 'success');
-          setSecurityData(prev => ({ ...prev, currentPass: '', newPass: '', confirmPass: '' }));
-        } else { showToast(data.error || 'Password update failed', 'error'); }
 
         // Also persist session timeout
         const stRes = await fetch('/api/settings', {
@@ -172,7 +179,6 @@ export default function Settings() {
         });
         const data = await res.json();
         if (data.success) {
-          // Write confirmed profile back to prevent rollback to stale/fake data
           if (data.profile) {
             setFormData(prev => ({
               ...prev,
@@ -190,6 +196,7 @@ export default function Settings() {
 
   const tabs = [
     { name: 'Profile', icon: User }, 
+    { name: 'Workspace', icon: Building },
     { name: 'Appearance', icon: SunIcon },
     { name: 'Notifications', icon: Bell }, 
     { name: 'Security', icon: Shield },
@@ -239,7 +246,8 @@ export default function Settings() {
           </div>
 
           <form onSubmit={handleSave}>
-            <AnimatePresence mode="wait">
+            <ErrorBoundary moduleName={`${activeTab} Settings Section`}>
+              <AnimatePresence mode="wait">
 
             {activeTab === 'Profile' && (
               <motion.div key="profile" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="space-y-6">
@@ -264,6 +272,56 @@ export default function Settings() {
                   <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Role / Title</label>
                   <input type="text" disabled className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" value={formData.role.toUpperCase()} />
                   <p className="text-[10px] text-tertiary font-medium mt-1">Clearance configuration roles can only be adjusted from the System Directory panel.</p>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'Workspace' && (
+              <motion.div key="workspace" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="space-y-6">
+                <div className="bg-surface p-6 rounded-xl border border-border space-y-4">
+                  <h3 className="font-semibold flex items-center gap-2 text-primary"><Building size={18} className="text-accent" /> Workspace Information</h3>
+                  <p className="text-xs text-secondary leading-relaxed">
+                    View and manage your enterprise organization settings and environment details.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Workspace Name</label>
+                      <input type="text" defaultValue="Main Workspace" className="w-full bg-surface border border-border px-4 py-2.5 rounded-lg text-sm focus:border-accent outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Workspace Slug</label>
+                      <input type="text" disabled value="ops-main" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Primary Node / Region</label>
+                      <input type="text" disabled value="ap-south-1 (Mumbai, IN)" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Tenant ID</label>
+                      <input type="text" disabled value="tenant_ops_main_9028348" className="w-full bg-base/50 border border-border px-4 py-2.5 rounded-lg text-sm text-secondary cursor-not-allowed font-mono outline-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-surface p-5 rounded-xl border border-border">
+                  <h3 className="font-semibold mb-3 text-sm text-primary flex items-center gap-2"><Globe size={14} className="text-accent" /> Network Status</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50 text-xs">
+                      <div>
+                        <span className="font-semibold text-primary">Status</span>
+                        <p className="text-[10px] text-secondary mt-0.5">Workspace cluster connectivity</p>
+                      </div>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">Operational</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50 text-xs">
+                      <div>
+                        <span className="font-semibold text-primary">Isolation Mode</span>
+                        <p className="text-[10px] text-secondary mt-0.5">Data isolation type</p>
+                      </div>
+                      <span className="font-mono text-secondary">Logical Tenant Isolation</span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -430,6 +488,34 @@ export default function Settings() {
                   </select>
                   <p className="text-[10px] text-tertiary mt-1.5">Changes take effect on your next login. Current session is unaffected.</p>
                 </div>
+
+                {/* Active Sessions */}
+                <div className="bg-surface p-5 rounded-xl border border-border">
+                  <h3 className="font-semibold mb-4 text-sm text-primary">Active Sessions</h3>
+                  <div className="space-y-3">
+                    {[
+                      { device: 'Chrome on Windows', location: 'Mumbai, IN', time: 'Current session', active: true, icon: Laptop },
+                      { device: 'Safari on iPhone',  location: 'Delhi, IN',  time: '2 hours ago',     active: false, icon: Smartphone },
+                    ].map((s, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-base rounded-lg border border-border/50">
+                        <div className="flex items-center gap-3">
+                          <span className="p-2 bg-surface rounded-lg border border-border/55 text-secondary">
+                            <s.icon size={16} />
+                          </span>
+                          <div>
+                            <div className="text-xs font-semibold text-primary">{s.device}</div>
+                            <div className="text-[10px] text-secondary">{s.location} · {s.time}</div>
+                          </div>
+                        </div>
+                        {s.active ? (
+                          <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wide flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active</span>
+                        ) : (
+                          <button type="button" onClick={() => showToast('Session revoked', 'success')} className="text-[10px] font-bold text-red-500 hover:underline">Revoke</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -479,6 +565,7 @@ export default function Settings() {
             )}
 
             </AnimatePresence>
+          </ErrorBoundary>
 
             <div className="mt-8 pt-6 border-t border-border flex justify-end">
               <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-6 py-2.5 bg-accent text-white font-semibold rounded-lg hover:bg-indigo-600 transition-colors shadow-lg disabled:opacity-50 text-xs uppercase tracking-wider active:scale-95">

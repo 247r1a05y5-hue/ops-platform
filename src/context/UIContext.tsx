@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useState, useEffect, useContext } from 'react';
+import { CheckCircle2, AlertTriangle, AlertOctagon, Info } from 'lucide-react';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -43,16 +44,30 @@ export const UIProvider = ({ children }: { children: React.ReactNode }) => {
     <UIContext.Provider value={{ isLoading, setLoading, showToast, sidebarOpen, setSidebarOpen, sidebarCollapsed, setSidebarCollapsed }}>
       {children}
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, background: toast.type === 'error' ? '#ef4444' : toast.type === 'success' ? 'var(--accent-primary)' : toast.type === 'warning' ? '#f59e0b' : 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: toast.type === 'info' ? 'var(--text-primary)' : 'white', padding: '12px 20px', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-             {toast.type === 'success' && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>}
-             {toast.type === 'error' && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
-             {toast.type === 'warning' && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>}
-             <span style={{ fontSize: '14px', fontWeight: 500 }}>{toast.message}</span>
-          </div>
+        <div 
+          style={{ position: 'fixed', bottom: '28px', right: '28px', zIndex: 9999, animation: 'slideUpToast 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-md text-xs font-bold uppercase tracking-wider ${
+            toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 shadow-emerald-500/5' :
+            toast.type === 'error' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25 shadow-red-500/5' :
+            toast.type === 'warning' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 shadow-amber-500/5' :
+            'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25 shadow-indigo-500/5'
+          }`}
+        >
+          <span className="shrink-0 flex items-center justify-center">
+            {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500" />}
+            {toast.type === 'error' && <AlertOctagon size={16} className="text-red-500" />}
+            {toast.type === 'warning' && <AlertTriangle size={16} className="text-amber-500" />}
+            {toast.type === 'info' && <Info size={16} className="text-indigo-500" />}
+          </span>
+          <span className="text-[11px] leading-snug font-semibold normal-case text-primary">{toast.message}</span>
         </div>
       )}
-      <style>{`@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+      <style>{`
+        @keyframes slideUpToast { 
+          from { transform: translateY(16px); opacity: 0; } 
+          to { transform: translateY(0); opacity: 1; } 
+        }
+      `}</style>
     </UIContext.Provider>
   );
 };
