@@ -53,6 +53,26 @@ export async function POST(req: NextRequest) {
     user.passwordResetExpiry = expiry;
     await user.save();
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'password_reset_requested',
+        module: 'Authentication',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        newValue: { email: user.email, passwordResetExpiry: expiry },
+        session: {
+          sub: user._id.toString(),
+          name: user.name,
+          role: user.role,
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Password reset request audit log failed:', err.message);
+    }
+
     const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const resetLink = `${appUrl}/reset-password?token=${plainToken}&email=${encodeURIComponent(user.email)}`;
 
@@ -121,6 +141,26 @@ export async function PUT(req: NextRequest) {
     user.passwordResetToken  = undefined;
     user.passwordResetExpiry = undefined;
     await user.save();
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'password_reset_completed',
+        module: 'Authentication',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        newValue: { email: user.email },
+        session: {
+          sub: user._id.toString(),
+          name: user.name,
+          role: user.role,
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Password reset completion audit log failed:', err.message);
+    }
 
     return NextResponse.json({ success: true, message: 'Password updated successfully. Please sign in.' });
 

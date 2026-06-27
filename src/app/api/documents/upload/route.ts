@@ -81,6 +81,22 @@ export async function POST(req: NextRequest) {
       req,
     }).catch(console.error);
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'upload_document',
+        module: 'Documents',
+        entityId: leadId || 'general',
+        entityType: 'Document',
+        newValue: documentRecord,
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Upload document audit log failed:', err.message);
+    }
+
     return NextResponse.json({ success: true, document: documentRecord });
 
   } catch (err) {

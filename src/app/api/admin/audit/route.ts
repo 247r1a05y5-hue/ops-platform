@@ -1,58 +1,131 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, ActivityLog } from '@/lib/db';
-import { requireAuth } from '@/lib/require-auth';
+import { connectDB, AuditLog } from '@/lib/db';
+import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
-/**
- * GET /api/admin/audit
- * Admin-only. Returns paginated ActivityLog entries.
- * Query: page, limit, actionType, module, userId, from, to, search
- */
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+
+function convertToCSV(data: any[]) {
+  const headers = [
+    'Action',
+    'Module',
+    'Entity ID',
+    'Entity Type',
+    'Old Value',
+    'New Value',
+    'Performed By',
+    'Role',
+    'Workspace',
+    'IP Address',
+    'Browser',
+    'Device',
+    'Timestamp'
+  ];
+  
+  const rows = data.map(item => [
+    item.action || '',
+    item.module || '',
+    item.entityId || '',
+    item.entityType || '',
+    JSON.stringify(item.oldValue || ''),
+    JSON.stringify(item.newValue || ''),
+    item.performedBy || '',
+    item.performedByRole || '',
+    item.workspace || '',
+    item.ipAddress || '',
+    item.browser || '',
+    item.device || '',
+    item.timestamp ? new Date(item.timestamp).toISOString() : '',
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(r => r.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+
+  return csvContent;
+}
 
 export async function GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin']);
   if (error) return error;
+
   try {
     await connectDB();
     const { searchParams } = new URL(req.url);
-    const page  = Math.max(1, parseInt(searchParams.get('page')  || '1'));
-    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50')));
-    const filter: Record<string, unknown> = {};
-    if (searchParams.get('actionType')) filter.actionType = searchParams.get('actionType');
-    if (searchParams.get('module'))     filter.module     = searchParams.get('module');
-    if (searchParams.get('userId'))     filter.userId     = searchParams.get('userId');
-    const from = searchParams.get('from'), to = searchParams.get('to');
-    if (from || to) { const r: any = {}; if (from) r.$gte = new Date(from); if (to) r.$lte = new Date(to); filter.timestamp = r; }
-    const search = searchParams.get('search');
+
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '25', 10);
+    const action = searchParams.get('action') || '';
+    const module = searchParams.get('module') || '';
+    const search = searchParams.get('search') || '';
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
+    const format = searchParams.get('format') || '';
+
+    const query: any = {};
+
+    if (action) query.action = action;
+    if (module) query.module = module;
+
+    if (startDate || endDate) {
+      query.timestamp = {};
+      if (startDate) query.timestamp.$gte = new Date(startDate);
+      if (endDate) query.timestamp.$lte = new Date(endDate);
+    }
+
     if (search) {
-      const safeSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      filter.$or = [
-        { description: { $regex: safeSearch, $options: 'i' } },
-        { name:        { $regex: safeSearch, $options: 'i' } },
-        { userEmail:   { $regex: safeSearch, $options: 'i' } },
-        { actionType:  { $regex: safeSearch, $options: 'i' } },
+      const escaped = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      query.$or = [
+        { action: regex },
+        { module: regex },
+        { entityId: regex },
+        { entityType: regex },
+        { performedBy: regex },
+        { performedByRole: regex },
+        { ipAddress: regex }
       ];
     }
 
-    const [logs, total, actionTypes, modules] = await Promise.all([
-      ActivityLog.find(filter).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      ActivityLog.countDocuments(filter),
-      ActivityLog.distinct('actionType'),
-      ActivityLog.distinct('module'),
-    ]);
+    // Export CSV if requested
+    if (format === 'csv') {
+      const logs = await AuditLog.find(query).sort({ timestamp: -1 }).lean();
+      const csv = convertToCSV(logs);
+      return new NextResponse(csv, {
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': 'attachment; filename="audit_logs_export.csv"',
+        },
+      });
+    }
 
-    return NextResponse.json({ success: true, logs, pagination: { total, page, limit, pages: Math.ceil(total / limit) }, meta: { actionTypes, modules } }, {
-      headers: {
-        'Cache-Control': 'no-store, max-age=0, must-revalidate',
-      }
+    const skip = (page - 1) * limit;
+    const logs = await AuditLog.find(query)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await AuditLog.countDocuments(query);
+    const actionTypes = await AuditLog.distinct('action');
+    const modules = await AuditLog.distinct('module');
+
+    return NextResponse.json({
+      success: true,
+      logs,
+      meta: {
+        actionTypes,
+        modules,
+      },
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, {
-      status: 500,
-      headers: {
-        'Cache-Control': 'no-store, max-age=0, must-revalidate',
-      }
-    });
+
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message || err }, { status: 500 });
   }
 }

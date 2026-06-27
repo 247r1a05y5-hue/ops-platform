@@ -53,6 +53,27 @@ export async function POST(req: NextRequest) {
       user.lastLogin = new Date();
       await user.save();
 
+      // Enterprise Audit Log
+      try {
+        const { logAudit } = await import('@/lib/audit');
+        await logAudit({
+          action: 'login',
+          module: 'Authentication',
+          entityId: user._id.toString(),
+          entityType: 'User',
+          newValue: { email: user.email, twoFactorEnabled: true, lastLogin: user.lastLogin },
+          session: {
+            sub: user._id.toString(),
+            name: user.name,
+            role: user.role,
+            workspaceId: user.workspaceId?.toString() || 'ops-main',
+          },
+          req,
+        });
+      } catch (err: any) {
+        console.error('[AuditLog] Login 2FA audit log failed:', err.message);
+      }
+
       // Log activity
       await logActivity({
         userId: user._id,
@@ -188,6 +209,27 @@ export async function POST(req: NextRequest) {
 
     user.lastLogin = new Date();
     await user.save();
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'login',
+        module: 'Authentication',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        newValue: { email: user.email, lastLogin: user.lastLogin },
+        session: {
+          sub: user._id.toString(),
+          name: user.name,
+          role: user.role,
+          workspaceId: user.workspaceId?.toString() || 'ops-main',
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Standard login audit log failed:', err.message);
+    }
 
     // ── Log activity (this also triggers sendDualNotification via activity.ts) ──
     await logActivity({

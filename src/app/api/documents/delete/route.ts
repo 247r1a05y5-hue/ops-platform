@@ -46,6 +46,22 @@ export async function DELETE(req: NextRequest) {
     });
     await lead.save();
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'delete_document',
+        module: 'Documents',
+        entityId: leadId,
+        entityType: 'Document',
+        oldValue: doc,
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Delete document audit log failed:', err.message);
+    }
+
     return NextResponse.json({ success: true, message: 'Document deleted.' });
 
   } catch (err) {

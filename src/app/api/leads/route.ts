@@ -219,6 +219,22 @@ export async function POST(req: NextRequest) {
       req,
     }).catch(console.error);
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'create_lead',
+        module: 'CRM',
+        entityId: lead._id.toString(),
+        entityType: 'Lead',
+        newValue: lead.toObject(),
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Create lead audit log failed:', err.message);
+    }
+
     console.log('[TRACE 7] API response returned');
     return NextResponse.json({ success: true, lead });
 
@@ -249,6 +265,8 @@ export async function PUT(req: NextRequest) {
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
+
+    const previousLeadState = lead.toObject();
 
     const actorName = session.name;
     const workflowSession = {
@@ -438,6 +456,23 @@ export async function PUT(req: NextRequest) {
       }).catch(console.error);
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: action ? `lead_action_${action}` : 'update_lead',
+        module: 'CRM',
+        entityId: lead._id.toString(),
+        entityType: 'Lead',
+        oldValue: previousLeadState,
+        newValue: lead.toObject(),
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Update lead audit log failed:', err.message);
+    }
+
     return NextResponse.json({ success: true, lead });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -465,6 +500,22 @@ export async function DELETE(req: NextRequest) {
     const lead = await Lead.findByIdAndDelete(id);
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    }
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'delete_lead',
+        module: 'CRM',
+        entityId: id,
+        entityType: 'Lead',
+        oldValue: lead.toObject(),
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Delete lead audit log failed:', err.message);
     }
 
     return NextResponse.json({ success: true, message: 'Lead successfully deleted' });

@@ -88,6 +88,23 @@ export async function POST(
     console.error('[WebhookRetry] Failed to write audit log:', logErr);
   }
 
+  // Enterprise Audit Log
+  try {
+    const { logAudit } = await import('@/lib/audit');
+    await logAudit({
+      action: 'webhook_retry',
+      module: 'Integrations',
+      entityId: eventId,
+      entityType: 'WebhookEvent',
+      oldValue: { status: previousStatus, attempts: previousAttempts },
+      newValue: { status: 'pending', nextRetryAt: now.toISOString() },
+      session,
+      req,
+    });
+  } catch (err: any) {
+    console.error('[AuditLog] Webhook retry audit log failed:', err.message);
+  }
+
   console.log(
     `[WebhookQueue] Manual retry — eventId="${eventId}" event="${webhook.event}" ` +
     `by=${session.email} previousStatus=${previousStatus}`

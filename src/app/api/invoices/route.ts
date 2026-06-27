@@ -167,6 +167,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'create_invoice',
+        module: 'Invoices',
+        entityId: newInvoice._id.toString(),
+        entityType: 'Invoice',
+        newValue: newInvoice.toObject(),
+        session: {
+          sub: session.sub,
+          name: session.name,
+          role: session.role,
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Create invoice audit log failed:', err.message);
+    }
+
     // sendWhatsAppMessage never throws — it returns a result object
     const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || '919284788141';
     const waResult = await sendWhatsAppMessage(adminPhone,
@@ -252,6 +272,27 @@ export async function PUT(req: NextRequest) {
         } catch (err: any) {
           console.error('[Webhook] Failed to enqueue invoice_paid webhook:', err.message);
         }
+      }
+
+      // Enterprise Audit Log
+      try {
+        const { logAudit } = await import('@/lib/audit');
+        await logAudit({
+          action: 'approve_invoice',
+          module: 'Invoices',
+          entityId: invoice._id.toString(),
+          entityType: 'Invoice',
+          oldValue: { status: 'Pending' },
+          newValue: { status: 'Paid' },
+          session: {
+            sub: session.sub,
+            name: session.name,
+            role: session.role,
+          },
+          req,
+        });
+      } catch (err: any) {
+        console.error('[AuditLog] Approve invoice audit log failed:', err.message);
       }
 
       return NextResponse.json({ success: true, invoice });

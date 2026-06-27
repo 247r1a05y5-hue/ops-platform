@@ -252,6 +252,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'create_task',
+        module: 'Tasks',
+        entityId: task._id.toString(),
+        entityType: 'Task',
+        newValue: {
+          code: task.code,
+          title: task.title,
+          stage: task.stage,
+          priority: task.priority,
+          assignee: task.assignee,
+        },
+        session: {
+          sub: session.sub,
+          name: session.name,
+          role: session.role,
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Create task audit log failed:', err.message);
+    }
+
     return NextResponse.json({ success: true, task }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

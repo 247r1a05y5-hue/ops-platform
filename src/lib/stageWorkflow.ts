@@ -568,6 +568,25 @@ async function handleClosing(lead: any, session: WorkflowSession): Promise<strin
         console.error('[Webhook] Failed to enqueue auto-created invoice_created webhook:', err.message);
       }
     }
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('./audit');
+      await logAudit({
+        action: 'create_invoice',
+        module: 'Invoices',
+        entityId: newInvoice._id.toString(),
+        entityType: 'Invoice',
+        newValue: newInvoice.toObject(),
+        session: {
+          sub: session.userId,
+          name: session.name,
+          role: session.role,
+        },
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Auto-create invoice audit log failed:', err.message);
+    }
   } catch (err) {
     console.error('[handleClosing] Failed to create invoice:', err);
   }

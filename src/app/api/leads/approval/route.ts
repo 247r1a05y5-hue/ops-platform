@@ -157,6 +157,23 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: newStatus === 'approved' ? 'workflow_approved' : 'workflow_rejected',
+        module: 'Workflows',
+        entityId: approvalReq._id.toString(),
+        entityType: 'ApprovalRequest',
+        oldValue: { status: 'pending' },
+        newValue: { status: newStatus, reviewNote: approvalReq.reviewNote },
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] CRM approval workflow audit log failed:', err.message);
+    }
+
     // Notify requester
     const requesterUser = await User.findById(approvalReq.requestedBy).select('email').lean() as any;
     if (requesterUser?.email && isValidEmail(requesterUser.email)) {

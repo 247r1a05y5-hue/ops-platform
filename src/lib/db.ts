@@ -764,6 +764,35 @@ try { WebhookDeliveryLogSchema.index({ event: 1, createdAt: -1 }); } catch (_) {
 
 export const WebhookDeliveryLog = (models.WebhookDeliveryLog || model('WebhookDeliveryLog', WebhookDeliveryLogSchema)) as any;
 
+// ── Enterprise Audit Log Schema ───────────────────────────────────────────────
+const AuditLogSchema = new Schema({
+  action: { type: String, required: true },
+  module: { type: String, required: true },
+  entityId: { type: String, required: true },
+  entityType: { type: String, required: true },
+  oldValue: { type: Schema.Types.Mixed, default: null },
+  newValue: { type: Schema.Types.Mixed, default: null },
+  performedBy: { type: String, required: true },
+  performedByRole: { type: String, required: true },
+  workspace: { type: String, default: 'ops-main' },
+  ipAddress: { type: String, default: '127.0.0.1' },
+  userAgent: { type: String, default: 'Unknown' },
+  browser: { type: String, default: 'Unknown' },
+  device: { type: String, default: 'Unknown' },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Database Index Optimizations
+AuditLogSchema.index({ module: 1 });
+AuditLogSchema.index({ action: 1 });
+AuditLogSchema.index({ entityId: 1 });
+AuditLogSchema.index({ entityType: 1 });
+AuditLogSchema.index({ performedBy: 1 });
+AuditLogSchema.index({ timestamp: -1 });
+
+export const AuditLog = (models.AuditLog || model('AuditLog', AuditLogSchema)) as any;
+
+
 // TTL-based: re-run at most once per 5 minutes to catch newly registered users
 let _lastWorkspaceAssignAt = 0;
 

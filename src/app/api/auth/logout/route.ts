@@ -22,6 +22,21 @@ export async function POST(req: NextRequest) {
         description: `User ${session.email} (${session.role}) logged out.`,
         req,
       }).catch(console.error);
+
+      // Enterprise Audit Log
+      try {
+        const { logAudit } = await import('@/lib/audit');
+        await logAudit({
+          action: 'logout',
+          module: 'Authentication',
+          entityId: session.sub,
+          entityType: 'User',
+          session,
+          req,
+        });
+      } catch (err: any) {
+        console.error('[AuditLog] Logout audit log failed:', err.message);
+      }
     }
 
     const res = NextResponse.json({ success: true, message: 'Logged out successfully' });

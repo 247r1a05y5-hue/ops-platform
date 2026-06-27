@@ -97,6 +97,27 @@ export async function POST(req: NextRequest) {
       workspaceId
     });
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'signup',
+        module: 'Authentication',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        newValue: { email: user.email, name: user.name, role: user.role },
+        session: {
+          sub: user._id.toString(),
+          name: user.name,
+          role: user.role,
+          workspaceId: user.workspaceId?.toString() || 'ops-main'
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Signup audit log failed:', err.message);
+    }
+
     if (inviteDoc) {
       inviteDoc.status = 'accepted';
       await inviteDoc.save();

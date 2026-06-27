@@ -66,6 +66,22 @@ export async function POST(req: NextRequest) {
     user.twoFactorSecret = secret;
     await user.save();
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'two_factor_enabled',
+        module: 'Authentication',
+        entityId: session.sub,
+        entityType: 'User',
+        newValue: { twoFactorEnabled: true },
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Enable 2FA audit log failed:', err.message);
+    }
+
     await logActivity({
       userId: session.sub,
       actionType: 'profile_update',
@@ -98,6 +114,23 @@ export async function DELETE(req: NextRequest) {
     user.twoFactorEnabled = false;
     user.twoFactorSecret = undefined;
     await user.save();
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'two_factor_disabled',
+        module: 'Authentication',
+        entityId: session.sub,
+        entityType: 'User',
+        oldValue: { twoFactorEnabled: true },
+        newValue: { twoFactorEnabled: false },
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Disable 2FA audit log failed:', err.message);
+    }
 
     await logActivity({
       userId: session.sub,

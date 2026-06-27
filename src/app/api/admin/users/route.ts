@@ -73,6 +73,22 @@ export async function POST(req: NextRequest) {
       firstLogin: true
     });
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'create_user',
+        module: 'Users',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        newValue: { name: user.name, email: user.email, role: user.role, suspended: user.suspended },
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Create user audit log failed:', err.message);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'User created successfully.',
@@ -109,6 +125,13 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }
 
+    const previousUserState = {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      suspended: user.suspended,
+    };
+
     // Protect against deactivating the last active Admin
     if ((user.role === 'Admin' && role !== 'Admin') || (user.suspended === false && suspended === true)) {
       if (user.role === 'Admin') {
@@ -128,6 +151,24 @@ export async function PUT(req: NextRequest) {
     }
 
     await user.save();
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      const roleChanged = previousUserState.role !== user.role;
+      await logAudit({
+        action: roleChanged ? 'update_role' : 'update_user',
+        module: roleChanged ? 'Roles' : 'Users',
+        entityId: user._id.toString(),
+        entityType: 'User',
+        oldValue: previousUserState,
+        newValue: { name: user.name, email: user.email, role: user.role, suspended: user.suspended },
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Update user audit log failed:', err.message);
+    }
 
     return NextResponse.json({
       success: true,
@@ -166,6 +207,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }
 
+    const deletedUserData = {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      suspended: user.suspended,
+    };
+
     if (user.role === 'Admin') {
       const activeAdminsCount = await User.countDocuments({ role: 'Admin', suspended: false });
       if (activeAdminsCount <= 1) {
@@ -174,6 +222,22 @@ export async function DELETE(req: NextRequest) {
     }
 
     await User.findByIdAndDelete(id);
+
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'delete_user',
+        module: 'Users',
+        entityId: id,
+        entityType: 'User',
+        oldValue: deletedUserData,
+        session,
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Delete user audit log failed:', err.message);
+    }
 
     return NextResponse.json({ success: true, message: 'User deleted successfully.' });
   } catch (err: any) {

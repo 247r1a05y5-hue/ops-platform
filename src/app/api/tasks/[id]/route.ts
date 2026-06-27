@@ -147,6 +147,27 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       }
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'update_task',
+        module: 'Tasks',
+        entityId: task._id.toString(),
+        entityType: 'Task',
+        oldValue: previousTask,
+        newValue: task.toObject(),
+        session: {
+          sub: session.sub,
+          name: session.name,
+          role: session.role,
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Update task audit log failed:', err.message);
+    }
+
     return NextResponse.json({ success: true, task });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

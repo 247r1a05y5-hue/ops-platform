@@ -112,6 +112,28 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Enterprise Audit Log
+        try {
+          const { logAudit } = await import('@/lib/audit');
+          const systemUser = await User.findOne({ role: 'Admin' }) ?? await User.findOne();
+          await logAudit({
+            action: 'pay_invoice_webhook',
+            module: 'Payments',
+            entityId: invoice._id.toString(),
+            entityType: 'Invoice',
+            oldValue: { status: 'Pending' },
+            newValue: { status: 'Paid', paymentId: paymentId },
+            session: {
+              sub: systemUser?._id?.toString() || 'system',
+              name: systemUser?.name || 'Razorpay Webhook',
+              role: systemUser?.role || 'Admin',
+            },
+            req,
+          });
+        } catch (err: any) {
+          console.error('[AuditLog] Pay invoice webhook audit log failed:', err.message);
+        }
+
         // Activity log (non-blocking)
         try {
           const systemUser = await User.findOne({ role: 'Admin' }) ?? await User.findOne();

@@ -96,6 +96,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Enterprise Audit Log
+    try {
+      const { logAudit } = await import('@/lib/audit');
+      await logAudit({
+        action: 'pay_invoice',
+        module: 'Payments',
+        entityId: invoice._id.toString(),
+        entityType: 'Invoice',
+        oldValue: { status: 'Pending' },
+        newValue: { status: 'Paid', paymentId: razorpay_payment_id },
+        session: {
+          sub: session?.sub || 'system',
+          name: session?.name || 'Client',
+          role: session?.role || 'User',
+        },
+        req,
+      });
+    } catch (err: any) {
+      console.error('[AuditLog] Pay invoice verification audit log failed:', err.message);
+    }
+
     // Step 3: Log user activity
     try {
       let logUserId = session?.sub;
