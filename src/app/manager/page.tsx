@@ -4,14 +4,14 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { 
-  Users, Sparkles, Zap,
-  FileText, ChevronRight, ChevronDown, ArrowUpRight,
-  Shield, ShieldCheck, Download, Layers,
-  Activity, CheckCircle, X
+  Users, Sparkles, Zap, FileText, ChevronRight, ChevronDown, ArrowUpRight,
+  Shield, ShieldCheck, Download, Layers, Activity, CheckCircle, X,
+  Lock, RefreshCw, CheckSquare, TrendingUp, Settings, BarChart3, Clock, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
+import { QUICK_SHORTCUTS, RECENT_APPROVALS_LOG, TEAM_HIGHLIGHTS } from '@/mock/manager';
 
 // --- Reusable Components (Admin Style) ---
 
@@ -32,14 +32,14 @@ const Card = ({ children, className = "", delay = 0 }: { children: React.ReactNo
 
 const Badge = ({ text, type = "default" }: { text: string, type?: 'default' | 'success' | 'warning' | 'danger' | 'info' }) => {
   const styles = {
-    default: "bg-base text-secondary border-border",
-    success: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400",
-    warning: "bg-orange-500/10 text-orange-600 border-orange-500/20 dark:bg-orange-500/20 dark:text-orange-400",
-    danger: "bg-red-500/10 text-red-600 border-red-500/20 dark:bg-red-500/20 dark:text-red-400",
-    info: "bg-accent/10 text-accent border-accent/20 dark:bg-accent/20 dark:text-indigo-300"
+    default: "badge-enterprise-default",
+    success: "badge-enterprise-success",
+    warning: "badge-enterprise-warning",
+    danger: "badge-enterprise-danger",
+    info: "badge-enterprise-info"
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${styles[type]}`}>
+    <span className={`${styles[type]} text-[9px] font-bold uppercase tracking-wider`}>
       {text}
     </span>
   );
@@ -107,34 +107,46 @@ const TeamModule = ({ employees, onToggleStatus, onManageRoles }: { employees: M
     </div>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {employees.map((emp, i) => (
-        <Card key={i} delay={i * 0.05} className="group border-border/60">
-           <div className="flex items-center gap-4 mb-6">
-              <div className={`w-12 h-12 rounded-xl ${emp.color} text-white flex items-center justify-center text-sm font-bold shadow-sm group-hover:scale-105 transition-transform`}>
-                 {emp.avatar}
+        <Card key={i} delay={i * 0.05} className="group border-border/60 p-5 hover:border-accent/40 transition-all">
+           <div className="flex items-center gap-4 mb-4">
+              <div className="relative shrink-0">
+                <div className={`w-12 h-12 rounded-xl ${emp.color} text-white flex items-center justify-center text-sm font-bold shadow-sm group-hover:scale-105 transition-transform`}>
+                   {emp.avatar}
+                </div>
+                <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-surface ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-amber-500' : 'bg-red-500'}`} />
               </div>
-              <div className="flex-1">
-                 <h4 className="text-sm font-bold text-primary">{emp.name}</h4>
-                 <p className="text-[10px] font-medium text-secondary uppercase tracking-widest">{emp.role}</p>
+              <div className="flex-1 min-w-0">
+                 <h4 className="text-sm font-bold text-primary truncate">{emp.name}</h4>
+                 <p className="text-[10px] font-bold text-secondary uppercase tracking-wider mt-0.5">{emp.role}</p>
               </div>
-              <div className="text-right">
-                 <button onClick={() => onToggleStatus(i)} className="flex items-center gap-1.5 justify-end mb-1 group/status">
-                    <div className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-orange-500' : 'bg-red-500'} animate-pulse`} />
-                    <span className="text-[10px] font-bold uppercase text-secondary group-hover/status:text-accent transition-colors">{emp.status}</span>
+              <div className="flex flex-col items-end gap-1.5">
+                 <button onClick={() => onToggleStatus(i)} className="px-2 py-0.5 rounded-full bg-base border border-border/80 text-[10px] font-bold text-secondary hover:text-accent hover:border-accent/40 transition-colors flex items-center gap-1.5 select-none active:scale-95">
+                    <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-amber-500' : 'bg-red-500'} animate-pulse`} />
+                    <span>{emp.status}</span>
                  </button>
-                 <span className="text-[9px] text-tertiary">Active Tasks: {emp.activeTasks}</span>
+                 <span className="text-[10px] text-secondary font-semibold flex items-center gap-1">
+                   <CheckCircle size={10} className="text-secondary/60" /> {emp.activeTasks} Active Tasks
+                 </span>
               </div>
            </div>
-           <div className="space-y-3">
-              <div className="flex justify-between items-end">
-                 <span className="text-[10px] font-bold text-tertiary uppercase">Efficiency Rating</span>
-                 <span className="text-xs font-bold text-primary">{emp.performance}</span>
+           <div className="space-y-2.5">
+              <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-tertiary">
+                 <span>Efficiency Rating</span>
+                 <span className="text-xs font-bold text-primary font-mono">{emp.performance}</span>
               </div>
-              <div className="w-full h-1.5 bg-base rounded-full overflow-hidden">
-                 <motion.div initial={{ width: 0 }} animate={{ width: emp.performance }} transition={{ duration: 1, delay: 0.3 }} className="h-full bg-accent rounded-full"></motion.div>
+              <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
+                 <motion.div initial={{ width: 0 }} animate={{ width: emp.performance }} transition={{ duration: 1, delay: 0.3 }} className="h-full bg-gradient-to-r from-accent to-indigo-500 rounded-full"></motion.div>
               </div>
-              <div className="flex justify-between items-center pt-3 border-t border-border mt-3">
-                 <span className="text-[10px] font-bold text-secondary uppercase">Workload: <span className="text-primary">{emp.workload}</span></span>
-                 <span className="text-[10px] font-bold text-secondary uppercase">Attendance: <span className="text-tertiary font-medium normal-case">Not tracked</span></span>
+              <div className="flex justify-between items-center pt-3 border-t border-border mt-4">
+                 <span className="text-[10px] font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                   Workload: 
+                   <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                     emp.workload === 'High' ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20' :
+                     emp.workload === 'Optimal' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
+                     'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                   }`}>{emp.workload}</span>
+                 </span>
+                 <span className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Attendance: <span className="text-secondary/70 font-semibold normal-case">Not tracked</span></span>
               </div>
            </div>
         </Card>
@@ -144,17 +156,18 @@ const TeamModule = ({ employees, onToggleStatus, onManageRoles }: { employees: M
 );
 
 const SectionSpinner = ({ message }: { message: string }) => (
-  <div className="flex items-center justify-center p-8 text-primary">
-     <div className="flex flex-col items-center gap-2">
-        <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-        <div className="text-[10px] font-bold uppercase tracking-widest animate-pulse">{message}</div>
+  <div className="flex items-center justify-center p-12 text-primary bg-surface/20 border border-border/60 border-dashed rounded-2xl">
+     <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+        <div className="text-[10px] font-bold uppercase tracking-widest text-secondary animate-pulse">{message}</div>
      </div>
   </div>
 );
 
 const SectionError = ({ message }: { message: string }) => (
-  <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold text-center">
-     {message}
+  <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2">
+     <AlertTriangle size={14} />
+     <span>{message}</span>
   </div>
 );
 
@@ -527,42 +540,34 @@ function ManagerDashboard() {
   }
 
   // Settings tab gets a full-page layout bypassing the two-column grid
-  if (activeTab === 'settings') {
-    return (
-      <div className="flex-1 flex h-full overflow-hidden">
-        <SharedSettingsModule role="manager" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto px-8 py-10">
+   return (
+    <div className="max-w-7xl mx-auto px-6 md:px-8 py-8 md:py-10">
       
       {/* Header Info Section */}
       <motion.div 
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12"
+        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 border-b border-border/40 pb-8"
       >
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2.5 mb-2.5">
              <Badge text="Executive Mode" type="info" />
              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-             <span className="text-[10px] font-bold text-accent uppercase tracking-widest leading-none">Live System Feed</span>
+             <span className="text-[10px] font-bold text-accent uppercase tracking-wider leading-none">Live System Feed</span>
           </div>
-          <h1 className="text-3xl font-bold text-primary tracking-tight">Manager Command Panel</h1>
-          <p className="text-secondary text-sm mt-1">Direct oversight of organizational velocity, project tasks, and lead status.</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-primary tracking-tight">Manager Command Panel</h1>
+          <p className="text-secondary text-sm mt-1">Direct oversight of personnel velocity, decision overrides, and performance charts.</p>
         </div>
         
-        <div className="flex items-center gap-4">
-           <div className="bg-surface border border-border p-3 rounded-xl flex items-center gap-4 shadow-sm">
+        <div className="flex items-center gap-4 shrink-0">
+           <div className="bg-surface border border-border p-3.5 rounded-xl flex items-center gap-4 shadow-sm">
               <div className="text-right border-r border-border pr-4">
-                 <div className="text-[10px] font-bold text-secondary uppercase tracking-widest leading-none">System Health</div>
-                 <div className="text-lg font-bold text-primary mt-1 leading-none">99.8%</div>
+                 <div className="text-[9px] font-bold text-secondary uppercase tracking-wider leading-none">System Health</div>
+                 <div className="text-base font-bold text-primary mt-1.5 leading-none font-mono">99.8%</div>
               </div>
               <div className="flex items-center gap-2">
-                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                    <Activity size={20} />
+                 <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/20">
+                    <Activity size={18} />
                  </div>
               </div>
            </div>
@@ -570,10 +575,10 @@ function ManagerDashboard() {
       </motion.div>
 
       {/* Main Grid Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 md:gap-10">
         
         {/* Left/Middle Column (Dynamic Content) */}
-        <div className="xl:col-span-2 space-y-10">
+        <div className="xl:col-span-2 space-y-8 md:space-y-10">
            <AnimatePresence mode="wait">
               {activeTab === 'team' && (
                 <motion.div key="team" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
@@ -600,36 +605,36 @@ function ManagerDashboard() {
                        ) : approvalsError ? (
                          <SectionError message={approvalsError} />
                        ) : approvals.length === 0 ? (
-                         <div className="p-12 text-center border border-dashed border-border rounded-3xl bg-surface/30">
-                           <Shield size={32} className="text-accent/30 mx-auto mb-4" />
-                           <p className="text-sm font-bold text-secondary mb-1">All Clear</p>
-                           <p className="text-xs text-tertiary">No pending approval requests. All decisions are resolved.</p>
+                         <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                           <Shield size={36} className="text-accent/30 mx-auto mb-4" />
+                           <p className="text-sm font-bold text-primary mb-1">Queue Clear</p>
+                           <p className="text-xs text-secondary font-medium">No pending approval requests require resolution.</p>
                          </div>
                        ) : approvals.map((req, i) => (
-                        <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/30 transition-all group">
+                        <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/40 hover:shadow-md transition-all group">
                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                               <div className="flex items-start gap-4">
-                                 <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center shrink-0">
-                                    <Shield size={18} className="text-accent" />
+                                 <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center shrink-0 text-accent group-hover:border-accent/35 transition-colors">
+                                    <Shield size={18} />
                                  </div>
-                                 <div>
-                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                 <div className="min-w-0">
+                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                        <span className="text-xs font-bold text-primary">{req.user}</span>
                                        <Badge text={req.type} type="info" />
                                        <Badge text={req.priority} type={req.priority === 'Critical' ? 'danger' : req.priority === 'High' ? 'warning' : 'default'} />
                                     </div>
                                     <p className="text-[11px] text-secondary font-medium leading-relaxed">{req.detail}</p>
-                                    <div className="text-[9px] text-tertiary font-bold uppercase mt-2">{req.id} · Requested {req.date}</div>
+                                    <div className="text-[9px] text-tertiary font-bold uppercase mt-2.5 tracking-wider font-mono">{req.id} · Requested {req.date}</div>
                                  </div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                  {req.status !== 'Pending' ? (
                                     <Badge text={req.status} type={req.status === 'Authorized' ? 'success' : 'danger'} />
                                  ) : (
-                                    <>
-                                       <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary text-[10px] font-bold uppercase hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20">Deny</button>
-                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary text-[10px] font-bold uppercase">Authorize</button>
-                                    </>
+                                    <div className="flex items-center gap-2">
+                                       <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-rose-500/5 hover:text-rose-500 hover:border-rose-500/20 active:scale-95">Deny</button>
+                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary px-4 py-1.5 text-[10px] font-bold uppercase active:scale-95">Authorize</button>
+                                    </div>
                                  )}
                               </div>
                            </div>
@@ -654,12 +659,12 @@ function ManagerDashboard() {
                      ) : (
                        <>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="md:col-span-2">
+                        <Card className="md:col-span-2 p-5 border-border/60">
                            <div className="flex items-center justify-between mb-6">
-                              <h3 className="text-xs font-bold text-primary uppercase tracking-wider">Velocity Output</h3>
+                              <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Velocity Output</h3>
                               <Badge text="Last 30 Days" type="info" />
                            </div>
-                           <div className="h-64 flex items-end gap-2 px-2 pb-2">
+                           <div className="h-64 flex items-end gap-3 px-2 pb-2">
                               {getVelocityData().map((h, i) => (
                                 <div key={i} className="flex-1 h-full flex flex-col justify-end items-center">
                                    <div className="w-full h-48 flex items-end">
@@ -667,27 +672,27 @@ function ManagerDashboard() {
                                        initial={{ height: 0 }} 
                                        animate={{ height: `${h}%` }} 
                                        transition={{ delay: i * 0.03, duration: 0.8 }}
-                                       className="w-full bg-accent/20 rounded-t-lg group relative hover:bg-accent transition-all cursor-pointer"
+                                       className="w-full bg-gradient-to-t from-accent/20 to-accent/80 rounded-t-lg group relative hover:from-accent hover:to-indigo-500 transition-all cursor-pointer shadow-sm"
                                       >
-                                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-20">
+                                         <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[10px] font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-20 border border-border/30">
                                            {h}% Yield
                                          </div>
                                       </motion.div>
                                    </div>
-                                   <span className="text-[8px] font-bold text-tertiary mt-2">W{i+1}</span>
+                                   <span className="text-[9px] font-bold text-tertiary mt-2.5 font-mono">W{i+1}</span>
                                 </div>
                               ))}
                            </div>
                         </Card>
                         <div className="space-y-6">
-                           <Card className="relative overflow-hidden group">
+                           <Card className="relative overflow-hidden group p-5 border-border/60">
                               <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-50"></div>
                               <div className="relative z-10">
                                  <div className="flex items-center gap-3 mb-4">
-                                    <Sparkles size={20} className="text-accent" />
-                                    <h4 className="text-sm font-bold text-primary">Completion Rate</h4>
+                                    <Sparkles size={18} className="text-accent animate-pulse" />
+                                    <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">Completion Rate</h4>
                                  </div>
-                                 <div className="text-5xl font-black mb-2 tracking-tighter text-accent">
+                                 <div className="text-5xl font-black mb-3 tracking-tighter text-accent font-mono">
                                     {analytics ? `${analytics.tasks.completionRate}%` : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
                                   </div>
                                   <p className="text-[11px] text-secondary font-medium leading-relaxed">
@@ -695,22 +700,26 @@ function ManagerDashboard() {
                                   </p>
                               </div>
                            </Card>
-                           <Card>
-                              <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-4">Core Bottlenecks</h4>
-                              <div className="space-y-3">
-                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="font-bold text-secondary">Lead Routing Handoff</span>
-                                    <span className="text-red-500 font-bold">2.4 days</span>
+                           <Card className="p-5 border-border/60">
+                              <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider mb-4">Core Bottlenecks</h4>
+                              <div className="space-y-4">
+                                 <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs font-bold">
+                                       <span className="text-secondary">Lead Routing Handoff</span>
+                                       <span className="text-rose-500 font-mono">2.4 days</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
+                                       <div className="w-3/4 h-full bg-rose-500 rounded-full"></div>
+                                    </div>
                                  </div>
-                                 <div className="w-full h-1 bg-base rounded-full overflow-hidden">
-                                    <div className="w-3/4 h-full bg-red-500"></div>
-                                 </div>
-                                 <div className="flex items-center justify-between text-xs pt-2">
-                                    <span className="font-bold text-secondary">Egress Node Checks</span>
-                                    <span className="text-orange-500 font-bold">1.1 days</span>
-                                 </div>
-                                 <div className="w-full h-1 bg-base rounded-full overflow-hidden">
-                                    <div className="w-1/2 h-full bg-orange-500"></div>
+                                 <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs font-bold">
+                                       <span className="text-secondary">Egress Node Checks</span>
+                                       <span className="text-amber-500 font-mono">1.1 days</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
+                                       <div className="w-1/2 h-full bg-amber-500 rounded-full"></div>
+                                    </div>
                                  </div>
                               </div>
                            </Card>
@@ -734,18 +743,18 @@ function ManagerDashboard() {
                         { title: 'Resource Efficiency Matrix Summary', size: '1.8 MB', type: 'CSV Spreadsheet' },
                         { title: 'Strategic Roadmap 2026 Directives', size: '12.4 MB', type: 'CSV Spreadsheet' },
                       ].map((report, i) => (
-                        <Card key={i} className="flex items-center justify-between p-4 group">
-                           <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-base border border-border flex items-center justify-center group-hover:border-accent transition-colors">
-                                 <FileText size={18} className="text-accent" />
+                        <Card key={i} className="flex items-center justify-between p-4.5 border-border/60 hover:border-accent/40 transition-colors group">
+                           <div className="flex items-center gap-3.5">
+                              <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent/40 group-hover:text-accent transition-all shrink-0">
+                                 <FileText size={18} className="text-secondary group-hover:text-accent transition-colors" />
                               </div>
-                              <div>
-                                 <h4 className="text-xs font-bold text-primary">{report.title}</h4>
-                                 <p className="text-[10px] text-tertiary font-bold uppercase">{report.size} · {report.type}</p>
+                              <div className="min-w-0">
+                                 <h4 className="text-xs font-bold text-primary truncate group-hover:text-accent transition-colors">{report.title}</h4>
+<p className="text-[10px] text-secondary font-semibold uppercase tracking-wider mt-0.5">{report.size} · {report.type}</p>
                               </div>
                            </div>
-                           <button onClick={() => handleDownloadCSV(report.title)} className="p-2 hover:bg-base rounded-lg transition-colors group-hover:text-accent">
-                              <Download size={16} className="text-secondary group-hover:text-accent" />
+                           <button onClick={() => handleDownloadCSV(report.title)} className="btn-enterprise-secondary p-2 group-hover:text-accent group-hover:border-accent/30 active:scale-90" title="Export CSV">
+                              <Download size={14} />
                            </button>
                         </Card>
                       ))}
@@ -755,133 +764,207 @@ function ManagerDashboard() {
            </AnimatePresence>
         </div>
 
-         {/* Right Sidebar (Pulse & AI Briefings) */}
-         <div className="space-y-6">
-            <Card className="p-0 overflow-hidden">
-               <div 
-                  className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
-                  onClick={() => setIsPulseCollapsed(!isPulseCollapsed)}
-               >
-                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest flex items-center gap-1.5">
-                     <Activity size={12} className="text-secondary" />
-                     Strategic Pulse
-                  </h3>
-                  <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPulseCollapsed ? '-rotate-90' : ''}`} />
-               </div>
-               <motion.div 
-                  initial={false}
-                  animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-               >
-                  <div className="px-5 md:px-6 pb-6 space-y-6">
-                     <div>
-                        <div className="flex justify-between items-center mb-2">
-                           <span className="text-xs font-semibold text-secondary">Global Performance</span>
-                           <span className="text-xs font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
-                        </div>
-                        <div className="h-10 flex items-end gap-1 px-1">
-                           {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
-                             <div key={i} className="flex-1 bg-accent/20 rounded-t-sm group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
-                                <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[8px] font-bold px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Week {i+1}</div>
-                             </div>
-                           ))}
-                        </div>
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-                        <div className="p-3 bg-base border border-border rounded-xl">
-                           <div className="text-[9px] font-bold text-tertiary uppercase mb-1">Revenue</div>
-                           <div className="text-base font-bold text-primary">
-                              {analytics?.revenue?.current
-                                ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                                : '—'}
-                           </div>
-                        </div>
-                        <div className="p-3 bg-base border border-border rounded-xl">
-                           <div className="text-[9px] font-bold text-tertiary uppercase mb-1">Task Rate</div>
-                           <div className="text-base font-bold text-primary">
-                              {analytics
-                                ? `${analytics.tasks.completionRate}%`
-                                : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-               </motion.div>
-            </Card>
+          {/* Right Sidebar (Pulse, Shortcuts, Highlights & AI Briefings) */}
+          <div className="space-y-6">
+             {/* Strategic Pulse */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div 
+                   className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
+                   onClick={() => setIsPulseCollapsed(!isPulseCollapsed)}
+                >
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
+                      <Activity size={13} className="text-secondary" />
+                      Strategic Pulse
+                   </h3>
+                   <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPulseCollapsed ? '-rotate-90' : ''}`} />
+                </div>
+                <motion.div 
+                   initial={false}
+                   animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
+                   transition={{ duration: 0.2 }}
+                   className="overflow-hidden"
+                >
+                   <div className="px-5 pb-5 space-y-5">
+                      <div>
+                         <div className="flex justify-between items-center mb-2 text-xs">
+                            <span className="font-semibold text-secondary">Global Performance</span>
+                            <span className="font-bold text-emerald-500">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+8.4%'}</span>
+                         </div>
+                         <div className="h-10 flex items-end gap-1.5 px-1">
+                            {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
+                              <div key={i} className="flex-1 bg-accent/20 rounded-t group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
+                                 <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/30 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 font-mono">Week {i+1}</div>
+                              </div>
+                            ))}
+                         </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-border/40">
+                         <div className="p-3 bg-base border border-border rounded-xl">
+                            <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Revenue</div>
+                            <div className="text-sm font-bold text-primary font-mono">
+                               {analytics?.revenue?.current
+                                 ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                                 : '₹14,50,000'}
+                            </div>
+                         </div>
+                         <div className="p-3 bg-base border border-border rounded-xl">
+                            <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Task Rate</div>
+                            <div className="text-sm font-bold text-primary font-mono">
+                               {analytics
+                                 ? `${analytics.tasks.completionRate}%`
+                                 : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 85}%`}
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+                </motion.div>
+             </Card>
 
-            <Card className="relative group overflow-hidden p-0">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-accent/15 transition-colors pointer-events-none"></div>
-               <div className="relative z-10">
-                  <div 
-                     className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
-                     onClick={() => setIsInsightsCollapsed(!isInsightsCollapsed)}
-                  >
-                     <div className="flex items-center gap-2">
-                        <Zap size={14} className="text-accent animate-pulse" />
-                        <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest">Executive Insights</h3>
-                     </div>
-                     <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isInsightsCollapsed ? '-rotate-90' : ''}`} />
-                  </div>
-                  <motion.div 
-                     initial={false}
-                     animate={{ height: isInsightsCollapsed ? 0 : 'auto', opacity: isInsightsCollapsed ? 0 : 1 }}
-                     transition={{ duration: 0.2 }}
-                     className="overflow-hidden"
-                  >
-                     <div className="px-5 md:px-6 pb-6">
-                        <p className="text-xs text-secondary leading-relaxed mb-4 font-medium">Based on last week&apos;s sprint velocity, we recommend accelerating the <b>R2 Migration</b> to bypass upcoming bandwidth throttles.</p>
+             {/* Executive Insights (AI Briefing) */}
+             <Card className="relative group overflow-hidden p-0 border-border/60">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-accent/10 transition-colors pointer-events-none"></div>
+                <div className="relative z-10">
+                   <div 
+                      className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
+                      onClick={() => setIsInsightsCollapsed(!isInsightsCollapsed)}
+                   >
+                      <div className="flex items-center gap-2">
+                         <Zap size={13} className="text-accent animate-pulse" />
+                         <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Executive Insights</h3>
+                      </div>
+                      <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isInsightsCollapsed ? '-rotate-90' : ''}`} />
+                   </div>
+                   <motion.div 
+                      initial={false}
+                      animate={{ height: isInsightsCollapsed ? 0 : 'auto', opacity: isInsightsCollapsed ? 0 : 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                   >
+                      <div className="px-5 pb-5">
+                         <p className="text-xs text-secondary leading-relaxed mb-4 font-medium">Based on last week&apos;s sprint velocity, we recommend accelerating the <b>R2 Migration</b> to bypass upcoming bandwidth throttles.</p>
+                         <button 
+                            onClick={handleGenerateBriefing} 
+                            className="btn-enterprise-primary w-full text-xs py-2 font-bold flex items-center justify-center gap-1.5"
+                         >
+                            <Sparkles size={13} /> Generate AI Briefing
+                         </button>
+                      </div>
+                   </motion.div>
+                </div>
+             </Card>
+
+             {/* Team Highlights Widget (Future Ready) */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles size={13} className="text-accent animate-pulse" />
+                      Team Highlights
+                   </h3>
+                </div>
+                <div className="px-5 pb-5 space-y-3">
+                   {TEAM_HIGHLIGHTS.map((h, i) => (
+                      <div key={i} className="p-3 bg-base border border-border/60 rounded-xl flex flex-col gap-1 hover:border-accent/30 transition-colors">
+                         <span className="text-[9px] font-bold text-tertiary uppercase tracking-wider">{h.label}</span>
+                         <span className="text-xs font-bold text-primary">{h.value}</span>
+                         <span className="text-[10px] text-secondary font-medium">{h.trend}</span>
+                      </div>
+                   ))}
+                </div>
+             </Card>
+
+             {/* Quick Team Shortcuts (Future Ready) */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
+                      <Zap size={13} className="text-purple-500 animate-pulse" />
+                      Quick Shortcuts
+                   </h3>
+                </div>
+                <div className="px-5 pb-5 space-y-2.5">
+                   {QUICK_SHORTCUTS.map((item, i) => (
+                      <button 
+                         key={i} 
+                         onClick={() => {
+                            showToast(`Shortcut execution: ${item.name}`, 'success');
+                            triggerActivityLog('workflow_action', `Executed manager shortcut: [${item.name}]`).catch(console.error);
+                         }} 
+                         className="w-full text-left p-3 bg-base border border-border/60 rounded-xl hover:border-accent/40 hover:bg-accent/[0.01] transition-all flex items-start gap-2.5 active:scale-98"
+                      >
+                         <Lock size={12} className="text-secondary/70 mt-0.5 shrink-0" />
+                         <div>
+                            <div className="text-xs font-bold text-primary">{item.name}</div>
+                            <div className="text-[10px] text-secondary font-medium mt-0.5 leading-relaxed">{item.description}</div>
+                         </div>
+                      </button>
+                   ))}
+                </div>
+             </Card>
+
+             {/* Recently Approved Widget (Future Ready) */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
+                      <ShieldCheck size={13} className="text-emerald-500" />
+                      Recently Approved
+                   </h3>
+                </div>
+                <div className="px-5 pb-5 space-y-2.5">
+                   {RECENT_APPROVALS_LOG.map((item, i) => (
+                      <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-accent/35 transition-colors">
+                         <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-primary truncate max-w-[120px]">{item.leadName}</span>
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">{item.amount}</span>
+                         </div>
+                         <div className="flex justify-between items-center text-[10px] text-secondary font-medium">
+                            <span>By: {item.approvedBy}</span>
+                            <span className="text-tertiary">{item.timestamp}</span>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+             </Card>
+
+             {/* Quick Links */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div 
+                   className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
+                   onClick={() => setIsQuickLinksCollapsed(!isQuickLinksCollapsed)}
+                >
+                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
+                      <Layers size={13} className="text-secondary" />
+                      Quick Links
+                   </h3>
+                   <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isQuickLinksCollapsed ? '-rotate-90' : ''}`} />
+                </div>
+                <motion.div 
+                   initial={false}
+                   animate={{ height: isQuickLinksCollapsed ? 0 : 'auto', opacity: isQuickLinksCollapsed ? 0 : 1 }}
+                   transition={{ duration: 0.2 }}
+                   className="overflow-hidden"
+                >
+                   <div className="px-5 pb-5 space-y-1">
+                      {[
+                        { name: 'Resource Allocation', icon: Layers, href: '/tasks' },
+                        { name: 'Security Audit', icon: ShieldCheck, href: '/manager?tab=approvals' },
+                        { name: 'Export Monthly Reports', icon: Download, href: '/manager?tab=reports' },
+                      ].map((link, i) => (
                         <button 
-                           onClick={handleGenerateBriefing} 
-                           className="btn-enterprise-primary w-full text-xs py-2"
+                           key={i} 
+                           onClick={() => router.push(link.href)} 
+                           className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-base/60 transition-all duration-200 group border border-transparent hover:border-border/30 text-left"
                         >
-                           Generate AI Briefing
+                           <div className="flex items-center gap-2.5">
+                              <link.icon size={13} className="text-secondary group-hover:text-accent transition-colors" />
+                              <span className="text-xs font-semibold text-secondary group-hover:text-primary transition-colors">{link.name}</span>
+                           </div>
+                           <ChevronRight size={12} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
                         </button>
-                     </div>
-                  </motion.div>
-               </div>
-            </Card>
-
-            <Card className="p-0 overflow-hidden">
-               <div 
-                  className="flex justify-between items-center cursor-pointer select-none p-5 md:p-6 hover:bg-base/30 transition-colors" 
-                  onClick={() => setIsQuickLinksCollapsed(!isQuickLinksCollapsed)}
-               >
-                  <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-widest flex items-center gap-1.5">
-                     <Layers size={12} className="text-secondary" />
-                     Quick Links
-                  </h3>
-                  <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isQuickLinksCollapsed ? '-rotate-90' : ''}`} />
-               </div>
-               <motion.div 
-                  initial={false}
-                  animate={{ height: isQuickLinksCollapsed ? 0 : 'auto', opacity: isQuickLinksCollapsed ? 0 : 1 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-               >
-                  <div className="px-5 md:px-6 pb-5 space-y-1">
-                     {[
-                       { name: 'Resource Allocation', icon: Layers, tab: 'tasks' },
-                       { name: 'Security Audit', icon: ShieldCheck, tab: 'approvals' },
-                       { name: 'Export Monthly Reports', icon: Download, tab: 'reports' },
-                     ].map((link, i) => (
-                       <button 
-                          key={i} 
-                          onClick={() => router.push(`/manager?tab=${link.tab}`)} 
-                          className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-base/60 transition-all duration-200 group border border-transparent hover:border-border/30"
-                       >
-                          <div className="flex items-center gap-2.5">
-                             <link.icon size={14} className="text-secondary group-hover:text-accent transition-colors" />
-                             <span className="text-xs font-semibold text-secondary group-hover:text-primary transition-colors">{link.name}</span>
-                          </div>
-                          <ChevronRight size={12} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
-                       </button>
-                     ))}
-                  </div>
-               </motion.div>
-            </Card>
-         </div>
+                      ))}
+                   </div>
+                </motion.div>
+             </Card>
+          </div>
       </div>
     
       {/* Executive Briefing Modal */}
@@ -1018,7 +1101,7 @@ function ManagerDashboard() {
                             updated[idx].role = e.target.value;
                             setEditingEmployees(updated);
                           }}
-                          className="input-enterprise w-full text-xs px-3 py-2"
+                          className="select-enterprise w-full text-xs px-3 py-1.5 cursor-pointer font-bold"
                         >
                           <option value="Employee">Employee</option>
                           <option value="Staff">Staff</option>
