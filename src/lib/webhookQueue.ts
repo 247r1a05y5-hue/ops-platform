@@ -197,11 +197,13 @@ export async function enqueueWebhook(params: {
   payload: Record<string, unknown>;
   targetUrl: string;
 }): Promise<string> {
+  console.log('[TRACE 8] enqueueWebhook entered');
   await connectDB();
 
   const eventId = generateEventId();
   const now = new Date();
 
+  console.log('[TRACE 9] Before MongoDB insert');
   await WebhookEvent.create({
     eventId,
     event: params.event,
@@ -220,6 +222,7 @@ export async function enqueueWebhook(params: {
     createdAt: now,
     updatedAt: now,
   });
+  console.log('[TRACE 10] MongoDB insert completed');
 
   structuredLog('info', {
     message: 'Enqueued',
@@ -229,6 +232,7 @@ export async function enqueueWebhook(params: {
     targetUrl: params.targetUrl,
   });
 
+  console.log('[TRACE 11] Returning eventId');
   return eventId;
 }
 

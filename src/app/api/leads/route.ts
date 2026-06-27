@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
 
 // POST new lead — triggers Discovery workflow automatically
 export async function POST(req: NextRequest) {
+  console.log('[TRACE 1] POST /api/leads entered');
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
     if (!name || !email) {
       return NextResponse.json({ success: false, error: 'Name and Email are required' }, { status: 400 });
     }
+    console.log('[TRACE 2] Lead validation passed');
 
     let assignedToName = 'Unassigned';
     if (assignedTo) {
@@ -141,6 +143,7 @@ export async function POST(req: NextRequest) {
       leadSource: leadSource || 'Manual Entry',
       stageEnteredAt,
     });
+    console.log('[TRACE 3] Lead saved successfully');
 
     // Trigger Discovery workflow automatically
     try {
@@ -178,12 +181,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Enqueue Zapier webhook — delivery handled by the webhook queue worker
+    console.log('[TRACE 4] Before enqueueWebhook');
     try {
       const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
       if (!webhookUrl) {
         console.warn('[leads] ZAPIER_WEBHOOK_URL is not set — skipping Zapier notification.');
       } else {
         const { enqueueWebhook } = await import('@/lib/webhookQueue');
+        console.log('[TRACE 5] enqueueWebhook imported');
         await enqueueWebhook({
           event: 'new_lead',
           targetUrl: webhookUrl,
@@ -200,6 +205,7 @@ export async function POST(req: NextRequest) {
             leadId: lead._id.toString(),
           },
         });
+        console.log('[TRACE 6] enqueueWebhook completed');
       }
     } catch (err) {
       console.error('[leads] Failed to enqueue Zapier webhook:', err);
@@ -213,7 +219,9 @@ export async function POST(req: NextRequest) {
       req,
     }).catch(console.error);
 
+    console.log('[TRACE 7] API response returned');
     return NextResponse.json({ success: true, lead });
+
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
