@@ -288,4 +288,33 @@ httpServer.listen(port, '0.0.0.0', () => {
   console.log(`> OPS Platform ready on http://0.0.0.0:${port}`);
   console.log(`> Socket.IO attached at /api/socketio`);
   console.log(`> Environment: ${dev ? 'development' : 'production'}`);
+
+  // ── Webhook Cron Scheduler (Railway-native) ──────────────────────────────
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && cronSecret.trim() !== '') {
+    console.log('[Scheduler] Initializing once-per-minute loopback cron worker...');
+    setInterval(async () => {
+      try {
+        const url = `http://127.0.0.1:${port}/api/cron/webhooks`;
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${cronSecret}`,
+          },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          console.error(`[Scheduler] Cron execution failed (HTTP ${res.status}):`, text);
+        } else {
+          const data = await res.json();
+          console.log(`[Scheduler] Cron run succeeded:`, data);
+        }
+      } catch (err) {
+        console.error('[Scheduler] Loopback request error:', err.message || err);
+      }
+    }, 60000);
+  } else {
+    console.warn('[Scheduler] CRON_SECRET is not set. In-process cron scheduler is inactive.');
+  }
 });
+

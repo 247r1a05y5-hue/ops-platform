@@ -52,10 +52,11 @@ When a webhook reaches `dead` status (5 failed attempts):
 **Symptoms**: `workerHealthy: false`, growing `pending` count
 
 **Steps**:
-1. Check Vercel Cron scheduler is active: The project includes `vercel.json` defining a cron path for `/api/cron/webhooks` executing every minute (`*/1 * * * *`).
-2. Verify `CRON_SECRET` environment variable is set in the Vercel/Railway dashboard.
+1. Check in-process loopback scheduler is active: The production server entry point (`server.mjs`) automatically initiates a once-per-minute loopback fetch cron worker when `CRON_SECRET` is configured.
+2. Verify `CRON_SECRET` environment variable is set in the Railway dashboard Variables tab.
 3. Manually trigger one run to verify: `GET /api/cron/webhooks` with an `Authorization: Bearer <CRON_SECRET>` header.
-4. Monitor `lastHeartbeat` in the dashboard to confirm recovery.
+4. Monitor `lastHeartbeat` in the integration health dashboard to confirm recovery.
+
 
 
 ### Stuck Processing Locks
