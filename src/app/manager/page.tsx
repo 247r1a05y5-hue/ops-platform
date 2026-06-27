@@ -870,6 +870,11 @@ function ManagerDashboard() {
                          <span className="text-[10px] text-secondary font-medium">{h.trend}</span>
                       </div>
                    ))}
+                   {TEAM_HIGHLIGHTS.length === 0 && (
+                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
+                         No performance highlights recorded.
+                      </div>
+                   )}
                 </div>
              </Card>
 
@@ -898,10 +903,15 @@ function ManagerDashboard() {
                          </div>
                       </button>
                    ))}
+                   {QUICK_SHORTCUTS.length === 0 && (
+                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
+                         No operational shortcuts configured.
+                      </div>
+                   )}
                 </div>
              </Card>
 
-             {/* Recently Approved Widget (Future Ready) */}
+             {/* Recently Approved Widget (Real Database Approvals) */}
              <Card className="p-0 overflow-hidden border-border/60">
                 <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
                    <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
@@ -909,19 +919,22 @@ function ManagerDashboard() {
                       Recently Approved
                    </h3>
                 </div>
-                <div className="px-5 pb-5 space-y-2.5">
-                   {RECENT_APPROVALS_LOG.map((item, i) => (
+                <div className="px-5 pb-5 space-y-3">
+                   {approvals.filter(a => a.status === 'Authorized').slice(0, 3).map((item, i) => (
                       <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-accent/35 transition-colors">
-                         <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-primary truncate max-w-[120px]">{item.leadName}</span>
-                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">{item.amount}</span>
+                         <div className="flex justify-between items-center gap-2">
+                            <span className="text-xs font-bold text-primary truncate">{item.user}</span>
+                            <span className="text-[8.5px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">Approved</span>
                          </div>
-                         <div className="flex justify-between items-center text-[10px] text-secondary font-medium">
-                            <span>By: {item.approvedBy}</span>
-                            <span className="text-tertiary">{item.timestamp}</span>
-                         </div>
+                         <p className="text-[11px] text-secondary font-medium leading-relaxed">{item.detail}</p>
+                         <div className="text-[9px] text-tertiary font-bold uppercase pt-1 tracking-wider font-mono">Authorized {item.date}</div>
                       </div>
                    ))}
+                   {approvals.filter(a => a.status === 'Authorized').length === 0 && (
+                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
+                         No recent authorizations logged.
+                      </div>
+                   )}
                 </div>
              </Card>
 
