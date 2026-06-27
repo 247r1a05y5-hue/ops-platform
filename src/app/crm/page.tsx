@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadCSV } from '@/utils/export';
 import { triggerActivityLog } from '@/utils/activity';
+import { RECENTLY_VIEWED_LEADS, PINNED_LEADS, KEYBOARD_SHORTCUTS } from '@/mock/crm';
 
 type CRMStage = 'Discovery' | 'Contacted' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Closing';
 
@@ -367,6 +368,32 @@ export function CRMWorkspace() {
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  const [recentlyViewed, setRecentlyViewed] = useState<any[]>([]);
+  const [pinnedLeads, setPinnedLeads] = useState<any[]>([]);
+
+  useEffect(() => {
+    setRecentlyViewed(RECENTLY_VIEWED_LEADS);
+    setPinnedLeads(PINNED_LEADS);
+  }, []);
+
+  const addToRecentlyViewed = (lead: Lead) => {
+    if (!lead._id) return;
+    setRecentlyViewed(prev => {
+      const filtered = prev.filter(item => item.id !== lead._id);
+      return [
+        {
+          id: lead._id,
+          name: lead.name,
+          company: lead.company,
+          stage: lead.stage,
+          value: lead.value,
+          viewedAt: new Date().toISOString()
+        },
+        ...filtered
+      ].slice(0, 6);
+    });
+  };
 
   // Pagination & Bulk Selection states
   const [currentPage, setCurrentPage] = useState(1);
@@ -744,6 +771,12 @@ export function CRMWorkspace() {
       fetchProposals(selectedLead._id);
     }
   }, [selectedLead?._id, modalTab]);
+
+  useEffect(() => {
+    if (selectedLead) {
+      addToRecentlyViewed(selectedLead);
+    }
+  }, [selectedLead?._id]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1223,7 +1256,6 @@ export function CRMWorkspace() {
     { id: 'history', label: 'Audit Log' },
     ...(user?.role === 'Admin' || user?.role === 'Manager' ? [{ id: 'approvals', label: '⚠️ Approvals' }] : []),
   ];
-
   return (
     <div className="flex-1 flex flex-col h-full bg-base text-primary overflow-hidden transition-colors">
 
@@ -1231,54 +1263,119 @@ export function CRMWorkspace() {
       <input type="file" ref={docInputRef} className="hidden" onChange={handleDocUpload} />
 
       {/* Header */}
-      <div className="p-8 pb-4 shrink-0 border-b border-border bg-base z-10">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">CRM Pipeline</h1>
-            <p className="text-secondary text-sm font-medium">Workflow-driven lead management with stage automations.</p>
+      <div className="px-8 pt-8 pb-5 shrink-0 border-b border-border bg-surface z-10 shadow-sm transition-colors">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-accent uppercase tracking-widest bg-accent/5 px-2 py-0.5 rounded border border-accent/10">Sales Workspace</span>
+              <span className="text-[10px] font-bold text-tertiary font-mono bg-base px-2 py-0.5 rounded border border-border/60">Esc: Close Drawers</span>
+            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-primary">CRM Pipeline</h1>
+            <p className="text-secondary text-xs font-medium">Workflow-driven lead management with automatic stage progression.</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setShowFunnel(v => !v)} className={`px-4 py-2.5 border border-border rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${showFunnel ? 'bg-accent text-white border-accent' : 'bg-surface text-primary hover:bg-base'}`}>
-              <BarChart2 size={14} /> Funnel
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowFunnel(v => !v)}
+              className={`btn-enterprise-secondary flex items-center gap-1.5 ${showFunnel ? 'bg-accent/5 text-accent border-accent/30 shadow-inner' : ''}`}
+            >
+              <BarChart2 size={13} />
+              <span>Funnel</span>
             </button>
-            <button onClick={() => csvInputRef.current?.click()} className="px-4 py-2.5 border border-border bg-surface text-primary rounded-xl text-xs font-semibold hover:bg-base transition-all shadow-sm flex items-center gap-2">
-              <Upload size={14} /> Import CSV
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              className="btn-enterprise-secondary flex items-center gap-1.5"
+            >
+              <Upload size={13} />
+              <span>Import CSV</span>
             </button>
-            <button onClick={() => { downloadCSV(leads, 'CRM_Leads'); triggerActivityLog('file_download', 'Exported CRM Leads to CSV'); }} className="px-4 py-2.5 border border-border bg-surface text-primary rounded-xl text-xs font-semibold hover:bg-base transition-all shadow-sm flex items-center gap-2">
-              <Download size={14} /> Export
+            <button
+              onClick={() => {
+                downloadCSV(leads, 'CRM_Leads');
+                triggerActivityLog('file_download', 'Exported CRM Leads to CSV');
+              }}
+              className="btn-enterprise-secondary flex items-center gap-1.5"
+            >
+              <Download size={13} />
+              <span>Export</span>
             </button>
-            <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-[0_4px_14px_rgba(99,102,241,0.3)] hover:bg-indigo-600 transition-all active:scale-95">
-              <Plus size={16} /> Add Lead
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="btn-enterprise-primary flex items-center gap-1.5"
+            >
+              <Plus size={14} />
+              <span>Add Lead</span>
             </button>
           </div>
         </div>
 
+        {/* Recently Viewed Strip */}
+        {recentlyViewed.length > 0 && (
+          <div className="flex items-center gap-2.5 mb-5 pb-1 border-b border-border/20 text-xs text-secondary font-medium">
+            <span className="text-[10px] font-bold text-tertiary uppercase tracking-wider shrink-0">Recent:</span>
+            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar py-0.5">
+              {recentlyViewed.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    const lead = leads.find(l => l._id === item.id);
+                    if (lead) {
+                      setSelectedLead(lead);
+                      setModalTab('workflow');
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-base border border-border/80 rounded-xl hover:border-accent hover:text-primary transition-all text-xs font-semibold text-secondary whitespace-nowrap shadow-sm group"
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${STAGE_META[item.stage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'}`} />
+                  <span>{item.name}</span>
+                  <span className="text-[10px] text-tertiary font-normal group-hover:text-secondary">({item.company})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Funnel Bar */}
         <AnimatePresence>
           {showFunnel && funnelData.length > 0 && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-              className="mb-4 p-4 bg-surface border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-secondary uppercase tracking-widest">Conversion Funnel</p>
-                <div className="flex gap-4 text-[10px] font-bold text-secondary">
-                  <span>Total: <span className="text-primary">{funnelData[0]?.count || 0}</span> leads</span>
-                  <span>Closed: <span className="text-emerald-500">{funnelData[5]?.count || 0}</span></span>
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-5 p-5 bg-base border border-border rounded-2xl overflow-hidden shadow-inner"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs font-bold text-primary uppercase tracking-wider">Conversion Funnel Analytics</p>
+                  <p className="text-[10px] text-secondary font-medium mt-0.5">Real-time cohort drop-off mapping</p>
+                </div>
+                <div className="flex gap-4 text-[10px] font-bold text-secondary bg-surface px-3 py-1.5 rounded-xl border border-border/80 shadow-sm">
+                  <span>Total Leads: <span className="text-primary font-extrabold">{funnelData[0]?.count || 0}</span></span>
+                  <span className="text-border/60">|</span>
+                  <span>Closed Wins: <span className="text-emerald-500 font-extrabold">{funnelData[5]?.count || 0}</span></span>
                 </div>
               </div>
-              <div className="grid grid-cols-6 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 {funnelData.map((f, i) => (
-                  <div key={f.stage} className="flex flex-col items-center gap-1.5">
-                    <div className="text-[11px] font-black text-primary">{f.count}</div>
-                    <div className="w-full rounded-lg overflow-hidden bg-border h-2">
-                      <div className={`h-2 ${STAGE_META[f.stage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'} transition-all`}
-                        style={{ width: `${f.conversionRate}%` }} />
-                    </div>
-                    <div className="text-[9px] font-bold text-secondary text-center">{f.stage}</div>
-                    {i > 0 && (
-                      <div className={`text-[9px] font-black ${f.conversionRate >= 50 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                        {f.conversionRate}%
+                  <div key={f.stage} className="p-3 bg-surface border border-border rounded-xl flex flex-col justify-between shadow-sm group hover:border-accent/40 transition-colors">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] font-extrabold text-secondary uppercase tracking-wider">{f.stage}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ${STAGE_META[f.stage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'}`} />
                       </div>
-                    )}
+                      <div className="text-lg font-extrabold text-primary">{f.count} <span className="text-[10px] text-secondary font-medium">leads</span></div>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      <div className="w-full rounded-full bg-base h-1.5 overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full ${STAGE_META[f.stage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'}`}
+                          style={{ width: `${f.conversionRate}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-[9px] font-bold text-secondary">
+                        <span>Conv. Rate</span>
+                        <span className={f.conversionRate >= 50 ? 'text-emerald-500' : 'text-amber-500'}>{f.conversionRate}%</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1286,47 +1383,68 @@ export function CRMWorkspace() {
           )}
         </AnimatePresence>
 
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex bg-surface border border-border rounded-xl p-1 shadow-inner">
-            <button onClick={() => setView('board')} className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${view === 'board' ? 'bg-base text-accent shadow-sm ring-1 ring-border/50' : 'text-secondary hover:text-primary'}`}>
-              <LayoutGrid size={14} /> Board View
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="flex items-center bg-base border border-border/80 rounded-xl p-0.5 w-fit">
+            <button
+              onClick={() => setView('board')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                view === 'board' ? 'bg-surface text-accent shadow-sm border border-border/50' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <LayoutGrid size={13} />
+              <span>Pipeline Board</span>
             </button>
-            <button onClick={() => setView('list')} className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${view === 'list' ? 'bg-base text-accent shadow-sm ring-1 ring-border/50' : 'text-secondary hover:text-primary'}`}>
-              <List size={14} /> List View
+            <button
+              onClick={() => setView('list')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                view === 'list' ? 'bg-surface text-accent shadow-sm border border-border/50' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <List size={13} />
+              <span>List Grid</span>
             </button>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search leads..." className="bg-surface border border-border rounded-xl pl-9 pr-4 py-2 text-xs w-64 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all text-primary font-medium" />
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex-1 sm:w-64">
+              <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-tertiary" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, company..."
+                className="input-enterprise pl-9 pr-4 py-2 text-xs"
+              />
             </div>
-            <button className="p-2 border border-border rounded-xl bg-surface text-secondary hover:text-primary transition-colors"><Filter size={16} /></button>
+            <button
+              onClick={() => showToast('Filters and sorting are active.', 'info')}
+              className="btn-enterprise-secondary p-2 flex items-center justify-center shrink-0"
+              title="Filter Options"
+            >
+              <Filter size={14} />
+            </button>
           </div>
         </div>
       </div>
-
-      {/* Board / List */}
       <div className="flex-1 overflow-hidden">
         {loading ? (
           view === 'board' ? (
             /* Kanban Board loading skeleton */
-            <div className="h-full overflow-x-auto p-8 bg-base/30 relative shadow-inner custom-scrollbar">
-              <div className="flex gap-6 h-full min-w-max p-1 pb-4 animate-pulse">
+            <div className="h-full overflow-x-auto p-8 bg-base/30 relative custom-scrollbar">
+              <div className="flex gap-6 h-full min-w-max p-1 pb-4">
                 {STAGES.map(stage => (
-                  <div key={stage} className="flex flex-col w-[300px] rounded-3xl border-2 border-transparent p-2 bg-surface/20 shrink-0 space-y-4">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="w-24 h-4 bg-border rounded"></div>
-                      <div className="w-6 h-4 bg-border rounded-full"></div>
+                  <div key={stage} className="flex flex-col w-[300px] rounded-2xl border border-border bg-surface/40 p-3 shrink-0 space-y-4 shadow-sm">
+                    <div className="p-3 flex items-center justify-between">
+                      <div className="w-24 h-4 bg-border/60 rounded skeleton-enterprise"></div>
+                      <div className="w-6 h-4 bg-border/60 rounded-full skeleton-enterprise"></div>
                     </div>
                     {[1, 2].map(i => (
                       <div key={i} className="bg-surface border border-border p-5 rounded-2xl space-y-3 shadow-sm">
-                        <div className="w-12 h-3 bg-border rounded"></div>
-                        <div className="w-full h-4 bg-border rounded"></div>
-                        <div className="w-2/3 h-4 bg-border rounded"></div>
+                        <div className="w-12 h-3 bg-border/60 rounded skeleton-enterprise"></div>
+                        <div className="w-full h-4 bg-border/60 rounded skeleton-enterprise"></div>
+                        <div className="w-2/3 h-4 bg-border/60 rounded skeleton-enterprise"></div>
                         <div className="flex justify-between pt-3 border-t border-border mt-1">
-                          <div className="w-10 h-3 bg-border rounded"></div>
-                          <div className="w-12 h-3 bg-border rounded"></div>
+                          <div className="w-10 h-3 bg-border/60 rounded skeleton-enterprise"></div>
+                          <div className="w-12 h-3 bg-border/60 rounded skeleton-enterprise"></div>
                         </div>
                       </div>
                     ))}
@@ -1336,15 +1454,15 @@ export function CRMWorkspace() {
             </div>
           ) : (
             /* List View table loading skeleton */
-            <div className="p-8 overflow-y-auto h-full bg-base/30 shadow-inner animate-pulse">
+            <div className="p-8 overflow-y-auto h-full bg-base/30 shadow-inner">
               <div className="rounded-2xl border border-border bg-base shadow-sm overflow-hidden p-6 space-y-4">
-                <div className="h-10 bg-border rounded w-full"></div>
+                <div className="h-10 bg-border/60 rounded w-full skeleton-enterprise"></div>
                 {[1, 2, 3, 4, 5].map(i => (
                   <div key={i} className="h-16 bg-surface border border-border rounded-xl flex items-center justify-between px-6">
-                    <div className="w-1/4 h-4 bg-border rounded"></div>
-                    <div className="w-1/6 h-4 bg-border rounded"></div>
-                    <div className="w-1/12 h-4 bg-border rounded"></div>
-                    <div className="w-1/12 h-4 bg-border rounded"></div>
+                    <div className="w-1/4 h-4 bg-border/60 rounded skeleton-enterprise"></div>
+                    <div className="w-1/6 h-4 bg-border/60 rounded skeleton-enterprise"></div>
+                    <div className="w-1/12 h-4 bg-border/60 rounded skeleton-enterprise"></div>
+                    <div className="w-1/12 h-4 bg-border/60 rounded skeleton-enterprise"></div>
                   </div>
                 ))}
               </div>
@@ -1352,19 +1470,21 @@ export function CRMWorkspace() {
           )
         ) : filteredLeads.length === 0 ? (
           /* Rich Empty State */
-          <div className="h-full flex flex-col items-center justify-center p-12 bg-base/30 shadow-inner">
-            <div className="flex flex-col items-center justify-center p-12 bg-surface/50 border border-dashed border-border rounded-2xl max-w-lg w-full text-center shadow-sm">
-              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-4">
+          <div className="h-full flex flex-col items-center justify-center p-12 bg-base/30">
+            <div className="flex flex-col items-center justify-center p-12 bg-surface border border-dashed border-border rounded-2xl max-w-lg w-full text-center shadow-sm">
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-4 shadow-inner">
                 <Target size={32} />
               </div>
               <h3 className="text-lg font-bold text-primary mb-1">No Leads Found</h3>
               <p className="text-secondary text-sm mb-6 font-medium">No leads are currently matching your search filters. Import leads or create a new lead to get started.</p>
               <div className="flex gap-3">
-                <button onClick={() => csvInputRef.current?.click()} className="px-4 py-2 border border-border bg-base text-primary rounded-xl text-xs font-semibold hover:bg-surface transition-all flex items-center gap-2 active:scale-95 shadow-sm">
-                  <Upload size={14} /> Import CSV
+                <button onClick={() => csvInputRef.current?.click()} className="btn-enterprise-secondary flex items-center gap-1.5">
+                  <Upload size={13} />
+                  <span>Import CSV</span>
                 </button>
-                <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-600 transition-all active:scale-95">
-                  <Plus size={16} /> Add Lead
+                <button onClick={() => setIsAddModalOpen(true)} className="btn-enterprise-primary flex items-center gap-1.5">
+                  <Plus size={14} />
+                  <span>Add Lead</span>
                 </button>
               </div>
             </div>
@@ -1380,24 +1500,24 @@ export function CRMWorkspace() {
 
                 return (
                   <div key={stage}
-                    className={`flex flex-col w-[300px] rounded-3xl border-2 transition-all duration-200 p-2 bg-surface/20 shrink-0 snap-center ${
-                      isCurrentOver ? 'border-accent bg-accent/[0.04] shadow-lg shadow-accent/5 scale-[1.01]' :
-                      isAnyDragging ? 'border-dashed border-border bg-surface/10' : 'border-transparent'
+                    className={`flex flex-col w-[300px] rounded-2xl border transition-all duration-200 p-2.5 bg-surface/20 shrink-0 snap-center ${
+                      isCurrentOver ? 'border-accent bg-accent/[0.03] shadow-md scale-[1.005]' :
+                      isAnyDragging ? 'border-dashed border-border/80 bg-surface/10' : 'border-transparent'
                     }`}
                     onDragOver={(e) => { e.preventDefault(); if (dragOverStage !== stage) setDragOverStage(stage); }}
                     onDragLeave={() => setDragOverStage(null)}
                     onDrop={(e) => { handleDrop(e, stage); setDragOverStage(null); }}
                   >
-                    <div className="p-4 flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2.5">
+                    <div className="p-3 flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${meta.dot}`} />
-                        <h3 className="font-extrabold text-xs text-primary uppercase tracking-widest leading-none">{stage}</h3>
-                        <span className={`text-[9px] font-bold ${meta.color}`}>{meta.desc}</span>
+                        <h3 className="font-extrabold text-xs text-primary uppercase tracking-wider leading-none">{stage}</h3>
+                        <span className="text-[10px] text-tertiary font-medium">({stageLeads.length})</span>
                       </div>
-                      <span className="text-[10px] font-black bg-surface border border-border text-secondary px-2.5 py-0.5 rounded-full shadow-sm leading-none">{stageLeads.length}</span>
+                      <span className="text-[9px] font-bold text-secondary uppercase tracking-widest">{meta.desc}</span>
                     </div>
 
-                    <div className="p-2 flex flex-col gap-3 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
+                    <div className="p-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
                       <AnimatePresence initial={false}>
                         {stageLeads.map(lead => {
                           const initials = lead.assignedToName ? lead.assignedToName.split(' ').map(n => n[0]).join('') : 'UN';
@@ -1406,23 +1526,23 @@ export function CRMWorkspace() {
                               initial={{ opacity: 0, y: 10, scale: 0.98 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
                               exit={{ opacity: 0, scale: 0.95 }}
-                              whileHover={{ y: -4, scale: 1.01 }}
+                              whileHover={{ y: -2, scale: 1.005 }}
                               transition={{ duration: 0.2 }}
                               draggable
                               onDragStart={() => setDraggedItem(lead._id || null)}
                               onDragEnd={() => { setDraggedItem(null); setDragOverStage(null); }}
                               onClick={() => { setSelectedLead(lead); setModalTab('workflow'); }}
-                              className="bg-surface border border-border/80 p-5 rounded-2xl cursor-grab active:cursor-grabbing hover:border-accent hover:shadow-lg hover:shadow-accent/[0.03] transition-all group shadow-sm flex flex-col gap-3"
+                              className="bg-surface border border-border/80 p-4 rounded-xl cursor-grab active:cursor-grabbing hover:border-accent/40 hover:shadow-md transition-all group shadow-sm flex flex-col gap-3"
                             >
                               <div className="flex justify-between items-center">
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${
-                                  lead.status === 'Hot' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
-                                  lead.status === 'Warm' ? 'bg-orange-500/10 text-orange-600 border-orange-500/20' :
-                                  'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                                <span className={`badge-enterprise ${
+                                  lead.status === 'Hot' ? 'badge-enterprise-danger' :
+                                  lead.status === 'Warm' ? 'badge-enterprise-warning' :
+                                  'badge-enterprise-info'
                                 }`}>{lead.status}</span>
                                 <div className="flex gap-2">
                                   {lead.leadScore != null && lead.leadScore > 0 && (
-                                    <span className={`text-[9px] font-black ${lead.leadScore >= 70 ? 'text-emerald-500' : 'text-amber-500'}`} title="Lead score">
+                                    <span className={`text-[10px] font-black flex items-center gap-0.5 ${lead.leadScore >= 70 ? 'text-emerald-500' : 'text-amber-500'}`} title="Lead score">
                                       ★ {lead.leadScore}
                                     </span>
                                   )}
@@ -1432,27 +1552,31 @@ export function CRMWorkspace() {
                                 </div>
                               </div>
                               <div>
-                                <h4 className="text-sm font-extrabold text-primary group-hover:text-accent transition-colors leading-snug tracking-tight mb-0.5 truncate">{lead.name}</h4>
-                                <p className="text-[10px] font-bold text-secondary truncate uppercase tracking-widest">{lead.company}</p>
+                                <h4 className="text-sm font-bold text-primary group-hover:text-accent transition-colors leading-snug tracking-tight mb-0.5 truncate">{lead.name}</h4>
+                                <p className="text-[10px] font-semibold text-secondary truncate uppercase tracking-widest">{lead.company}</p>
                               </div>
-                              <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
-                                <div className="text-sm font-black text-accent">{lead.value}</div>
+                              <div className="flex items-center justify-between pt-2.5 border-t border-border mt-1">
+                                <div className="text-sm font-bold text-accent">{lead.value}</div>
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black border ${getAvatarColor(lead.assignedToName)}`} title={`Owner: ${lead.assignedToName || 'Unassigned'}`}>{initials}</div>
-                                  <span className="text-[8px] font-black text-tertiary uppercase tracking-wider truncate max-w-[70px]">{lead.lastContact || 'Just now'}</span>
+                                  <span className="text-[8px] font-bold text-tertiary uppercase tracking-wider truncate max-w-[70px]">{lead.lastContact || 'Just now'}</span>
                                 </div>
                               </div>
-                              {/* Stage-specific indicator */}
-                              {lead.stage === 'Proposal' && lead.proposalStatus !== 'not_sent' && (
-                                <div className={`text-[8px] font-black px-2 py-0.5 rounded-full w-fit ${lead.proposalStatus === 'accepted' ? 'bg-emerald-500/10 text-emerald-600' : lead.proposalStatus === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-600'}`}>
-                                  PROPOSAL {(lead.proposalStatus || '').replace('_', ' ').toUpperCase()}
-                                </div>
+                              {/* Stage-specific indicators */}
+                              {(lead.stage === 'Proposal' && lead.proposalStatus !== 'not_sent' && lead.proposalStatus) && (
+                                <span className={`badge-enterprise uppercase text-[9px] w-fit ${
+                                  lead.proposalStatus === 'accepted' ? 'badge-enterprise-success' :
+                                  lead.proposalStatus === 'rejected' ? 'badge-enterprise-danger' :
+                                  'badge-enterprise-warning'
+                                }`}>
+                                  PROPOSAL {lead.proposalStatus.replace('_', ' ')}
+                                </span>
                               )}
                               {lead.stage === 'Closing' && lead.paymentStatus === 'paid' && (
-                                <div className="text-[8px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 w-fit">✓ PAID</div>
+                                <span className="badge-enterprise badge-enterprise-success w-fit">✓ PAID</span>
                               )}
                               {lead.stage === 'Closing' && lead.onboardingReady && (
-                                <div className="text-[8px] font-black px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 w-fit">🚀 ONBOARDING READY</div>
+                                <span className="badge-enterprise badge-enterprise-info w-fit">🚀 ONBOARDING READY</span>
                               )}
                             </motion.div>
                           );
@@ -1465,9 +1589,9 @@ export function CRMWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="p-8 overflow-hidden h-full bg-base/30 shadow-inner flex flex-col">
-            <div className="flex-1 overflow-y-auto relative custom-scrollbar mb-4 border border-border bg-base rounded-2xl shadow-sm">
-              <table className="w-full text-left text-xs border-collapse">
+          <div className="p-8 overflow-hidden h-full bg-base/30 flex flex-col">
+            <div className="flex-1 overflow-y-auto relative custom-scrollbar mb-4 border border-border bg-surface rounded-xl shadow-sm">
+              <table className="table-enterprise">
                 <thead className="sticky top-0 bg-surface border-b border-border text-secondary font-bold uppercase tracking-widest z-10 shadow-sm">
                   <tr>
                     <th className="px-6 py-4 w-12 text-center">
@@ -1475,7 +1599,7 @@ export function CRMWorkspace() {
                         type="checkbox" 
                         checked={paginatedLeads.length > 0 && paginatedLeads.every(l => selectedLeadIds.has(l._id || ''))}
                         onChange={toggleSelectAllPageLeads}
-                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
+                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent cursor-pointer"
                       />
                     </th>
                     <th className="px-6 py-4">Lead Name</th>
@@ -1487,13 +1611,13 @@ export function CRMWorkspace() {
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-border/60">
                   {paginatedLeads.map(lead => {
                     const isSelected = selectedLeadIds.has(lead._id || '');
                     return (
                       <tr 
                         key={lead._id} 
-                        className={`hover:bg-surface/50 transition-colors group cursor-pointer ${isSelected ? 'bg-accent/5' : ''}`}
+                        className={`hover:bg-accent/[0.01] transition-colors group cursor-pointer ${isSelected ? 'bg-accent/[0.03]' : ''}`}
                         onClick={() => { setSelectedLead(lead); setModalTab('workflow'); }}
                       >
                         <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1501,7 +1625,7 @@ export function CRMWorkspace() {
                             type="checkbox" 
                             checked={isSelected}
                             onChange={() => toggleSelectLead(lead._id || '')}
-                            className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
+                            className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent cursor-pointer"
                           />
                         </td>
                         <td className="px-6 py-4">
@@ -1509,31 +1633,36 @@ export function CRMWorkspace() {
                           <div className="text-[11px] font-medium text-secondary mt-0.5">{lead.company} · {lead.email}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-base border border-border font-bold text-[10px] ${STAGE_META[lead.stage]?.color}`}>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-base border border-border/80 font-bold text-[10px]">
                             <div className={`w-1.5 h-1.5 rounded-full ${STAGE_META[lead.stage]?.dot.split(' ')[0]}`} />
-                            {lead.stage}
+                            <span className="text-primary font-semibold">{lead.stage}</span>
                           </span>
                         </td>
                         <td className="px-6 py-4">
                           {lead.leadScore != null && lead.leadScore > 0 ? (
-                            <span className={`font-black text-sm ${lead.leadScore >= 70 ? 'text-emerald-500' : lead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
-                              {lead.leadScore}/100
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-bold text-xs ${lead.leadScore >= 70 ? 'text-emerald-500' : lead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                                {lead.leadScore}
+                              </span>
+                              <div className="w-12 bg-border/60 rounded-full h-1 overflow-hidden shrink-0">
+                                <div className={`h-1 rounded-full ${lead.leadScore >= 70 ? 'bg-emerald-500' : lead.leadScore >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${lead.leadScore}%` }} />
+                              </div>
+                            </div>
                           ) : <span className="text-tertiary">—</span>}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${
-                            lead.status === 'Hot' ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' :
-                            lead.status === 'Warm' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                            'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20'
+                          <span className={`badge-enterprise ${
+                            lead.status === 'Hot' ? 'badge-enterprise-danger' :
+                            lead.status === 'Warm' ? 'badge-enterprise-warning' :
+                            'badge-enterprise-info'
                           }`}>{lead.status}</span>
                         </td>
                         <td className="px-6 py-4 font-bold text-accent text-sm">{lead.value}</td>
-                        <td className="px-6 py-4 text-secondary font-bold uppercase tracking-wider">{lead.assignedToName || 'Unassigned'}</td>
+                        <td className="px-6 py-4 text-secondary font-semibold uppercase tracking-wider text-[10px]">{lead.assignedToName || 'Unassigned'}</td>
                         <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleCallLead(lead.phone, lead.name)} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Phone size={14}/></button>
-                            <button onClick={() => { setSelectedLead(lead); setModalTab('outreach'); }} className="p-2 bg-base border border-border rounded-lg hover:text-accent transition-colors"><Mail size={14}/></button>
+                          <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleCallLead(lead.phone, lead.name)} className="btn-enterprise-secondary p-1.5" title="Call"><Phone size={12}/></button>
+                            <button onClick={() => { setSelectedLead(lead); setModalTab('outreach'); }} className="btn-enterprise-secondary p-1.5" title="Email"><Mail size={12}/></button>
                           </div>
                         </td>
                       </tr>
@@ -1544,13 +1673,13 @@ export function CRMWorkspace() {
             </div>
 
             {/* Pagination Controls */}
-            <div className="flex items-center justify-between p-4 border border-border bg-surface shrink-0 rounded-2xl shadow-sm">
+            <div className="flex items-center justify-between p-4 border border-border bg-surface shrink-0 rounded-xl shadow-sm">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-secondary font-medium">Rows per page:</span>
                 <select 
                   value={pageSize} 
                   onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                  className="bg-base border border-border rounded-lg text-xs font-bold px-2 py-1 focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="bg-base border border-border rounded-lg text-xs font-bold px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
                 >
                   {[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
                 </select>
@@ -1558,19 +1687,19 @@ export function CRMWorkspace() {
                   Showing {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredLeads.length)} of {filteredLeads.length} leads
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button 
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  className="px-3 py-1.5 border border-border bg-base text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
+                  className="btn-enterprise-secondary px-3 py-1.5 text-xs font-bold"
                 >
                   Prev
                 </button>
                 {Array.from({ length: totalPages }).map((_, i) => {
                   const page = i + 1;
                   if (totalPages > 5 && page !== 1 && page !== totalPages && Math.abs(currentPage - page) > 1) {
-                    if (page === 2 && currentPage > 3) return <span key={page} className="text-secondary text-xs">...</span>;
-                    if (page === totalPages - 1 && currentPage < totalPages - 2) return <span key={page} className="text-secondary text-xs">...</span>;
+                    if (page === 2 && currentPage > 3) return <span key={page} className="text-secondary text-xs px-1">...</span>;
+                    if (page === totalPages - 1 && currentPage < totalPages - 2) return <span key={page} className="text-secondary text-xs px-1">...</span>;
                     return null;
                   }
                   return (
@@ -1578,7 +1707,7 @@ export function CRMWorkspace() {
                       key={page}
                       onClick={() => setCurrentPage(page)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                        currentPage === page ? 'bg-accent text-white shadow-md shadow-accent/15' : 'border border-border bg-base text-secondary hover:text-primary'
+                        currentPage === page ? 'bg-accent text-white shadow-sm' : 'border border-border bg-base text-secondary hover:text-primary'
                       }`}
                     >
                       {page}
@@ -1588,7 +1717,7 @@ export function CRMWorkspace() {
                 <button 
                   disabled={currentPage === totalPages || totalPages === 0}
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  className="px-3 py-1.5 border border-border bg-base text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
+                  className="btn-enterprise-secondary px-3 py-1.5 text-xs font-bold"
                 >
                   Next
                 </button>
@@ -1602,10 +1731,10 @@ export function CRMWorkspace() {
                   initial={{ y: 50, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: 50, opacity: 0 }}
-                  className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border rounded-2xl shadow-2xl p-4 flex items-center gap-6 max-w-xl w-full justify-between"
+                  className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border rounded-xl shadow-xl p-3.5 flex items-center gap-6 max-w-xl w-full justify-between"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-accent/10 text-accent font-bold text-xs flex items-center justify-center shadow-inner">
+                    <div className="w-5 h-5 rounded-full bg-accent/10 text-accent font-bold text-xs flex items-center justify-center shadow-inner">
                       {selectedLeadIds.size}
                     </div>
                     <span className="text-xs font-bold text-primary">leads selected</span>
@@ -1613,28 +1742,28 @@ export function CRMWorkspace() {
                   <div className="flex items-center gap-2">
                     <select 
                       onChange={(e) => { if (e.target.value) { handleBulkUpdateLeadStage(e.target.value); e.target.value = ''; } }}
-                      className="bg-base border border-border rounded-xl text-xs font-bold px-3 py-2 text-primary focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                      className="select-enterprise !w-32 py-1.5 cursor-pointer text-xs font-bold"
                     >
                       <option value="">Move Stage...</option>
                       {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <button 
                       onClick={handleBulkRequestLeadApproval}
-                      className="px-4 py-2 bg-accent/10 border border-accent/20 text-accent rounded-xl text-xs font-bold hover:bg-accent/20 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                      className="btn-enterprise-secondary py-1.5 text-xs font-bold"
                     >
                       Request Approval
                     </button>
                     {(user?.role === 'Admin' || user?.role === 'Manager') && (
                       <button 
                         onClick={handleBulkDeleteLeads}
-                        className="px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                        className="btn-enterprise-danger py-1.5 text-xs font-bold"
                       >
-                        <Trash2 size={12} /> Delete
+                        <Trash2 size={12} /> <span>Delete</span>
                       </button>
                     )}
                     <button 
                       onClick={() => setSelectedLeadIds(new Set())}
-                      className="px-3 py-2 text-secondary hover:text-primary transition-colors text-xs font-bold"
+                      className="btn-enterprise-secondary !border-transparent hover:!bg-transparent text-secondary hover:text-primary py-1.5 text-xs font-bold"
                     >
                       Clear
                     </button>
@@ -1663,54 +1792,54 @@ export function CRMWorkspace() {
               {/* Sidebar */}
               <div className="w-full md:w-72 border-r border-border bg-base/50 p-6 flex flex-col gap-5 shrink-0 overflow-y-auto">
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-accent/10 border-2 border-accent/20 flex items-center justify-center text-2xl font-black text-accent mb-3 shadow-inner">
+                  <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center text-2xl font-extrabold text-accent mb-3 shadow-inner">
                     {selectedLead.name.split(' ').map(n => n[0]).join('')}
                   </div>
-                  <h2 className="text-lg font-extrabold text-primary mb-0.5 tracking-tight">{selectedLead.name}</h2>
+                  <h2 className="text-lg font-bold text-primary mb-0.5 tracking-tight">{selectedLead.name}</h2>
                   <p className="text-[10px] font-bold text-secondary mb-1 uppercase tracking-widest">{selectedLead.company}</p>
-                  <p className="text-[10px] font-bold text-tertiary mb-3">{selectedLead.email}</p>
-                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1 ${
-                    selectedLead.status === 'Hot' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
-                    selectedLead.status === 'Warm' ? 'bg-orange-500/10 text-orange-600 border-orange-500/20' :
-                    'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                  <p className="text-[10px] font-semibold text-tertiary mb-3">{selectedLead.email}</p>
+                  <span className={`badge-enterprise ${
+                    selectedLead.status === 'Hot' ? 'badge-enterprise-danger' :
+                    selectedLead.status === 'Warm' ? 'badge-enterprise-warning' :
+                    'badge-enterprise-info'
                   }`}>{selectedLead.status} Lead</span>
                 </div>
 
                 {/* Stage Badge */}
-                <div className={`p-3 rounded-2xl border text-center`}>
+                <div className="p-3.5 rounded-xl border border-border bg-surface text-center shadow-sm">
                   <div className={`flex items-center justify-center gap-1.5 ${STAGE_META[selectedLead.stage]?.color}`}>
                     {STAGE_META[selectedLead.stage]?.icon}
-                    <span className="text-xs font-black uppercase tracking-wider">{selectedLead.stage}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">{selectedLead.stage}</span>
                   </div>
-                  <p className="text-[9px] text-secondary font-medium mt-0.5">{STAGE_META[selectedLead.stage]?.desc}</p>
+                  <p className="text-[9px] text-secondary font-medium mt-1">{STAGE_META[selectedLead.stage]?.desc}</p>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="p-3 bg-surface rounded-2xl border border-border shadow-sm">
-                    <h4 className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Deal Value</h4>
-                    <div className="text-xl font-black text-accent">{selectedLead.value}</div>
+                  <div className="p-3.5 bg-surface rounded-xl border border-border shadow-sm">
+                    <h4 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Deal Value</h4>
+                    <div className="text-xl font-bold text-accent">{selectedLead.value}</div>
                   </div>
                   {selectedLead.leadScore != null && selectedLead.leadScore > 0 && (
-                    <div className="p-3 bg-surface rounded-2xl border border-border shadow-sm">
-                      <h4 className="text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Lead Score</h4>
+                    <div className="p-3.5 bg-surface rounded-xl border border-border shadow-sm">
+                      <h4 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-2.5">Lead Score</h4>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-border rounded-full h-1.5">
                           <div className={`h-1.5 rounded-full ${selectedLead.leadScore >= 70 ? 'bg-emerald-500' : selectedLead.leadScore >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
                             style={{ width: `${selectedLead.leadScore}%` }} />
                         </div>
-                        <span className={`text-sm font-black ${selectedLead.leadScore >= 70 ? 'text-emerald-500' : selectedLead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                        <span className={`text-xs font-bold ${selectedLead.leadScore >= 70 ? 'text-emerald-500' : selectedLead.leadScore >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
                           {selectedLead.leadScore}
                         </span>
                       </div>
                     </div>
                   )}
-                  <div className="p-3 bg-surface rounded-2xl border border-border shadow-sm">
-                    <h4 className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1 flex items-center gap-1.5"><User size={10} className="text-accent" /> Owner</h4>
+                  <div className="p-3.5 bg-surface rounded-xl border border-border shadow-sm">
+                    <h4 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><User size={10} className="text-accent" /> Owner</h4>
                     <div className="text-xs font-bold text-primary">{selectedLead.assignedToName || 'Unassigned'}</div>
                   </div>
                   {selectedLead.leadSource && (
-                    <div className="p-3 bg-surface rounded-2xl border border-border shadow-sm">
-                      <h4 className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Lead Source</h4>
+                    <div className="p-3.5 bg-surface rounded-xl border border-border shadow-sm">
+                      <h4 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Lead Source</h4>
                       <div className="text-xs font-bold text-primary">{selectedLead.leadSource}</div>
                     </div>
                   )}
@@ -1718,24 +1847,24 @@ export function CRMWorkspace() {
 
                 {/* Quick actions */}
                 <div className="mt-auto space-y-2">
-                  <button onClick={() => handleCallLead(selectedLead.phone, selectedLead.name)} className="w-full flex items-center justify-center gap-2 py-2.5 bg-base border border-border rounded-xl text-xs font-bold hover:border-accent hover:text-accent transition-all active:scale-95"><Phone size={13}/> Call Lead</button>
-                  <button onClick={() => setModalTab('outreach')} className="w-full flex items-center justify-center gap-2 py-2.5 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95"><Mail size={13}/> Compose Outreach</button>
+                  <button onClick={() => handleCallLead(selectedLead.phone, selectedLead.name)} className="btn-enterprise-secondary w-full py-2.5 text-xs font-bold"><Phone size={13}/> Call Lead</button>
+                  <button onClick={() => setModalTab('outreach')} className="btn-enterprise-primary w-full py-2.5 text-xs font-bold"><Mail size={13}/> Compose Outreach</button>
                 </div>
               </div>
 
               {/* Main Content */}
               <div className="flex-1 flex flex-col min-w-0">
                 <div className="p-5 border-b border-border flex justify-between items-center bg-base/30">
-                  <div className="flex bg-surface border border-border rounded-2xl p-1 shadow-inner overflow-x-auto relative">
+                  <div className="flex bg-base border border-border rounded-xl p-0.5 shadow-inner overflow-x-auto relative">
                     {MODAL_TABS.map(t => {
                       const isTabActive = modalTab === t.id;
                       return (
                         <button key={t.id} onClick={() => setModalTab(t.id as any)}
-                          className={`px-4 py-2 text-xs font-extrabold rounded-xl transition-all shrink-0 relative ${isTabActive ? 'text-accent' : 'text-secondary hover:text-primary'}`}>
+                          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 relative ${isTabActive ? 'text-accent' : 'text-secondary hover:text-primary'}`}>
                           <span className="relative z-10">{t.label}</span>
                           {isTabActive && (
                             <motion.span layoutId="activeModalTabCrm"
-                              className="absolute inset-0 bg-base border border-border/60 rounded-xl shadow-sm"
+                              className="absolute inset-0 bg-surface border border-border/50 rounded-lg shadow-sm"
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }} />
                           )}
                         </button>
@@ -1749,38 +1878,44 @@ export function CRMWorkspace() {
 
                   {/* ── Workflow Tab ── */}
                   {modalTab === 'workflow' && (
-                    <div className="space-y-6">
+                    <div className="space-y-5">
                       {/* Stage-specific action panel */}
-                      <div className="p-5 bg-base border border-border rounded-2xl shadow-sm">
+                      <div className="card-enterprise p-5 bg-base/50">
                         <StageActionsPanel lead={selectedLead} onAction={handleWorkflowAction} loading={actionLoading} />
                       </div>
 
                       {/* Quick stage change dropdown */}
-                      <div className="p-4 bg-surface border border-border rounded-2xl shadow-sm">
-                        <h4 className="text-[10px] font-black text-secondary uppercase tracking-widest mb-3 flex items-center gap-1.5"><Target size={12} className="text-accent" /> Manual Stage Override</h4>
+                      <div className="card-enterprise p-5">
+                        <h4 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3 flex items-center gap-1.5"><Target size={12} className="text-accent" /> Manual Stage Override</h4>
                         <select value={selectedLead.stage}
                           onChange={async (e) => {
                             await handleWorkflowAction('move_stage', { stage: e.target.value });
                           }}
-                          className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs font-bold text-primary focus:ring-1 focus:ring-accent outline-none cursor-pointer">
+                          className="select-enterprise">
                           {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                         {(user?.role === 'Admin' || user?.role === 'Manager') && (
-                          <p className="text-[9px] text-secondary mt-1.5 font-medium">As {user.role}, you can skip stages. Non-sequential moves will fire a warning.</p>
+                          <p className="text-[10px] text-tertiary mt-2.5 font-medium leading-relaxed">As {user.role}, you can skip workflow stages. Out-of-sequence stage updates will log an audit alert.</p>
                         )}
                       </div>
 
                       {/* Quick actions: proposal + sequence */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3.5">
                         <button onClick={() => setIsProposalModalOpen(true)}
-                          className="flex items-center gap-3 p-4 bg-base border border-border rounded-2xl hover:border-accent/50 hover:bg-accent/5 transition-all group shadow-sm">
-                          <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform"><FileText size={18}/></div>
-                          <div className="text-left"><div className="text-xs font-bold group-hover:text-accent transition-colors">Generate Proposal</div><div className="text-[10px] text-secondary font-medium">Custom quote & scope</div></div>
+                          className="card-enterprise p-4 flex items-center gap-4 hover:border-accent/40 text-left transition-all group">
+                          <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center group-hover:scale-105 transition-transform"><FileText size={18}/></div>
+                          <div>
+                            <div className="text-xs font-bold group-hover:text-accent transition-colors">Generate Proposal</div>
+                            <div className="text-[10px] text-secondary font-semibold mt-0.5">Draft client quote & terms</div>
+                          </div>
                         </button>
                         <button onClick={() => setIsSequenceModalOpen(true)}
-                          className="flex items-center gap-3 p-4 bg-base border border-border rounded-2xl hover:border-accent/50 hover:bg-accent/5 transition-all group shadow-sm">
-                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform"><Zap size={18}/></div>
-                          <div className="text-left"><div className="text-xs font-bold group-hover:text-accent transition-colors">Enroll in Sequence</div><div className="text-[10px] text-secondary font-medium">Automated email workflow</div></div>
+                          className="card-enterprise p-4 flex items-center gap-4 hover:border-accent/40 text-left transition-all group">
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center group-hover:scale-105 transition-transform"><Zap size={18}/></div>
+                          <div>
+                            <div className="text-xs font-bold group-hover:text-accent transition-colors">Enroll in Sequence</div>
+                            <div className="text-[10px] text-secondary font-semibold mt-0.5">Automated nurturing campaign</div>
+                          </div>
                         </button>
                       </div>
                     </div>
@@ -1788,30 +1923,30 @@ export function CRMWorkspace() {
 
                   {/* ── Timeline Tab (Workflow Log) ── */}
                   {modalTab === 'timeline' && (
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                       <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Workflow Timeline</h3>
                       {loadingLog ? (
-                        <div className="text-center text-secondary py-6 text-xs">Loading timeline...</div>
+                        <div className="text-center text-secondary py-12 text-xs skeleton-enterprise h-32 rounded-xl"></div>
                       ) : workflowLog.length > 0 ? (
-                        <div className="space-y-3 relative pl-6 border-l-2 border-border/50">
+                        <div className="space-y-4 relative pl-6 border-l border-border">
                           {workflowLog.map((log, i) => (
                             <div key={i} className="relative group">
-                              <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-4 border-base z-10 ${STAGE_META[log.toStage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'}`} />
-                              <div className="bg-base border border-border rounded-2xl p-4 shadow-sm">
+                              <div className={`absolute -left-[29px] top-1.5 w-3 h-3 rounded-full border-2 border-surface z-10 ${STAGE_META[log.toStage as CRMStage]?.dot.split(' ')[0] || 'bg-gray-400'}`} />
+                              <div className="card-enterprise p-4">
                                 <div className="flex justify-between items-start mb-2">
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-[10px] font-black uppercase ${STAGE_META[log.toStage as CRMStage]?.color || 'text-secondary'}`}>→ {log.toStage}</span>
+                                    <span className={`text-[10px] font-bold uppercase ${STAGE_META[log.toStage as CRMStage]?.color || 'text-secondary'}`}>→ {log.toStage}</span>
                                     {log.fromStage && log.fromStage !== 'none' && (
-                                      <span className="text-[9px] text-tertiary">from {log.fromStage}</span>
+                                      <span className="text-[10px] text-tertiary">from {log.fromStage}</span>
                                     )}
                                   </div>
-                                  <span className="text-[9px] text-tertiary">{new Date(log.timestamp).toLocaleString()}</span>
+                                  <span className="text-[9px] text-tertiary font-medium">{new Date(log.timestamp).toLocaleString()}</span>
                                 </div>
-                                <p className="text-xs text-secondary font-medium mb-2">By: {log.triggeredBy}</p>
+                                <p className="text-xs text-secondary font-medium mb-2.5">By: {log.triggeredBy}</p>
                                 {log.workflowActions?.length > 0 && (
                                   <div className="flex flex-wrap gap-1">
                                     {log.workflowActions.map((a: string, j: number) => (
-                                      <span key={j} className="text-[8px] font-bold px-2 py-0.5 bg-accent/5 text-accent border border-accent/10 rounded-full uppercase tracking-wider">
+                                      <span key={j} className="badge-enterprise badge-enterprise-info">
                                         {a.replace(/_/g, ' ')}
                                       </span>
                                     ))}
@@ -1824,36 +1959,39 @@ export function CRMWorkspace() {
                       ) : (
                         <>
                           {/* Fallback: show email + history timeline */}
-                          <div className="space-y-4 relative pl-6 border-l-2 border-border/50">
+                          <div className="space-y-4 relative pl-6 border-l border-border">
                             {selectedLead.emails.map((email, idx) => (
                               <div key={idx} className="relative group">
-                                <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full border-4 border-base bg-blue-500 z-10" />
-                                <div className="bg-base border border-border rounded-2xl p-4 shadow-sm">
+                                <div className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full border-2 border-surface bg-blue-500 z-10 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                                <div className="card-enterprise p-4">
                                   <div className="flex justify-between items-start mb-2">
-                                    <div className="text-sm font-bold text-primary flex items-center gap-2"><Mail size={12} className="text-accent" /> {email.subject}</div>
+                                    <div className="text-sm font-bold text-primary flex items-center gap-1.5"><Mail size={12} className="text-accent" /> {email.subject}</div>
                                     <div className="text-[10px] font-bold text-tertiary">{new Date(email.sentAt).toLocaleDateString()}</div>
                                   </div>
-                                  <div className="text-[10px] flex gap-4 text-tertiary font-bold mt-2">
-                                    <span>Status: <span className="text-accent">{email.status}</span></span>
-                                    <span>{email.opens} opens · {email.clicks} clicks</span>
+                                  <div className="text-[10px] flex gap-3 text-tertiary font-bold mt-2">
+                                    <span>Status: <span className="text-accent uppercase">{email.status}</span></span>
+                                    <span>•</span>
+                                    <span>{email.opens} opens</span>
+                                    <span>•</span>
+                                    <span>{email.clicks} clicks</span>
                                   </div>
                                 </div>
                               </div>
                             ))}
                             {selectedLead.history.slice(0, 8).map((h, i) => (
                               <div key={i} className="relative group">
-                                <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full border-4 border-base bg-emerald-500 z-10" />
-                                <div className="bg-base border border-border rounded-2xl p-4 shadow-sm">
+                                <div className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full border-2 border-surface bg-emerald-500 z-10 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                <div className="card-enterprise p-4">
                                   <div className="flex justify-between items-center">
                                     <div className="text-xs font-bold text-primary">{h.event}</div>
                                     <div className="text-[9px] font-bold text-tertiary">{new Date(h.time).toLocaleDateString()}</div>
                                   </div>
-                                  <div className="text-[10px] text-secondary font-medium mt-1">By: {h.user}</div>
+                                  <div className="text-[10px] text-secondary font-semibold mt-1.5">By: {h.user}</div>
                                 </div>
                               </div>
                             ))}
                             {selectedLead.emails.length === 0 && selectedLead.history.length === 0 && (
-                              <div className="text-center text-secondary font-bold py-6 text-xs">No timeline events yet</div>
+                              <div className="text-center text-secondary font-medium py-12 text-xs">No timeline events recorded yet.</div>
                             )}
                           </div>
                         </>
@@ -1863,43 +2001,45 @@ export function CRMWorkspace() {
 
                   {/* ── Notes Tab ── */}
                   {modalTab === 'notes' && (
-                    <div className="space-y-6">
+                    <div className="space-y-5">
                       <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Internal Notes</h3>
                       <div className="flex gap-3">
                         <textarea value={newNote} onChange={e => setNewNote(e.target.value)} rows={3}
                           placeholder="Write details about the deal, requirements, or client feedback..."
-                          className="flex-1 bg-base border border-border rounded-2xl p-4 text-xs font-medium focus:outline-none focus:border-accent resize-none text-primary shadow-sm" />
-                        <button onClick={handleAddNote} className="px-5 bg-accent text-white font-bold rounded-2xl hover:bg-indigo-600 transition-all flex items-center justify-center shadow-md active:scale-95"><Send size={16}/></button>
+                          className="input-enterprise flex-1 min-h-[80px] p-3 resize-none" />
+                        <button onClick={handleAddNote} className="btn-enterprise-primary px-5 shrink-0"><Send size={14}/></button>
                       </div>
-                      <div className="space-y-3">
+                      <div className="space-y-3.5">
                         {selectedLead.notes.map((n, i) => (
-                          <div key={i} className="p-4 bg-base border border-border rounded-2xl shadow-sm">
+                          <div key={i} className="card-enterprise p-4">
                             <p className="text-xs text-primary font-medium leading-relaxed">{n.content}</p>
-                            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/40 text-[9px] font-bold text-tertiary uppercase">
-                              <div className="w-4 h-4 rounded-full bg-accent/10 flex items-center justify-center text-[7px]">{n.author[0]}</div>
-                              {n.author} · {new Date(n.createdAt).toLocaleString()}
+                            <div className="flex items-center gap-2 mt-3.5 pt-2.5 border-t border-border/40 text-[9px] font-bold text-tertiary uppercase">
+                              <div className="w-4 h-4 rounded-full bg-accent/10 flex items-center justify-center text-[7px] font-extrabold">{n.author[0]}</div>
+                              <span>{n.author} · {new Date(n.createdAt).toLocaleString()}</span>
                             </div>
                           </div>
                         ))}
-                        {selectedLead.notes.length === 0 && <div className="text-center text-secondary font-bold py-8 text-xs">No notes yet.</div>}
+                        {selectedLead.notes.length === 0 && (
+                          <div className="text-center text-secondary font-medium py-12 text-xs">No notes logged for this lead.</div>
+                        )}
                       </div>
                     </div>
                   )}
 
                   {/* ── Outreach Tab ── */}
                   {modalTab === 'outreach' && (
-                    <div className="space-y-6">
+                    <div className="space-y-5">
                       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Outreach Composer</h3>
                         <div className="flex items-center gap-3">
                           <select value={outTemplate} onChange={e => applyTemplate(e.target.value)}
-                            className="bg-surface border border-border text-xs font-bold px-3 py-1.5 rounded-xl text-primary focus:outline-none">
+                            className="select-enterprise !w-44 py-1.5 cursor-pointer text-xs font-bold">
                             <option value="Custom Email">Custom Email</option>
                             {templates.map((t: any) => <option key={t._id} value={t.name}>{t.name}</option>)}
                           </select>
                           {outTemplate !== 'Custom Email' && (
                             <>
-                              <button type="button" onClick={() => { const cur = templates.find((t: any) => t.name === outTemplate); if (cur) { setTempId(cur._id); setTempName(cur.name); setTempSubject(cur.subject); setTempBody(cur.body); setTempModalMode('edit'); setIsTemplateModalOpen(true); } }} className="text-xs text-indigo-500 font-bold hover:underline">Edit</button>
+                              <button type="button" onClick={() => { const cur = templates.find((t: any) => t.name === outTemplate); if (cur) { setTempId(cur._id); setTempName(cur.name); setTempSubject(cur.subject); setTempBody(cur.body); setTempModalMode('edit'); setIsTemplateModalOpen(true); } }} className="text-xs text-accent font-bold hover:underline">Edit</button>
                               <button type="button" onClick={() => { const cur = templates.find((t: any) => t.name === outTemplate); if (cur) handleDeleteTemplate(cur._id); }} className="text-xs text-red-500 font-bold hover:underline">Delete</button>
                             </>
                           )}
@@ -1908,50 +2048,50 @@ export function CRMWorkspace() {
                       </div>
                       <div className="space-y-4">
                         <div>
-                          <label className="block text-[9px] font-bold text-secondary uppercase mb-1">Subject</label>
+                          <label className="block text-[9px] font-bold text-secondary uppercase tracking-wider mb-1.5">Subject Line</label>
                           <input type="text" value={outSubject} onChange={e => setOutSubject(e.target.value)} placeholder="Subject..."
-                            className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-1 focus:ring-accent outline-none text-primary" />
+                            className="input-enterprise py-2.5 font-bold" />
                         </div>
                         <div>
-                          <label className="block text-[9px] font-bold text-secondary uppercase mb-1">Body</label>
-                          <textarea rows={8} value={outBody} onChange={e => setOutBody(e.target.value)} placeholder="Hi, draft your follow up here..."
-                            className="w-full bg-base border border-border rounded-2xl p-4 text-xs font-medium focus:outline-none focus:border-accent resize-none text-primary" />
+                          <label className="block text-[9px] font-bold text-secondary uppercase tracking-wider mb-1.5">Email Body</label>
+                          <textarea rows={6} value={outBody} onChange={e => setOutBody(e.target.value)} placeholder="Hi, draft your follow up here..."
+                            className="input-enterprise p-4 resize-none font-medium leading-relaxed" />
                         </div>
-                        <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1.5">
                           <div>
-                            <label className="block text-[9px] font-bold text-secondary uppercase mb-1">Schedule (Optional)</label>
+                            <label className="block text-[9px] font-bold text-secondary uppercase tracking-wider mb-1.5">Schedule Send (Optional)</label>
                             <input type="datetime-local" value={outScheduled} onChange={e => setOutScheduled(e.target.value)}
-                              className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-1 focus:ring-accent outline-none text-primary" />
+                              className="input-enterprise py-2 font-bold font-mono" />
                           </div>
                           <div className="flex items-end justify-end gap-3">
                             {outSubject && outBody && (
-                              <button type="button" onClick={() => { setTempId(null); setTempName(''); let cleanedSub = outSubject; let cleanedBody = outBody; if (selectedLead) { cleanedSub = cleanedSub.replace(new RegExp(selectedLead.company, 'g'), '{{company}}').replace(new RegExp(selectedLead.name, 'g'), '{{name}}'); cleanedBody = cleanedBody.replace(new RegExp(selectedLead.company, 'g'), '{{company}}').replace(new RegExp(selectedLead.name, 'g'), '{{name}}'); } setTempSubject(cleanedSub); setTempBody(cleanedBody); setTempModalMode('create'); setIsTemplateModalOpen(true); }} className="px-4 py-3 border border-border bg-surface text-primary rounded-xl text-xs font-semibold hover:bg-base transition-all active:scale-95 flex items-center gap-1.5 shadow-sm">Save as Template</button>
+                              <button type="button" onClick={() => { const cur = templates.find((t: any) => t.name === outTemplate); let cleanedSub = outSubject; let cleanedBody = outBody; if (selectedLead) { cleanedSub = cleanedSub.replace(new RegExp(selectedLead.company, 'g'), '{{company}}').replace(new RegExp(selectedLead.name, 'g'), '{{name}}'); cleanedBody = cleanedBody.replace(new RegExp(selectedLead.company, 'g'), '{{company}}').replace(new RegExp(selectedLead.name, 'g'), '{{name}}'); } setTempId(cur?._id || null); setTempName(cur?.name || ''); setTempSubject(cleanedSub); setTempBody(cleanedBody); setTempModalMode(cur ? 'edit' : 'create'); setIsTemplateModalOpen(true); }} className="btn-enterprise-secondary py-2.5 text-xs font-bold">Save template</button>
                             )}
-                            <button onClick={handleSendEmail} className="px-8 py-3 bg-accent text-white rounded-xl text-xs font-bold shadow-lg shadow-accent/20 hover:bg-indigo-600 transition-all active:scale-95 flex items-center gap-2">
-                              <Send size={14} /> {outScheduled ? 'Schedule' : 'Send'}
+                            <button onClick={handleSendEmail} className="btn-enterprise-primary py-2.5 px-6 text-xs font-bold">
+                              <Send size={13} /> <span>{outScheduled ? 'Schedule' : 'Send'}</span>
                             </button>
                           </div>
                         </div>
                         {/* ── WhatsApp & Approval Quick Actions ── */}
-                        <div className="border-t border-border pt-4 mt-2">
+                        <div className="border-t border-border pt-4 mt-3">
                           <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">WhatsApp &amp; Approvals</p>
                           <div className="flex flex-wrap gap-2">
                             <button type="button" onClick={() => sendWhatsAppTemplate('send_whatsapp')}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-500/20 transition-colors">
-                              <MessageSquare size={12}/> Send WhatsApp
+                              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold hover:bg-emerald-500/20 transition-all active:scale-95">
+                              <MessageSquare size={12}/> <span>Send WhatsApp</span>
                             </button>
                             <button type="button" onClick={() => sendWhatsAppTemplate('send_proposal_alert')}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold hover:bg-blue-500/20 transition-colors">
-                              <FileText size={12}/> Proposal Alert
+                              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold hover:bg-blue-500/20 transition-all active:scale-95">
+                              <FileText size={12}/> <span>Proposal Alert</span>
                             </button>
                             <button type="button" onClick={() => sendWhatsAppTemplate('send_payment_reminder')}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-500/20 transition-colors">
-                              <AlertCircle size={12}/> Payment Reminder
+                              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-500/20 transition-all active:scale-95">
+                              <AlertCircle size={12}/> <span>Payment Reminder</span>
                             </button>
                             <button type="button" onClick={handleRequestApproval}
                               disabled={selectedLead?.approvalStatus === 'pending' || selectedLead?.approvalStatus === 'approved'}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold hover:bg-purple-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                              <CheckCircle size={12}/> {selectedLead?.approvalStatus === 'pending' ? 'Approval Pending' : selectedLead?.approvalStatus === 'approved' ? 'Approved ✓' : 'Request Approval'}
+                              className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold hover:bg-purple-500/20 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                              <CheckCircle size={12}/> <span>{selectedLead?.approvalStatus === 'pending' ? 'Approval Pending' : selectedLead?.approvalStatus === 'approved' ? 'Approved ✓' : 'Request Approval'}</span>
                             </button>
                           </div>
                         </div>
@@ -2496,52 +2636,56 @@ export function CRMWorkspace() {
                     <div className="space-y-4">
                       <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Shared Documents & Contracts</h3>
                       {selectedLead.documents.map((doc, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 bg-base border border-border rounded-2xl hover:border-accent/30 transition-all group shadow-sm">
+                        <div key={i} className="card-enterprise p-4 flex items-center justify-between hover:border-accent/40 transition-colors">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl bg-accent/5 text-accent flex items-center justify-center"><FileText size={18}/></div>
                             <div>
                               <div className="text-sm font-bold group-hover:text-accent transition-colors">{doc.name}</div>
-                              <div className="text-[10px] text-secondary font-medium">{doc.size} · {new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                              <div className="text-[10px] text-secondary font-semibold mt-0.5">{doc.size} · {new Date(doc.uploadedAt).toLocaleDateString()}</div>
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <button onClick={() => { window.open(doc.url, '_blank'); showToast('Opening document', 'info'); }} className="p-2 text-secondary hover:text-accent transition-colors" title="View"><ChevronRight size={16}/></button>
-                            <button onClick={() => { downloadCSV([doc], doc.name); showToast('Downloading...', 'info'); }} className="p-2 text-secondary hover:text-accent transition-colors" title="Download"><Download size={16}/></button>
+                            <button onClick={() => { window.open(doc.url, '_blank'); showToast('Opening document', 'info'); }} className="btn-enterprise-secondary p-1.5" title="View"><ChevronRight size={14}/></button>
+                            <button onClick={() => { downloadCSV([doc], doc.name); showToast('Downloading...', 'info'); }} className="btn-enterprise-secondary p-1.5" title="Download"><Download size={14}/></button>
                           </div>
                         </div>
                       ))}
-                      <button onClick={() => docInputRef.current?.click()} className="w-full py-4 border-2 border-dashed border-border rounded-2xl text-xs font-bold text-secondary hover:text-accent hover:border-accent/50 transition-all mt-2">+ Upload Document</button>
+                      <button onClick={() => docInputRef.current?.click()} className="w-full py-4 border border-dashed border-border rounded-xl text-xs font-bold text-secondary hover:text-accent hover:border-accent/40 transition-all mt-2 bg-surface shadow-sm">+ Upload Document</button>
                     </div>
                   )}
 
-                  {/* ── Audit Log Tab ── */}
+                  {/* ── approvals Gate Tab ── */}
                   {modalTab === 'approvals' && (
                     <ApprovalPanel />
                   )}
+
+                  {/* ── Audit Log Tab ── */}
                   {modalTab === 'history' && (
                     <div className="space-y-4">
                       <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Complete Audit Log</h3>
-                      <div className="space-y-3">
+                      <div className="space-y-3.5">
                         {selectedLead.history.map((log, i) => (
-                          <div key={i} className="flex items-start gap-4 p-4 bg-base/50 border border-border rounded-2xl shadow-sm">
-                            <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center text-[10px] font-bold text-accent shadow-inner">{log.user[0] || 'S'}</div>
-                            <div className="flex-1">
-                              <div className="text-sm font-bold text-primary">{log.event}</div>
-                              <div className="flex justify-between items-center mt-1">
-                                <div className="text-[10px] text-secondary font-medium">Actor: {log.user}</div>
-                                <div className="text-[10px] text-tertiary font-bold">{new Date(log.time).toLocaleString()}</div>
+                          <div key={i} className="card-enterprise p-4 flex items-start gap-4 hover:border-accent/30 transition-colors">
+                            <div className="w-8 h-8 rounded-full bg-base border border-border flex items-center justify-center text-[10px] font-bold text-accent shadow-inner shrink-0">{log.user[0] || 'S'}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-primary truncate">{log.event}</div>
+                              <div className="flex justify-between items-center mt-1.5 text-[10px] text-secondary font-semibold">
+                                <span>Actor: {log.user}</span>
+                                <span className="text-tertiary font-bold">{new Date(log.time).toLocaleString()}</span>
                               </div>
                             </div>
                           </div>
                         ))}
-                        {selectedLead.history.length === 0 && <div className="text-center text-secondary font-bold py-8 text-xs">No audit log entries yet.</div>}
+                        {selectedLead.history.length === 0 && (
+                          <div className="text-center text-secondary font-medium py-12 text-xs">No audit log entries recorded.</div>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
 
                 <div className="p-5 border-t border-border bg-base/30 flex justify-end">
-                  <button onClick={() => setSelectedLead(null)} className="px-8 py-2.5 bg-surface border border-border text-primary font-bold rounded-xl hover:bg-base hover:border-accent transition-all text-xs active:scale-95 shadow-sm">Close Record</button>
+                  <button onClick={() => setSelectedLead(null)} className="btn-enterprise-secondary px-8 py-2.5 text-xs font-bold">Close Record</button>
                 </div>
               </div>
             </motion.div>
@@ -2553,40 +2697,59 @@ export function CRMWorkspace() {
       <AnimatePresence>
         {isAddModalOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-3xl border border-border shadow-2xl overflow-hidden">
-              <div className="p-6 border-b border-border flex justify-between items-center bg-base/50">
-                <h2 className="text-lg font-bold flex items-center gap-2"><Target size={18} className="text-accent" /> New Pipeline Lead</h2>
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-xl overflow-hidden">
+              <div className="p-5 border-b border-border flex justify-between items-center bg-base/50">
+                <h2 className="text-base font-bold flex items-center gap-2 text-primary"><Target size={18} className="text-accent" /> New Pipeline Lead</h2>
                 <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-primary transition-colors"><X size={20}/></button>
               </div>
-              <div className="p-8 flex flex-col gap-5 max-h-[70vh] overflow-y-auto">
-                <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Lead Name *</label><input type="text" value={nlName} onChange={e => setNlName(e.target.value)} placeholder="e.g. Sarah Jenkins" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Lead Email *</label><input type="email" value={nlEmail} onChange={e => setNlEmail(e.target.value)} placeholder="sarah@company.com" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Company</label><input type="text" value={nlCompany} onChange={e => setNlCompany(e.target.value)} placeholder="Acme Inc" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Deal Value ($)</label><input type="number" value={nlValue} onChange={e => setNlValue(e.target.value)} placeholder="5000" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
+              <div className="p-6 flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
+                <div>
+                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Lead Name *</label>
+                  <input type="text" value={nlName} onChange={e => setNlName(e.target.value)} placeholder="e.g. Sarah Jenkins" className="input-enterprise font-semibold" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Lead Email *</label>
+                  <input type="email" value={nlEmail} onChange={e => setNlEmail(e.target.value)} placeholder="sarah@company.com" className="input-enterprise font-semibold" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Phone</label><input type="text" value={nlPhone} onChange={e => setNlPhone(e.target.value)} placeholder="+1 555-0199" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Lead Source</label>
-                    <select value={nlSource} onChange={e => setNlSource(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Company</label>
+                    <input type="text" value={nlCompany} onChange={e => setNlCompany(e.target.value)} placeholder="Acme Inc" className="input-enterprise font-semibold" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Deal Value ($)</label>
+                    <input type="number" value={nlValue} onChange={e => setNlValue(e.target.value)} placeholder="5000" className="input-enterprise font-semibold" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Phone</label>
+                    <input type="text" value={nlPhone} onChange={e => setNlPhone(e.target.value)} placeholder="+1 555-0199" className="input-enterprise font-semibold" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Lead Source</label>
+                    <select value={nlSource} onChange={e => setNlSource(e.target.value)} className="select-enterprise text-xs font-semibold cursor-pointer">
                       {['Manual Entry','Website','Referral','LinkedIn','Cold Outreach','Event','Inbound Call','Email Campaign','Google Ads','Partner'].map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Pipeline Stage</label>
-                    <select value={nlStage} onChange={e => setNlStage(e.target.value as CRMStage)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Pipeline Stage</label>
+                    <select value={nlStage} onChange={e => setNlStage(e.target.value as CRMStage)} className="select-enterprise text-xs font-semibold cursor-pointer">
                       {STAGES.map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Lead Priority</label>
-                    <select value={nlStatus} onChange={e => setNlStatus(e.target.value as any)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Lead Priority</label>
+                    <select value={nlStatus} onChange={e => setNlStatus(e.target.value as any)} className="select-enterprise text-xs font-semibold cursor-pointer">
                       <option>Warm</option><option>Hot</option><option>Cold</option>
                     </select>
                   </div>
                 </div>
-                <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Assign To</label>
-                  <select value={nlAssigned} onChange={e => setNlAssigned(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                <div>
+                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Assign To</label>
+                  <select value={nlAssigned} onChange={e => setNlAssigned(e.target.value)} className="select-enterprise text-xs font-semibold cursor-pointer">
                     {user?.name && <option value={user.name}>{user.name} (You)</option>}
                     {teamMembers.filter(m => m.name !== user?.name).map(m => (
                       <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
@@ -2595,15 +2758,15 @@ export function CRMWorkspace() {
                   </select>
                 </div>
               </div>
-              <div className="p-6 border-t border-border flex justify-end gap-3 bg-base/50">
-                <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 text-xs font-bold text-secondary hover:text-primary transition-colors">Cancel</button>
+              <div className="p-4 border-t border-border flex justify-end gap-3 bg-base/50">
+                <button onClick={() => setIsAddModalOpen(false)} className="btn-enterprise-secondary px-6 text-xs font-bold">Cancel</button>
                 <button 
                   onClick={handleCreateLead} 
                   disabled={creatingLead}
-                  className="px-10 py-2.5 bg-accent text-white font-bold rounded-2xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs disabled:opacity-50 flex items-center gap-2"
+                  className="btn-enterprise-primary px-8 text-xs font-bold"
                 >
                    {creatingLead && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
-                   {creatingLead ? 'Creating...' : 'Create Lead'}
+                   <span>{creatingLead ? 'Creating...' : 'Create Lead'}</span>
                 </button>
               </div>
             </motion.div>
@@ -2615,33 +2778,33 @@ export function CRMWorkspace() {
       <AnimatePresence>
         {isProposalModalOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-2xl rounded-3xl border border-border shadow-2xl overflow-hidden">
-              <div className="p-6 border-b border-border flex justify-between items-center bg-base/50">
-                <h2 className="text-lg font-bold flex items-center gap-2"><FileText size={18} className="text-orange-500" /> Proposal Generator</h2>
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-2xl rounded-2xl border border-border shadow-xl overflow-hidden">
+              <div className="p-5 border-b border-border flex justify-between items-center bg-base/50">
+                <h2 className="text-base font-bold flex items-center gap-2 text-primary"><FileText size={18} className="text-orange-500" /> Proposal Generator</h2>
                 <button onClick={() => setIsProposalModalOpen(false)} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-primary transition-colors"><X size={20}/></button>
               </div>
-              <div className="p-8">
-                <h3 className="text-sm font-bold mb-4">Select Proposal Template</h3>
-                <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="p-6">
+                <h3 className="text-xs font-bold text-secondary uppercase tracking-wider mb-4">Select Proposal Template</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                   {[{ name: 'Standard SaaS Retainer', type: 'Annual' }, { name: 'Managed Services MSA', type: 'Enterprise' }, { name: 'Quick Pilot Proposal', type: 'Pilot' }, { name: 'Development SOW', type: 'Project' }].map((t, i) => (
-                    <button key={i} onClick={() => showToast(`${t.name} selected`, 'info')} className="p-4 border border-border bg-base rounded-2xl text-left hover:border-orange-500/50 hover:bg-orange-500/5 transition-all group shadow-sm">
-                      <div className="text-xs font-bold text-primary group-hover:text-orange-600 transition-colors mb-1">{t.name}</div>
-                      <div className="text-[10px] text-secondary font-medium uppercase tracking-widest">{t.type}</div>
+                    <button key={i} onClick={() => showToast(`${t.name} selected`, 'info')} className="card-enterprise p-4 text-left hover:border-orange-500/50 hover:bg-orange-500/[0.02] group">
+                      <div className="text-xs font-bold text-primary group-hover:text-orange-600 transition-colors mb-1.5">{t.name}</div>
+                      <div className="text-[10px] text-secondary font-bold uppercase tracking-wider">{t.type}</div>
                     </button>
                   ))}
                 </div>
-                <div className="p-4 bg-orange-500/5 border border-orange-500/20 rounded-2xl">
+                <div className="p-4 bg-orange-500/5 border border-orange-500/10 rounded-xl">
                   <p className="text-xs text-orange-600 font-bold mb-1">Proposal Inclusions</p>
                   <p className="text-[11px] text-secondary font-medium leading-relaxed">Auto-compiles: Scope of Operations, Deliverables schedule, SLA guarantees, Pricing structure, and e-sign consent block.</p>
                 </div>
               </div>
-              <div className="p-6 border-t border-border flex justify-end gap-3 bg-base/50">
-                <button onClick={() => setIsProposalModalOpen(false)} className="px-6 py-2.5 text-xs font-bold text-secondary hover:text-primary transition-colors">Close</button>
+              <div className="p-4 border-t border-border flex justify-end gap-3 bg-base/50">
+                <button onClick={() => setIsProposalModalOpen(false)} className="btn-enterprise-secondary px-6 text-xs font-bold">Close</button>
                 <button onClick={async () => {
                   if (!selectedLead) return;
                   await handleWorkflowAction('generate_proposal', { templateName: 'Standard Proposal' });
                   setIsProposalModalOpen(false);
-                }} className="px-8 py-2.5 bg-orange-500 text-white font-bold rounded-2xl hover:bg-orange-600 transition-all shadow-lg active:scale-95 text-xs">Generate & Send</button>
+                }} className="btn-enterprise-primary px-8 text-xs font-bold bg-orange-500 hover:bg-orange-600 shadow-[0_4px_14px_rgba(249,115,22,0.2)]">Generate & Send</button>
               </div>
             </motion.div>
           </motion.div>
@@ -2652,14 +2815,14 @@ export function CRMWorkspace() {
       <AnimatePresence>
         {isSequenceModalOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-3xl border border-border shadow-2xl overflow-hidden">
-              <div className="p-6 border-b border-border flex justify-between items-center bg-base/50">
-                <h2 className="text-lg font-bold flex items-center gap-2"><Zap size={18} className="text-purple-500" /> Automation Sequence Engine</h2>
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-xl overflow-hidden">
+              <div className="p-5 border-b border-border flex justify-between items-center bg-base/50">
+                <h2 className="text-base font-bold flex items-center gap-2 text-primary"><Zap size={18} className="text-purple-500" /> Automation Sequence Engine</h2>
                 <button onClick={() => setIsSequenceModalOpen(false)} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-primary transition-colors"><X size={20}/></button>
               </div>
-              <div className="p-8">
-                <h3 className="text-sm font-bold mb-6">Enroll in Email Sequence</h3>
-                <div className="space-y-4">
+              <div className="p-6">
+                <h3 className="text-xs font-bold text-secondary uppercase tracking-wider mb-5">Enroll in Email Sequence</h3>
+                <div className="space-y-3.5">
                   {[{ name: 'Warm Intro Sequence', steps: 5, days: 12, color: 'bg-emerald-500' }, { name: 'Follow-up After Demo', steps: 3, days: 7, color: 'bg-blue-500' }, { name: 'Long-term Nurturing', steps: 8, days: 60, color: 'bg-purple-500' }].map((s, i) => (
                     <button key={i} onClick={async () => {
                       if (!selectedLead) return;
@@ -2668,18 +2831,21 @@ export function CRMWorkspace() {
                         const res = await fetch('/api/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: selectedLead._id, to: selectedLead.email, subject: `Warm welcome from Antigravity Operations`, htmlContent: `<p>Hi ${selectedLead.name}, hope you are doing well!</p>`, sequenceName: s.name }) });
                         if (res.ok) { showToast(`Enrolled in: ${s.name}`, 'success'); setIsSequenceModalOpen(false); fetchLeads(); }
                       } catch (err) { console.error(err); }
-                    }} className="w-full flex items-center justify-between p-5 bg-base border border-border rounded-2xl hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group shadow-sm">
+                    }} className="w-full flex items-center justify-between p-4 bg-surface border border-border rounded-xl hover:border-purple-500/40 hover:bg-purple-500/[0.01] transition-all group shadow-sm text-left">
                       <div className="flex items-center gap-4">
-                        <div className={`w-2 h-10 rounded-full ${s.color}`} />
-                        <div className="text-left"><div className="text-sm font-bold group-hover:text-purple-600 transition-colors">{s.name}</div><div className="text-[10px] text-secondary font-medium uppercase tracking-widest">{s.steps} Emails · {s.days} Days</div></div>
+                        <div className={`w-2.5 h-10 rounded-full ${s.color}`} />
+                        <div>
+                          <div className="text-sm font-bold text-primary group-hover:text-purple-600 transition-colors">{s.name}</div>
+                          <div className="text-[10px] text-secondary font-bold uppercase tracking-wider mt-0.5">{s.steps} Emails · {s.days} Days</div>
+                        </div>
                       </div>
-                      <Send size={16} className="text-tertiary group-hover:text-purple-600 transition-all group-hover:translate-x-1" />
+                      <Send size={15} className="text-tertiary group-hover:text-purple-600 transition-all group-hover:translate-x-0.5 shrink-0" />
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="p-6 border-t border-border flex justify-end bg-base/50">
-                <button onClick={() => setIsSequenceModalOpen(false)} className="px-10 py-2.5 bg-surface border border-border text-primary font-bold rounded-2xl hover:bg-base hover:border-accent transition-all active:scale-95 text-xs shadow-sm">Close</button>
+              <div className="p-4 border-t border-border flex justify-end bg-base/50">
+                <button onClick={() => setIsSequenceModalOpen(false)} className="btn-enterprise-secondary px-8 text-xs font-bold">Close</button>
               </div>
             </motion.div>
           </motion.div>
@@ -2690,21 +2856,33 @@ export function CRMWorkspace() {
       <AnimatePresence>
         {isTemplateModalOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-3xl border border-border shadow-2xl overflow-hidden">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-xl overflow-hidden">
               <form onSubmit={handleSaveTemplate}>
-                <div className="p-6 border-b border-border flex justify-between items-center bg-base/50">
-                  <h2 className="text-lg font-bold flex items-center gap-2"><Mail size={18} className="text-indigo-500" /> {tempModalMode === 'edit' ? 'Edit Template' : 'Create Template'}</h2>
+                <div className="p-5 border-b border-border flex justify-between items-center bg-base/50">
+                  <h2 className="text-base font-bold flex items-center gap-2 text-primary"><Mail size={18} className="text-indigo-500" /> {tempModalMode === 'edit' ? 'Edit Template' : 'Create Template'}</h2>
                   <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="p-2 hover:bg-base rounded-xl text-secondary hover:text-primary transition-colors"><X size={20}/></button>
                 </div>
-                <div className="p-8 flex flex-col gap-5 max-h-[60vh] overflow-y-auto">
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Template Name *</label><input required type="text" value={tempName} onChange={e => setTempName(e.target.value)} placeholder="Follow up on proposal" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Subject *</label><input required type="text" value={tempSubject} onChange={e => setTempSubject(e.target.value)} placeholder="Exploring growth for {{company}}" className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" /></div>
-                  <div><label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Body *</label><textarea required rows={8} value={tempBody} onChange={e => setTempBody(e.target.value)} placeholder="Hi {{name}},&#10;&#10;I wanted to follow up..." className="w-full px-5 py-4 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary resize-none" /></div>
-                  <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl"><p className="text-xs text-indigo-600 font-bold mb-1">Dynamic Substitutions</p><p className="text-[10px] text-secondary font-medium leading-relaxed">Use <strong>{"{{company}}"}</strong> and <strong>{"{{name}}"}</strong> as placeholders.</p></div>
+                <div className="p-6 flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Template Name *</label>
+                    <input required type="text" value={tempName} onChange={e => setTempName(e.target.value)} placeholder="Follow up on proposal" className="input-enterprise font-semibold" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Subject *</label>
+                    <input required type="text" value={tempSubject} onChange={e => setTempSubject(e.target.value)} placeholder="Exploring growth for {{company}}" className="input-enterprise font-semibold" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-1.5">Body *</label>
+                    <textarea required rows={6} value={tempBody} onChange={e => setTempBody(e.target.value)} placeholder="Hi {{name}},&#10;&#10;I wanted to follow up..." className="input-enterprise p-4 resize-none font-medium leading-relaxed" />
+                  </div>
+                  <div className="p-3 bg-indigo-500/5 border border-indigo-500/15 rounded-xl">
+                    <p className="text-xs text-indigo-600 font-bold mb-1">Dynamic Substitutions</p>
+                    <p className="text-[10px] text-secondary font-medium leading-relaxed">Use <strong>{"{{company}}"}</strong> and <strong>{"{{name}}"}</strong> as placeholders.</p>
+                  </div>
                 </div>
-                <div className="p-6 border-t border-border flex justify-end gap-3 bg-base/50">
-                  <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="px-6 py-2.5 text-xs font-bold text-secondary hover:text-primary transition-colors">Cancel</button>
-                  <button type="submit" className="px-10 py-2.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg active:scale-95 text-xs">{tempModalMode === 'edit' ? 'Save Changes' : 'Create Template'}</button>
+                <div className="p-4 border-t border-border flex justify-end gap-3 bg-base/50">
+                  <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="btn-enterprise-secondary px-6 text-xs font-bold">Cancel</button>
+                  <button type="submit" className="btn-enterprise-primary px-8 text-xs font-bold">{tempModalMode === 'edit' ? 'Save Changes' : 'Create Template'}</button>
                 </div>
               </form>
             </motion.div>
