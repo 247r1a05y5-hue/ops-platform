@@ -218,128 +218,175 @@ export function TasksBoard() {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-base text-primary overflow-hidden transition-colors">
-      
-      {/* Header */}
-      <div className="p-8 pb-4 shrink-0 border-b border-border bg-base z-10 transition-colors">
-        <div className="flex justify-between items-start mb-6">
-           <div>
-              <h1 className="text-2xl font-bold tracking-tight mb-1">Projects & Tasks</h1>
-              <p className="text-secondary text-sm font-medium">Sprint boards, backlogs, and team assignments.</p>
-           </div>
-           <div className="flex gap-3 relative z-30">
-               <button 
-                 type="button"
-                 onClick={() => { setIsNewProjectOpen(true); showToast('Opening Project Creator', 'info'); }} 
-                 className="px-4 py-2 border border-border bg-surface text-primary rounded-xl text-xs font-semibold hover:bg-base transition-colors shadow-sm cursor-pointer"
-               >
-                  Create Project
-               </button>
-               <button 
-                 type="button"
-                 onClick={() => { setIsNewTaskOpen(true); showToast('Opening Task Creator', 'info'); }} 
-                 className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-xl text-xs font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:bg-emerald-600 transition-colors cursor-pointer"
-               >
-                  <Plus size={16} /> New Task
-               </button>
-           </div>
+
+      {/* ── Header ── */}
+      <div className="px-7 pt-7 pb-4 shrink-0 border-b border-border/60 bg-base z-10 transition-colors">
+        <div className="flex justify-between items-start mb-5">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-secondary/70 uppercase tracking-widest">Workspace</p>
+            <h1 className="text-2xl font-bold tracking-tight">Projects &amp; Tasks</h1>
+            <p className="text-sm text-secondary font-medium">Sprint boards, backlogs, and team assignments.</p>
+          </div>
+          <div className="flex gap-2.5 relative z-30">
+            <button
+              type="button"
+              onClick={() => { setIsNewProjectOpen(true); showToast('Opening Project Creator', 'info'); }}
+              className="btn-enterprise-secondary flex items-center gap-1.5"
+            >
+              Create Project
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsNewTaskOpen(true); showToast('Opening Task Creator', 'info'); }}
+              className="btn-enterprise-primary flex items-center gap-2"
+            >
+              <Plus size={14} /> New Task
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
-           <div className="flex bg-surface border border-border rounded-xl p-1 shadow-inner">
-              <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'board' ? 'bg-base text-accent shadow-sm ring-1 ring-border/50' : 'text-secondary hover:text-primary'}`}>
-                <LayoutDashboard size={14} /> Sprint Board
-              </button>
-              <button onClick={() => setActiveTab('list')} className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'list' ? 'bg-base text-accent shadow-sm ring-1 ring-border/50' : 'text-secondary hover:text-primary'}`}>
-                <LayoutList size={14} /> Backlog List
-              </button>
-           </div>
+          {/* View tabs */}
+          <div className="flex items-center bg-surface border border-border/60 rounded-xl p-0.5">
+            <button
+              onClick={() => setActiveTab('board')}
+              className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-[10px] transition-all duration-150 ${
+                activeTab === 'board' ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <LayoutDashboard size={13} /> Sprint Board
+            </button>
+            <button
+              onClick={() => setActiveTab('list')}
+              className={`flex items-center gap-2 px-4 py-1.5 text-xs font-semibold rounded-[10px] transition-all duration-150 ${
+                activeTab === 'list' ? 'bg-accent text-white shadow-sm' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <LayoutList size={13} /> Backlog List
+            </button>
+          </div>
 
-           <div className="flex gap-4 items-center">
-             <div className="relative group">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-                <input 
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)} 
-                  placeholder="Search tasks..." 
-                  className="bg-surface border border-border rounded-xl pl-9 pr-4 py-2 text-xs w-64 focus:outline-none focus:border-accent transition-all text-primary font-medium"
-                />
-             </div>
-             <button 
-               onClick={() => setFiltersCollapsed(!filtersCollapsed)} 
-               className={`p-2 border border-border rounded-xl transition-all shadow-sm ${filtersCollapsed ? 'bg-surface text-secondary hover:text-primary hover:bg-base' : 'bg-accent/10 border-accent/20 text-accent'}`}
-               title={filtersCollapsed ? "Show Filters" : "Hide Filters"}
-             >
-                <Filter size={16} />
-             </button>
-             <button onClick={handleExport} className="p-2 border border-border bg-surface text-secondary hover:text-primary rounded-xl transition-colors shadow-sm" title="Export CSV">
-                <Download size={16} />
-             </button>
-           </div>
+          <div className="flex gap-2.5 items-center">
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search tasks…"
+                className="input-enterprise pl-8 py-2 text-xs w-56"
+              />
+            </div>
+            <button
+              onClick={() => setFiltersCollapsed(!filtersCollapsed)}
+              className={`p-2 border rounded-xl transition-all ${
+                filtersCollapsed
+                  ? 'border-border/60 bg-surface text-secondary hover:text-primary'
+                  : 'border-accent/30 bg-accent/10 text-accent'
+              }`}
+              title={filtersCollapsed ? 'Show Filters' : 'Hide Filters'}
+            >
+              <Filter size={14} />
+            </button>
+            <button
+              onClick={handleExport}
+              className="p-2 border border-border/60 bg-surface text-secondary hover:text-primary rounded-xl transition-colors"
+              title="Export CSV"
+            >
+              <Download size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Sidebar */}
-          <div className={`shrink-0 bg-surface overflow-y-auto hidden lg:block transition-all duration-300 ${filtersCollapsed ? 'w-0 p-0 border-r-0 overflow-hidden' : 'w-64 border-r border-border p-6'}`}>
-              <h3 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">Active Projects</h3>
-              <div className="space-y-2 mb-8">
-                 {projects.map(proj => (
-                   <div key={proj._id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-base transition-colors cursor-pointer group">
-                      <Folder size={16} className="text-accent" />
-                      <div className="flex-1 min-w-0">
-                         <div className="text-xs font-bold truncate group-hover:text-accent transition-colors">{proj.name}</div>
-                         <div className="text-[9px] text-tertiary">Due {proj.deadline}</div>
-                      </div>
-                   </div>
-                 ))}
+        {/* ── Filter Sidebar ── */}
+        <div className={`shrink-0 bg-surface overflow-y-auto hidden lg:block transition-all duration-300 ${
+          filtersCollapsed ? 'w-0 p-0 border-r-0 overflow-hidden' : 'w-60 border-r border-border/60 p-5'
+        }`}>
+          <div className="space-y-6">
+            <div>
+              <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">Active Projects</p>
+              <div className="space-y-1">
+                {projects.map(proj => (
+                  <div key={proj._id} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-base/60 transition-colors cursor-pointer group">
+                    <Folder size={14} className="text-accent shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold truncate group-hover:text-accent transition-colors">{proj.name}</div>
+                      <div className="text-[10px] text-tertiary">Due {proj.deadline}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              <h3 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">Saved Views</h3>
-              <ul className="space-y-1 mb-8">
-                 <li><button onClick={() => { setActiveFilter(null); showToast('Showing all tasks', 'info') }} className={`w-full text-left px-3 py-2 text-xs rounded font-bold transition-all ${activeFilter === null ? 'bg-base text-accent border border-border shadow-sm' : 'text-secondary hover:bg-base hover:text-primary'}`}>All Tasks</button></li>
-                 <li><button onClick={() => { setActiveFilter('UI/UX'); showToast('Showing assigned tasks', 'info') }} className={`w-full text-left px-3 py-2 text-xs rounded font-bold transition-all ${activeFilter === 'UI/UX' ? 'bg-base text-accent border border-border shadow-sm' : 'text-secondary hover:bg-base hover:text-primary'}`}>Assigned to Me</button></li>
-                 <li><button onClick={() => { setActiveFilter('Backend'); showToast('Showing priority tasks', 'info') }} className={`w-full text-left px-3 py-2 text-xs rounded font-bold transition-all ${activeFilter === 'Backend' ? 'bg-base text-accent border border-border shadow-sm' : 'text-secondary hover:bg-base hover:text-primary'}`}>Due Next</button></li>
+            <div>
+              <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">Saved Views</p>
+              <ul className="space-y-0.5">
+                {[
+                  { label: 'All Tasks',      filter: null },
+                  { label: 'Assigned to Me', filter: 'UI/UX' },
+                  { label: 'Due Next',       filter: 'Backend' },
+                ].map(({ label, filter }) => (
+                  <li key={label}>
+                    <button
+                      onClick={() => { setActiveFilter(filter); showToast(`Showing ${label}`, 'info'); }}
+                      className={`w-full text-left px-3 py-2 text-xs rounded-xl font-semibold transition-all ${
+                        activeFilter === filter
+                          ? 'bg-accent/10 text-accent border border-accent/20'
+                          : 'text-secondary hover:bg-base/60 hover:text-primary'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
               </ul>
+            </div>
 
-              <h3 className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">Filter by Tag</h3>
-              <div className="space-y-3">
-                 {['Frontend', 'Backend', 'Database', 'UI/UX'].map(tag => (
-                     <label key={tag} className="flex items-center gap-3 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          checked={activeFilter === tag}
-                          onChange={() => setActiveFilter(activeFilter === tag ? null : tag)}
-                          className="w-4 h-4 rounded border-border bg-transparent accent-accent" 
-                        />
-                        <span className={`text-xs font-bold transition-colors ${activeFilter === tag ? 'text-accent' : 'text-secondary group-hover:text-primary'}`}>{tag}</span>
-                     </label>
-                 ))}
+            <div>
+              <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">Filter by Tag</p>
+              <div className="space-y-2">
+                {['Frontend', 'Backend', 'Database', 'UI/UX'].map(tag => (
+                  <label key={tag} className="flex items-center gap-2.5 cursor-pointer group px-1">
+                    <input
+                      type="checkbox"
+                      checked={activeFilter === tag}
+                      onChange={() => setActiveFilter(activeFilter === tag ? null : tag)}
+                      className="w-3.5 h-3.5 rounded border-border accent-accent"
+                    />
+                    <span className={`text-xs font-semibold transition-colors ${
+                      activeFilter === tag ? 'text-accent' : 'text-secondary group-hover:text-primary'
+                    }`}>{tag}</span>
+                  </label>
+                ))}
               </div>
+            </div>
           </div>
+        </div>
 
           {/* Main Board */}
           <div className="flex-1 overflow-x-auto p-6 bg-base/50 relative shadow-inner flex flex-col">
              {loadingData ? (
-                /* Pulsing skeleton board */
-                <div className="flex gap-6 h-full min-w-max relative z-10 animate-pulse">
+                /* Skeleton board */
+                <div className="flex gap-5 h-full min-w-max relative z-10">
                    {STAGES.map(stage => (
-                      <div key={stage} className="flex flex-col w-[320px] bg-surface/40 rounded-2xl border border-border/50 p-4 space-y-4">
-                         <div className="flex items-center justify-between mb-2">
-                            <div className="w-24 h-4 bg-border rounded"></div>
-                            <div className="w-6 h-4 bg-border rounded-full"></div>
+                      <div key={stage} className="flex flex-col w-[300px] bg-surface/40 rounded-2xl border border-border/50 p-4 space-y-3">
+                         <div className="flex items-center justify-between mb-1">
+                            <div className="skeleton-enterprise h-3.5 w-24 rounded" />
+                            <div className="skeleton-enterprise h-5 w-7 rounded-full" />
                          </div>
                          {[1, 2].map(i => (
-                            <div key={i} className="bg-surface border border-border p-5 rounded-2xl space-y-3">
-                               <div className="flex justify-between items-start">
-                                  <div className="w-12 h-3 bg-border rounded"></div>
-                                  <div className="w-10 h-3 bg-border rounded"></div>
+                            <div key={i} className="bg-surface border border-border/60 p-4 rounded-xl space-y-2.5">
+                               <div className="flex justify-between">
+                                  <div className="skeleton-enterprise h-2.5 w-12 rounded" />
+                                  <div className="skeleton-enterprise h-2.5 w-10 rounded" />
                                </div>
-                               <div className="w-full h-4 bg-border rounded"></div>
-                               <div className="w-2/3 h-4 bg-border rounded"></div>
-                               <div className="flex gap-1.5 pt-2">
-                                  <div className="w-12 h-3 bg-border rounded-md"></div>
-                                  <div className="w-12 h-3 bg-border rounded-md"></div>
+                               <div className="skeleton-enterprise h-3.5 w-full rounded" />
+                               <div className="skeleton-enterprise h-3.5 w-2/3 rounded" />
+                               <div className="flex gap-1.5 pt-1">
+                                  <div className="skeleton-enterprise h-4 w-14 rounded-full" />
+                                  <div className="skeleton-enterprise h-4 w-14 rounded-full" />
                                </div>
                             </div>
                          ))}
@@ -362,229 +409,234 @@ export function TasksBoard() {
                    </button>
                 </div>
               ) : activeTab === 'list' ? (
-                /* Backlog List Rendering */
-                <div className="flex-1 flex flex-col min-h-0 bg-surface/30 border border-border rounded-2xl relative shadow-inner p-4 overflow-hidden">
-                   {/* Table container */}
-                   <div className="flex-1 overflow-y-auto relative custom-scrollbar mb-4 border border-border rounded-xl">
-                      <table className="w-full text-left text-xs border-collapse">
-                         <thead className="sticky top-0 bg-base border-b border-border text-secondary font-bold uppercase tracking-widest z-15">
-                            <tr>
-                               <th className="px-6 py-4 w-12 text-center">
-                                  <input 
-                                     type="checkbox" 
-                                     checked={paginatedTasks.length > 0 && paginatedTasks.every(t => selectedTaskIds.has(t._id))}
-                                     onChange={toggleSelectAllPageTasks}
-                                     className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
-                                  />
-                               </th>
-                               <th className="px-6 py-4">Task Code</th>
-                               <th className="px-6 py-4">Title</th>
-                               <th className="px-6 py-4">Priority</th>
-                               <th className="px-6 py-4">Stage</th>
-                               <th className="px-6 py-4">Tags</th>
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y divide-border">
-                            {paginatedTasks.map(task => {
-                               const isSelected = selectedTaskIds.has(task._id);
-                               return (
-                                  <tr key={task._id} className={`hover:bg-base/30 transition-colors group cursor-pointer ${isSelected ? 'bg-accent/5' : ''}`} onClick={() => toggleSelectTask(task._id)}>
-                                     <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                        <input 
-                                           type="checkbox" 
-                                           checked={isSelected}
-                                           onChange={() => toggleSelectTask(task._id)}
-                                           className="w-4 h-4 rounded border-border text-accent focus:ring-accent accent-accent"
-                                        />
-                                     </td>
-                                     <td className="px-6 py-4 font-mono font-bold text-secondary">{task.code || 'TSK-001'}</td>
-                                     <td className="px-6 py-4 font-bold text-primary max-w-xs truncate">{task.title}</td>
-                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${
-                                            task.priority === 'Critical' ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' :
-                                            task.priority === 'High' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                                            task.priority === 'Medium' ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' :
-                                            'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20'
-                                        }`}>{task.priority}</span>
-                                     </td>
-                                     <td className="px-6 py-4">
-                                        <span className={`px-2.5 py-1 rounded-lg border font-bold text-[9px] uppercase tracking-wider ${
-                                            task.stage === 'Done' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                                            task.stage === 'In Progress' ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-500/10 dark:text-blue-400' :
-                                            task.stage === 'Review' ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-500/10 dark:text-amber-400' :
-                                            'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400'
-                                        }`}>{task.stage}</span>
-                                     </td>
-                                     <td className="px-6 py-4 flex gap-1.5 flex-wrap">
-                                        {task.tags.map(tag => (
-                                           <span key={tag} className="text-[9px] font-bold text-secondary bg-base border border-border px-2 py-0.5 rounded-md">{tag}</span>
-                                        ))}
-                                     </td>
-                                  </tr>
-                               );
-                            })}
-                         </tbody>
-                      </table>
-                   </div>
-
-                   {/* Pagination panel */}
-                   <div className="flex items-center justify-between p-4 border-t border-border bg-base/10 shrink-0 rounded-xl">
-                      <div className="flex items-center gap-2">
-                         <span className="text-xs text-secondary font-medium">Rows per page:</span>
-                         <select 
-                            value={pageSize} 
-                            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                            className="bg-surface border border-border rounded-lg text-xs font-bold px-2 py-1 focus:outline-none"
-                         >
-                            {[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
-                         </select>
-                         <span className="text-xs text-tertiary font-bold ml-4">
-                            Showing {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredTasks.length)} of {filteredTasks.length} tasks
-                         </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                         <button 
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            className="px-3 py-1.5 border border-border bg-surface text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
-                         >
-                            Prev
-                         </button>
-                         {Array.from({ length: totalPages }).map((_, i) => {
-                            const page = i + 1;
-                            if (totalPages > 5 && page !== 1 && page !== totalPages && Math.abs(currentPage - page) > 1) {
-                               if (page === 2 && currentPage > 3) return <span key={page} className="text-secondary text-xs">...</span>;
-                               if (page === totalPages - 1 && currentPage < totalPages - 2) return <span key={page} className="text-secondary text-xs">...</span>;
-                               return null;
-                            }
+                /* ── Backlog List ── */
+                <div className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
+                  <div className="card-enterprise p-0 overflow-hidden flex-1 flex flex-col min-h-0">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                      <table className="table-enterprise">
+                        <thead>
+                          <tr>
+                            <th className="w-10 text-center px-5">
+                              <input
+                                type="checkbox"
+                                checked={paginatedTasks.length > 0 && paginatedTasks.every(t => selectedTaskIds.has(t._id))}
+                                onChange={toggleSelectAllPageTasks}
+                                className="w-3.5 h-3.5 rounded border-border accent-accent"
+                              />
+                            </th>
+                            <th className="px-4">Task Code</th>
+                            <th className="px-4">Title</th>
+                            <th className="px-4">Priority</th>
+                            <th className="px-4">Stage</th>
+                            <th className="px-4">Tags</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedTasks.map(task => {
+                            const isSelected = selectedTaskIds.has(task._id);
+                            const priorityCls =
+                              task.priority === 'Critical' ? 'badge-enterprise badge-enterprise-danger' :
+                              task.priority === 'High'     ? 'badge-enterprise badge-enterprise-warning' :
+                              task.priority === 'Medium'   ? 'badge-enterprise badge-enterprise-info' :
+                              'badge-enterprise';
+                            const stageCls =
+                              task.stage === 'Done'        ? 'badge-enterprise badge-enterprise-success' :
+                              task.stage === 'In Progress' ? 'badge-enterprise badge-enterprise-info' :
+                              task.stage === 'Review'      ? 'badge-enterprise badge-enterprise-warning' :
+                              'badge-enterprise';
                             return (
-                               <button
-                                  key={page}
-                                  onClick={() => setCurrentPage(page)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                     currentPage === page ? 'bg-accent text-white shadow-md shadow-accent/15' : 'border border-border bg-surface text-secondary hover:text-primary'
-                                  }`}
-                               >
-                                  {page}
-                               </button>
+                              <tr
+                                key={task._id}
+                                onClick={() => toggleSelectTask(task._id)}
+                                className={`cursor-pointer transition-colors group ${
+                                  isSelected ? 'bg-accent/5' : 'hover:bg-accent/[0.02]'
+                                }`}
+                              >
+                                <td className="px-5 text-center" onClick={e => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleSelectTask(task._id)}
+                                    className="w-3.5 h-3.5 rounded border-border accent-accent"
+                                  />
+                                </td>
+                                <td className="px-4">
+                                  <span className="font-mono text-xs font-bold text-secondary">{task.code || 'TSK-001'}</span>
+                                </td>
+                                <td className="px-4">
+                                  <span className="font-semibold text-primary text-xs group-hover:text-accent transition-colors">{task.title}</span>
+                                </td>
+                                <td className="px-4"><span className={priorityCls}>{task.priority}</span></td>
+                                <td className="px-4"><span className={stageCls}>{task.stage}</span></td>
+                                <td className="px-4">
+                                  <div className="flex gap-1.5 flex-wrap">
+                                    {task.tags.map(tag => (
+                                      <span key={tag} className="badge-enterprise text-[10px]">{tag}</span>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
                             );
-                         })}
-                         <button 
-                            disabled={currentPage === totalPages || totalPages === 0}
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            className="px-3 py-1.5 border border-border bg-surface text-secondary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold transition-all"
-                         >
-                            Next
-                         </button>
-                      </div>
-                   </div>
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
 
-                   {/* Floating bulk selection action bar */}
-                   <AnimatePresence>
-                      {selectedTaskIds.size > 0 && (
-                         <motion.div 
-                            initial={{ y: 50, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 50, opacity: 0 }}
-                            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border rounded-2xl shadow-2xl p-4 flex items-center gap-6 max-w-lg w-full justify-between"
-                         >
-                            <div className="flex items-center gap-2">
-                               <div className="w-6 h-6 rounded-full bg-accent/10 text-accent font-bold text-xs flex items-center justify-center shadow-inner">
-                                  {selectedTaskIds.size}
-                               </div>
-                               <span className="text-xs font-bold text-primary">selected</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                               <select 
-                                  onChange={(e) => { if (e.target.value) { handleBulkUpdateStage(e.target.value); e.target.value = ''; } }}
-                                  className="bg-base border border-border rounded-xl text-xs font-bold px-3 py-2 text-primary focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
-                               >
-                                  <option value="">Move Stage...</option>
-                                  {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                               </select>
-                               {(user?.role === 'Admin' || user?.role === 'Manager') && (
-                                  <button 
-                                     onClick={handleBulkDeleteTasks}
-                                     className="px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
-                                  >
-                                     <Trash2 size={12} /> Delete
-                                  </button>
-                               )}
-                               <button 
-                                  onClick={() => setSelectedTaskIds(new Set())}
-                                  className="px-3 py-2 text-secondary hover:text-primary transition-colors text-xs font-bold"
-                               >
-                                  Clear
-                               </button>
-                            </div>
-                         </motion.div>
-                      )}
-                   </AnimatePresence>
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-base/20 shrink-0">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[11px] text-secondary font-medium">Rows per page:</span>
+                        <select
+                          value={pageSize}
+                          onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                          className="select-enterprise !w-auto !py-1 !px-2.5 !text-xs"
+                        >
+                          {[10, 20, 50].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <span className="text-[11px] text-tertiary font-medium ml-1">
+                          {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredTasks.length)} of {filteredTasks.length}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          className="px-3 py-1.5 border border-border/60 bg-surface text-secondary hover:text-primary disabled:opacity-40 rounded-lg text-xs font-semibold transition-all"
+                        >
+                          Prev
+                        </button>
+                        {Array.from({ length: totalPages }).map((_, i) => {
+                          const pg = i + 1;
+                          if (totalPages > 5 && pg !== 1 && pg !== totalPages && Math.abs(currentPage - pg) > 1) {
+                            if (pg === 2 && currentPage > 3) return <span key={pg} className="text-secondary text-xs px-1">…</span>;
+                            if (pg === totalPages - 1 && currentPage < totalPages - 2) return <span key={pg} className="text-secondary text-xs px-1">…</span>;
+                            return null;
+                          }
+                          return (
+                            <button
+                              key={pg}
+                              onClick={() => setCurrentPage(pg)}
+                              className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                                currentPage === pg ? 'bg-accent text-white shadow-sm' : 'border border-border/60 bg-surface text-secondary hover:text-primary'
+                              }`}
+                            >
+                              {pg}
+                            </button>
+                          );
+                        })}
+                        <button
+                          disabled={currentPage === totalPages || totalPages === 0}
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          className="px-3 py-1.5 border border-border/60 bg-surface text-secondary hover:text-primary disabled:opacity-40 rounded-lg text-xs font-semibold transition-all"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Floating bulk action bar */}
+                  <AnimatePresence>
+                    {selectedTaskIds.size > 0 && (
+                      <motion.div
+                        initial={{ y: 60, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 60, opacity: 0 }}
+                        transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.25 }}
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border/80 rounded-2xl shadow-2xl px-5 py-3.5 flex items-center gap-5 max-w-lg w-full justify-between backdrop-blur-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-accent/10 text-accent font-bold text-xs flex items-center justify-center">{selectedTaskIds.size}</div>
+                          <span className="text-xs font-semibold text-primary">selected</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            onChange={e => { if (e.target.value) { handleBulkUpdateStage(e.target.value); e.target.value = ''; } }}
+                            className="select-enterprise !w-auto !py-1.5 !text-xs"
+                          >
+                            <option value="">Move Stage…</option>
+                            {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                          {(user?.role === 'Admin' || user?.role === 'Manager') && (
+                            <button onClick={handleBulkDeleteTasks} className="btn-enterprise-danger !py-1.5 !text-xs flex items-center gap-1.5">
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          )}
+                          <button onClick={() => setSelectedTaskIds(new Set())} className="text-xs text-secondary hover:text-primary transition-colors font-semibold px-2">Clear</button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
              ) : (
-                /* Existing Board Rendering */
-                <div className="flex gap-6 h-full min-w-max relative z-10">
-                   {STAGES.map(stage => (
-                      <div 
-                        key={stage} 
-                        className="flex flex-col w-[320px] bg-surface/40 backdrop-blur rounded-2xl border border-dashed border-border/50"
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                        onDrop={(e) => handleDrop(e, stage)}
-                      >
-                          <div className="p-4 flex items-center justify-between mb-2">
-                             <div className="flex gap-2 items-center">
-                                <div className={`w-2 h-2 rounded-full ${stage === 'Done' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : stage === 'In Progress' ? 'bg-blue-500' : stage === 'Review' ? 'bg-yellow-500' : 'bg-gray-500'}`}></div>
-                                <h3 className="font-bold text-sm text-primary">{stage}</h3>
-                             </div>
-                             <span className="text-[10px] font-bold bg-surface border border-border text-secondary px-2.5 py-0.5 rounded-full">
-                                {filteredTasks.filter(t => t.stage === stage).length}
-                             </span>
-                          </div>
-
-                          <div className="p-3 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
-                              <AnimatePresence mode="popLayout">
-                                 {filteredTasks.filter(t => t.stage === stage).map(task => (
-                                    <motion.div
-                                      key={task._id}
-                                      layout
-                                      initial={{ opacity: 0, scale: 0.95 }}
-                                      animate={{ opacity: 1, scale: 1 }}
-                                      exit={{ opacity: 0, scale: 0.9 }}
-                                      draggable
-                                      onDragStart={() => setDraggedItem({ id: task._id, stage })}
-                                      onDragEnd={() => setDraggedItem(null)}
-                                      className="bg-base border border-border p-5 rounded-2xl cursor-grab active:cursor-grabbing hover:border-accent/50 hover:shadow-lg transition-all group shadow-sm"
-                                    >
-                                       <div className="flex justify-between items-start mb-3">
-                                          <span className="text-[9px] font-bold text-tertiary uppercase tracking-widest">{task.code}</span>
-                                          <div className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                                              task.priority === 'Critical' ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' :
-                                              task.priority === 'High' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                                              task.priority === 'Medium' ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' :
-                                              'bg-gray-50 text-gray-600 border-gray-100 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20'
-                                          }`}>
-                                             {task.priority}
-                                          </div>
-                                       </div>
-                                       <h4 className="text-sm font-bold text-primary mb-3 leading-snug group-hover:text-accent transition-colors">{task.title}</h4>
-                                       <div className="flex flex-wrap gap-1.5 mb-4">
-                                          {task.tags.map(tag => (
-                                             <span key={tag} className="text-[9px] font-bold text-secondary bg-surface border border-border px-2 py-0.5 rounded-md">{tag}</span>
-                                          ))}
-                                       </div>
-                                       <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
-                                          <GripVertical size={14} className="text-tertiary opacity-20 group-hover:opacity-100 transition-opacity" />
-                                          <div className="flex -space-x-2">
-                                             <div className="w-6 h-6 rounded-full border-2 border-base bg-accent text-white flex items-center justify-center text-[8px] font-bold">JD</div>
-                                             <div className="w-6 h-6 rounded-full border-2 border-base bg-surface text-secondary flex items-center justify-center text-[8px] font-bold">+2</div>
-                                          </div>
-                                       </div>
-                                    </motion.div>
-                                 ))}
-                              </AnimatePresence>
-                          </div>
+                /* ── Sprint Board ── */
+                <div className="flex gap-5 h-full min-w-max relative z-10">
+                  {STAGES.map(stage => (
+                    <div
+                      key={stage}
+                      className="flex flex-col w-[300px] bg-surface/40 rounded-2xl border border-border/40"
+                      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                      onDrop={e => handleDrop(e, stage)}
+                    >
+                      <div className="px-4 py-3.5 flex items-center justify-between border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            stage === 'Done'        ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]' :
+                            stage === 'In Progress' ? 'bg-accent shadow-[0_0_6px_rgba(99,102,241,0.4)]' :
+                            stage === 'Review'      ? 'bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.4)]' :
+                            'bg-border'
+                          }`} />
+                          <h3 className="text-xs font-bold text-primary">{stage}</h3>
+                        </div>
+                        <span className="text-[10px] font-bold bg-base border border-border/60 text-secondary px-2 py-0.5 rounded-full">
+                          {filteredTasks.filter(t => t.stage === stage).length}
+                        </span>
                       </div>
-                   ))}
+
+                      <div className="p-3 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
+                        <AnimatePresence mode="popLayout">
+                          {filteredTasks.filter(t => t.stage === stage).map(task => {
+                            const priorityCls =
+                              task.priority === 'Critical' ? 'badge-enterprise badge-enterprise-danger' :
+                              task.priority === 'High'     ? 'badge-enterprise badge-enterprise-warning' :
+                              task.priority === 'Medium'   ? 'badge-enterprise badge-enterprise-info' :
+                              'badge-enterprise';
+                            return (
+                              <motion.div
+                                key={task._id}
+                                layout
+                                initial={{ opacity: 0, scale: 0.96 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.92 }}
+                                draggable
+                                onDragStart={() => setDraggedItem({ id: task._id, stage })}
+                                onDragEnd={() => setDraggedItem(null)}
+                                className="bg-base border border-border/60 p-4 rounded-xl cursor-grab active:cursor-grabbing hover:border-accent/40 hover:shadow-md transition-all group shadow-sm"
+                              >
+                                <div className="flex justify-between items-start mb-2.5">
+                                  <span className="text-[9px] font-bold text-tertiary uppercase tracking-widest">{task.code}</span>
+                                  <span className={priorityCls}>{task.priority}</span>
+                                </div>
+                                <h4 className="text-xs font-semibold text-primary mb-3 leading-snug group-hover:text-accent transition-colors">{task.title}</h4>
+                                <div className="flex flex-wrap gap-1.5 mb-3">
+                                  {task.tags.map(tag => (
+                                    <span key={tag} className="badge-enterprise text-[9px]">{tag}</span>
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-between pt-3 border-t border-border/40 mt-auto">
+                                  <GripVertical size={13} className="text-tertiary opacity-20 group-hover:opacity-70 transition-opacity" />
+                                  <div className="flex -space-x-1.5">
+                                    <div className="w-5 h-5 rounded-full border-2 border-base bg-accent/20 text-accent flex items-center justify-center text-[7px] font-bold">JD</div>
+                                    <div className="w-5 h-5 rounded-full border-2 border-base bg-surface text-secondary flex items-center justify-center text-[7px] font-bold">+2</div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  ))}
                 </div>
              )}
           </div>
