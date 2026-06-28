@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const pipelineAgg = await Lead.aggregate([
       { $match: { assignedTo: targetUserId as any } },
-      { $addFields: { numericValue: { $toDouble: { $replaceAll: { input: { $replaceAll: { input: { $ifNull: ['$value', '0'] }, find: '$', replacement: '' } }, find: ',', replacement: '' } } } } },
+      { $addFields: { numericValue: { $toDouble: { $replaceAll: { input: { $replaceAll: { input: { $ifNull: ['$value', '0'] }, find: { $literal: '$' }, replacement: '' } }, find: ',', replacement: '' } } } } },
       { $group: { _id: null, total: { $sum: '$numericValue' } } },
     ]);
     const pipelineValue = pipelineAgg[0]?.total || 0;
