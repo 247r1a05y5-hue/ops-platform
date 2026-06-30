@@ -69,7 +69,7 @@ interface EmployeeTask {
   desc: string;
   due: string;
   priority: 'Critical' | 'High' | 'Normal' | 'Medium' | 'Low';
-  status: 'To Do' | 'In Progress' | 'Under Review' | 'Done' | 'Blocked';
+  status: string;
   progress: number;
   estimatedHours: number;
   completed: boolean;
@@ -746,11 +746,21 @@ function EmployeeDashboard() {
     setSelectedTask(null);
     showToast(`Task "${selectedTask.title}" successfully updated to ${finalProgress}% [${finalStatus}]`, 'success');
 
-    // Map status string back to database stage enum
-    let mappedStage = 'Backlog';
-    if (finalStatus === 'In Progress') mappedStage = 'In Progress';
-    else if (finalStatus === 'Under Review') mappedStage = 'Review';
-    else if (finalStatus === 'Done') mappedStage = 'Done';
+    // Map status string back to database stage and status fields
+    let mappedStage = 'To Do';
+    let mappedStatus = finalStatus;
+    if (finalStatus === 'In Progress') {
+      mappedStage = 'In Progress';
+    } else if (finalStatus === 'Under Review') {
+      mappedStage = 'Review';
+      mappedStatus = 'Review Requested';
+    } else if (finalStatus === 'Blocked') {
+      mappedStage = 'Blocked';
+      mappedStatus = 'Blocked';
+    } else if (finalStatus === 'Accepted') {
+      mappedStage = 'To Do';
+      mappedStatus = 'Accepted';
+    }
 
     // Persist changes to database
     fetch(`/api/tasks/${selectedTask._id}`, {
@@ -758,6 +768,7 @@ function EmployeeDashboard() {
       headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
       body: JSON.stringify({
         stage: mappedStage,
+        status: mappedStatus,
         progress: finalProgress,
         subtasks: selectedTask.subtasks,
         logs: updatedLogs
@@ -1089,11 +1100,11 @@ function EmployeeDashboard() {
                         onChange={e => setEditStatus(e.target.value as any)}
                         className="w-full bg-base border border-border rounded-xl px-3 py-2.5 text-xs text-primary focus:ring-1 focus:ring-accent outline-none"
                       >
-                        <option value="To Do">To Do</option>
+                        <option value="To Do">To Do (Assigned)</option>
+                        <option value="Accepted">Accepted</option>
                         <option value="In Progress">In Progress</option>
                         <option value="Under Review">Under Review</option>
                         <option value="Blocked">Blocked</option>
-                        <option value="Done">Done</option>
                       </select>
                     </div>
 

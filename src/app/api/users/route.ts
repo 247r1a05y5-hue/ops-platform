@@ -18,8 +18,12 @@ export async function GET(req: NextRequest) {
     const currentUser = await User.findById(session.sub).select('workspaceId').lean() as any;
     const workspaceFilter = currentUser?.workspaceId ? { workspaceId: currentUser.workspaceId } : {};
 
-    const users = await User.find({ ...workspaceFilter, suspended: { $ne: true } })
-      .select('_id name email role status')
+    const users = await User.find({
+      ...workspaceFilter,
+      suspended: { $ne: true },
+      deleted: { $ne: true }
+    })
+      .select('_id name email role status department')
       .sort({ name: 1 })
       .lean();
 

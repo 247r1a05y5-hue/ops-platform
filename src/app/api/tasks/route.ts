@@ -1,50 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Task, Project, User } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
-import { sendEmail, sendDualNotification, isValidEmail } from '@/lib/email';
+import { sendEmail, isValidEmail } from '@/lib/email';
 import { logActivity } from '@/lib/activity';
+import { createNotification } from '@/lib/notifications';
 import mongoose from 'mongoose';
-
-// ── Workspace isolation helper ─────────────────────────────────────────────────
-// Resolves the workspaceId of the current session user from DB.
-// Tasks have no workspaceId field, so we scope them by restricting to assignees
-// who belong to the same workspace. When no workspace is found, no filter is applied
-// (single-tenant safe).
-// Cache workspace member identifiers for 15 seconds to speed up concurrent task loads
-const memberCache = new Map<string, { identifiers: string[] | null; expiresAt: number }>();
-const MEMBER_CACHE_TTL = 15000;
-
-async function getWorkspaceMemberNames(userId: string): Promise<string[] | null> {
-  const now = Date.now();
-  const cached = memberCache.get(userId);
-  if (cached && cached.expiresAt > now) {
-    return cached.identifiers;
-  }
-
-  try {
-    const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
-    if (!currentUser?.workspaceId) {
-      memberCache.set(userId, { identifiers: null, expiresAt: now + MEMBER_CACHE_TTL });
-      return null; // single workspace — no filter needed
-    }
-    const members = await User.find({ workspaceId: currentUser.workspaceId })
-      .select('name email').lean() as any[];
-    // Return both names and emails so assignee field (which can be either) is matched
-    const identifiers = members.flatMap((m: any) => [m.name, m.email].filter(Boolean));
-    memberCache.set(userId, { identifiers, expiresAt: now + MEMBER_CACHE_TTL });
-    return identifiers;
-  } catch {
-    return null;
-  }
-}
-
-const STAGES    = ['Backlog', 'In Progress', 'Review', 'Done'];
-const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
-
-function stagePrefix(stage: string) {
-  const map: Record<string, string> = { 'Backlog': 'B', 'In Progress': 'P', 'Review': 'R', 'Done': 'D' };
-  return map[stage] ?? 'T';
-}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -58,21 +18,40 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get('projectId');
 
-    // ── Workspace isolation ──────────────────────────────────────────────────
-    // Scope tasks to assignees within the same workspace as the requester.
-    // Tasks have no workspaceId column (existing data needs no migration for
-    // single-workspace deployments — all users share ops-main).
-    const memberIdentifiers = await getWorkspaceMemberNames(session.sub);
+    // Resolve current user workspace
+    const currentUser = await User.findById(session.sub).select('workspaceId').lean() as any;
+    const workspaceId = currentUser?.workspaceId;
 
-    const query: Record<string, any> = {};
-    if (projectId) query.projectId = projectId;
-    if (memberIdentifiers) {
-      // Filter to tasks where assignee matches a name or email in this workspace.
-      // Tasks with empty assignee are also included (they belong to this workspace).
+    const query: Record<string, any> = { isDeleted: { $ne: true } };
+
+    // Strict workspace scoping (falls back to ops-main if missing to prevent leakage)
+    if (workspaceId) {
       query.$or = [
-        { assignee: { $in: memberIdentifiers } },
-        { assignee: '' },
-        { assignee: { $exists: false } },
+        { workspaceId },
+        { workspaceId: { $exists: false } },
+        { workspaceId: null }
+      ];
+    }
+
+    if (projectId) {
+      if (mongoose.Types.ObjectId.isValid(projectId)) {
+        query.projectId = new mongoose.Types.ObjectId(projectId);
+      } else {
+        query.projectId = null;
+      }
+    }
+
+    // Role-based visibility enforcement
+    // Employees and MRs can only retrieve tasks assigned to them
+    if (session.role === 'Staff' || session.role === 'Employee' || session.role === 'MR' || session.role === 'User') {
+      query.$and = [
+        {
+          $or: [
+            { assignedTo: new mongoose.Types.ObjectId(session.sub) },
+            { assignee: session.name },
+            { assignee: session.email }
+          ]
+        }
       ];
     }
 
@@ -81,6 +60,7 @@ export async function GET(req: NextRequest) {
       headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
     });
   } catch (err) {
+    console.error('[GET /api/tasks] Error:', err);
     return NextResponse.json({ success: false, error: String(err) }, {
       status: 500,
       headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' }
@@ -92,167 +72,155 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const { session, error } = await requireAuth(req);
+  // Strict check: only Admin or Manager can create tasks
+  const { session, error } = await requireAuth(req, ['Admin', 'Manager']);
   if (error) return error;
 
   try {
     await connectDB();
-    const { title, description, stage, priority, assignee, dueDate, projectId, tags } = await req.json();
+    const body = await req.json();
+    const { title, description, priority, stage, assignedTo, assignee, dueDate, projectId, tags, checklist } = body;
 
+    // Validate required fields
     if (!title?.trim()) {
       return NextResponse.json({ success: false, error: 'Title is required.' }, { status: 400 });
     }
 
-    // ── projectId reference integrity check ─────────────────────────────────
+    // Resolve creator's workspaceId
+    const currentUser = await User.findById(session.sub).select('workspaceId').lean() as any;
+    const workspaceId = currentUser?.workspaceId;
+
+    // Validate project existence and workspace matching
     let resolvedProjectId: mongoose.Types.ObjectId | undefined;
     if (projectId) {
       if (!mongoose.Types.ObjectId.isValid(projectId)) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid projectId format.' },
-          { status: 400 }
-        );
+        return NextResponse.json({ success: false, error: 'Invalid projectId format.' }, { status: 400 });
       }
-      const projectExists = await Project.exists({ _id: projectId });
-      if (!projectExists) {
-        return NextResponse.json(
-          { success: false, error: `Project '${projectId}' does not exist.` },
-          { status: 404 }
-        );
+      const project = await Project.findOne({ _id: projectId, isDeleted: { $ne: true } }).lean() as any;
+      if (!project) {
+        return NextResponse.json({ success: false, error: `Project '${projectId}' does not exist.` }, { status: 404 });
+      }
+      // Workspace validation
+      if (workspaceId && project.workspaceId && project.workspaceId.toString() !== workspaceId.toString()) {
+        return NextResponse.json({ success: false, error: 'Project workspace mismatch.' }, { status: 403 });
       }
       resolvedProjectId = new mongoose.Types.ObjectId(projectId);
     }
 
-    const resolvedStage    = STAGES.includes(stage)     ? stage    : 'Backlog';
-    const resolvedPriority = PRIORITIES.includes(priority) ? priority : 'Medium';
+    // Validate and resolve assignee
+    let resolvedAssignee = null;
+    if (assignedTo) {
+      if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+        return NextResponse.json({ success: false, error: 'Invalid assignedTo format.' }, { status: 400 });
+      }
+      resolvedAssignee = await User.findOne({ _id: assignedTo, deleted: { $ne: true } }).lean() as any;
+    } else if (assignee) {
+      resolvedAssignee = await User.findOne({
+        $or: [{ email: assignee }, { name: assignee }],
+        deleted: { $ne: true }
+      }).lean() as any;
+    }
 
-    const count = await Task.countDocuments();
-    const code  = `${stagePrefix(resolvedStage)}-${count + 1}`;
+    if (resolvedAssignee) {
+      // Validate Workspace isolation
+      if (workspaceId && resolvedAssignee.workspaceId && resolvedAssignee.workspaceId.toString() !== workspaceId.toString()) {
+        return NextResponse.json({ success: false, error: 'Assignee belongs to a different workspace.' }, { status: 403 });
+      }
+      // Validate suspension
+      if (resolvedAssignee.suspended) {
+        return NextResponse.json({ success: false, error: 'Cannot assign task to a suspended user.' }, { status: 400 });
+      }
+      // Validate role clearance: only Employee/Staff/MR/User
+      const allowedRoles = ['Employee', 'Staff', 'MR', 'User'];
+      if (!allowedRoles.includes(resolvedAssignee.role)) {
+        return NextResponse.json({ success: false, error: `Assignee role '${resolvedAssignee.role}' is not authorized for task assignments.` }, { status: 400 });
+      }
+    }
+
+    // Validate due date
+    let resolvedDueDate: Date | undefined;
+    if (dueDate) {
+      const parsedDate = new Date(dueDate);
+      if (isNaN(parsedDate.getTime())) {
+        return NextResponse.json({ success: false, error: 'Invalid due date format.' }, { status: 400 });
+      }
+      resolvedDueDate = parsedDate;
+    }
+
+    // Setup sequential code numbering per workspace
+    const taskCount = await Task.countDocuments({ workspaceId, isDeleted: { $ne: true } });
+    const taskNumber = taskCount + 1;
+    const code = `TSK-${taskNumber}`;
+
+    // Establish checklist & subtasks synchronization
+    const mappedChecklist = Array.isArray(checklist)
+      ? checklist.map((item: any) => typeof item === 'string' ? { title: item, checked: false } : { title: item.title, checked: !!item.checked })
+      : [];
+    const mappedSubtasks = mappedChecklist.map((item: any) => ({ title: item.title, done: item.checked }));
+
+    const resolvedPriority = ['Low', 'Medium', 'High', 'Critical'].includes(priority) ? priority : 'Medium';
+    const resolvedStage = ['Backlog', 'To Do', 'In Progress', 'Review', 'Under Review', 'Done', 'Blocked'].includes(stage) ? stage : (resolvedAssignee ? 'To Do' : 'Backlog');
+    const initialStatus = resolvedAssignee ? 'Assigned' : 'Draft';
 
     const task = await Task.create({
       title: title.trim(),
       description: description ?? '',
       stage: resolvedStage,
       priority: resolvedPriority,
-      assignee: assignee ?? '',
-      dueDate: dueDate ? new Date(dueDate) : undefined,
+      assignee: resolvedAssignee ? resolvedAssignee.name : '',
+      assignedTo: resolvedAssignee ? resolvedAssignee._id : null,
+      assignedRole: resolvedAssignee ? resolvedAssignee.role : '',
+      assignedBy: session.sub,
+      workspaceId,
+      status: initialStatus,
+      dueDate: resolvedDueDate,
       projectId: resolvedProjectId,
       tags: Array.isArray(tags) ? tags : [],
       code,
+      taskNumber,
       createdBy: session.name,
+      checklist: mappedChecklist,
+      subtasks: mappedSubtasks,
+      activity: [{
+        action: resolvedAssignee ? 'Assigned' : 'Created',
+        performedBy: session.name,
+        performedById: new mongoose.Types.ObjectId(session.sub),
+        timestamp: new Date()
+      }]
     });
 
-    // ── Email assignee + admin on task creation ───────────────────────────
-    if (task.assignee) {
-      // Look up assignee by name or email
-      const assigneeUser = await User.findOne({
-        $or: [{ email: task.assignee }, { name: task.assignee }],
-      }).select('email name role').lean() as any;
+    // Generate notifications
+    if (resolvedAssignee) {
+      await createNotification(
+        resolvedAssignee._id.toString(),
+        'Task Assigned',
+        `You have been assigned task "${task.title}" by ${session.name}. Priority: ${task.priority}.`
+      ).catch(e => console.error('[TaskCreate] notification failed:', e.message));
 
-      if (assigneeUser?.email && isValidEmail(assigneeUser.email)) {
+      if (resolvedAssignee.email && isValidEmail(resolvedAssignee.email)) {
         await sendEmail({
           event: 'task_update',
-          to: assigneeUser.email,
+          to: resolvedAssignee.email,
           vars: {
-            name: assigneeUser.name,
-            role: assigneeUser.role || 'Employee',
+            name: resolvedAssignee.name,
+            role: resolvedAssignee.role || 'Employee',
             action: `New Task Assigned: ${task.title}`,
-            description: `You have been assigned a new task: "${task.title}" (${task.priority} priority, due ${task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'no deadline'}). Stage: ${task.stage}.`,
+            description: `You have been assigned a new task: "${task.title}" (${task.priority} priority, due ${task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'no deadline'}).`,
           },
         }).catch(e => console.error('[TaskCreate] assignee email failed:', e.message));
       }
-
-      // Admin copy
-      const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || 'admin@ops.com';
-      if (isValidEmail(adminEmail)) {
-        await sendEmail({
-          event: 'task_update',
-          to: adminEmail,
-          vars: {
-            name: session.name,
-            role: session.role,
-            action: `Task Created & Assigned: ${task.title}`,
-            description: `${session.name} created task "${task.title}" assigned to ${task.assignee} (${task.priority} priority).`,
-          },
-        }).catch(e => console.error('[TaskCreate] admin email failed:', e.message));
-      }
     }
 
+    // Global Activity Logging
     await logActivity({
       userId: session.sub,
       actionType: 'task_creation',
       module: 'Tasks',
-      description: `Task "${task.title}" created by ${session.name}, assigned to ${task.assignee || 'unassigned'}`,
+      description: `Task "${task.title}" (${task.code}) created by ${session.name}, assigned to ${task.assignee || 'unassigned'}`,
       req,
     }).catch(console.error);
 
-    // Outbound webhooks
-    const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
-    if (webhookUrl) {
-      try {
-        const { enqueueWebhook } = await import('@/lib/webhookQueue');
-        const taskPayload = {
-          taskId: task._id.toString(),
-          code: task.code,
-          title: task.title,
-          description: task.description,
-          stage: task.stage,
-          priority: task.priority,
-          assignee: task.assignee || "",
-          dueDate: task.dueDate ? task.dueDate.toISOString() : null,
-          createdBy: task.createdBy || "",
-        };
-
-        // 1. task_created
-        console.log(`[Webhook] Enqueuing task_created event for task ${task.code}`);
-        await enqueueWebhook({
-          event: 'task_created',
-          targetUrl: webhookUrl,
-          payload: {
-            event: 'task_created',
-            timestamp: new Date().toISOString(),
-            source: 'ops-platform',
-            version: '1.0',
-            data: taskPayload,
-          },
-        });
-
-        // 2. task_assigned
-        if (task.assignee) {
-          console.log(`[Webhook] Enqueuing task_assigned event for task ${task.code}`);
-          await enqueueWebhook({
-            event: 'task_assigned',
-            targetUrl: webhookUrl,
-            payload: {
-              event: 'task_assigned',
-              timestamp: new Date().toISOString(),
-              source: 'ops-platform',
-              version: '1.0',
-              data: taskPayload,
-            },
-          });
-        }
-
-        // 3. task_completed
-        if (task.stage === 'Done') {
-          console.log(`[Webhook] Enqueuing task_completed event for task ${task.code}`);
-          await enqueueWebhook({
-            event: 'task_completed',
-            targetUrl: webhookUrl,
-            payload: {
-              event: 'task_completed',
-              timestamp: new Date().toISOString(),
-              source: 'ops-platform',
-              version: '1.0',
-              data: taskPayload,
-            },
-          });
-        }
-      } catch (err: any) {
-        console.error('[Webhook] Failed to enqueue task created/assigned/completed webhooks:', err.message);
-      }
-    }
-
-    // Enterprise Audit Log
+    // Audit trail logging
     try {
       const { logAudit } = await import('@/lib/audit');
       await logAudit({
@@ -260,17 +228,12 @@ export async function POST(req: NextRequest) {
         module: 'Tasks',
         entityId: task._id.toString(),
         entityType: 'Task',
-        newValue: {
-          code: task.code,
-          title: task.title,
-          stage: task.stage,
-          priority: task.priority,
-          assignee: task.assignee,
-        },
+        newValue: task.toObject(),
         session: {
           sub: session.sub,
           name: session.name,
           role: session.role,
+          workspaceId: workspaceId?.toString()
         },
         req,
       });
@@ -280,6 +243,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, task }, { status: 201 });
   } catch (err) {
+    console.error('[POST /api/tasks] Error:', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }

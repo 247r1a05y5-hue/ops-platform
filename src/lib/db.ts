@@ -117,6 +117,8 @@ const UserSchema = new Schema({
   twoFactorEnabled: { type: Boolean, default: false },
   twoFactorSecret: String,
   status: { type: String, enum: ['Online', 'Away', 'Offline'], default: 'Offline' },
+  department: { type: String, default: '' },
+  deleted: { type: Boolean, default: false },
 });
 
 // 2. Activity Logs
@@ -345,6 +347,54 @@ const TaskSchema = new Schema({
   subtasks:    { type: [{ title: String, done: Boolean }], default: [] },
   logs:        { type: [{ time: String, note: String, author: String }], default: [] },
   attachments: { type: [String], default: [] },
+  assignedTo:   { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  assignedRole: { type: String, default: '' },
+  assignedBy:   { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  workspaceId:  { type: Schema.Types.ObjectId, ref: 'Workspace', default: null },
+  status:       { type: String, enum: ['Draft', 'Assigned', 'Accepted', 'In Progress', 'Blocked', 'Review Requested', 'Approved', 'Completed', 'Archived'], default: 'Draft' },
+  checklist:    { type: [{ title: String, checked: Boolean }], default: [] },
+  acceptedAt:   Date,
+  startedAt:    Date,
+  reviewRequestedAt: Date,
+  approvedAt:   Date,
+  completedAt:  Date,
+  archivedAt:   Date,
+  assignmentHistory: {
+    type: [{
+      previousAssignee: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      previousAssigneeName: { type: String, default: '' },
+      newAssignee: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      newAssigneeName: { type: String, default: '' },
+      changedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      changedByName: { type: String, default: '' },
+      reason: { type: String, default: '' },
+      timestamp: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+  activity: {
+    type: [{
+      action: String,
+      performedBy: String,
+      performedById: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      timestamp: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+  comments: {
+    type: [{
+      text: { type: String, required: true },
+      author: String,
+      authorId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+  version: { type: Number, default: 1 },
+  taskNumber: Number,
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: Date,
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 });
 TaskSchema.index({ projectId: 1 });
 TaskSchema.index({ assignee: 1 });
@@ -359,6 +409,9 @@ const ProjectSchema = new Schema({
   owner:       { type: String, default: '' },
   createdBy:   { type: String, default: '' },
   createdAt:   { type: Date, default: Date.now },
+  workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', default: null },
+  isDeleted:   { type: Boolean, default: false },
+  deletedAt:   Date,
 });
 ProjectSchema.index({ owner: 1 });
 ProjectSchema.index({ createdAt: -1 });

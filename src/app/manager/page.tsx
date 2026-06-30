@@ -75,7 +75,7 @@ interface ManagerTask {
   priority: 'Critical' | 'High' | 'Medium' | 'Low';
   owner: string;
   deadline: string;
-  status: 'To Do' | 'In Progress' | 'Under Review' | 'Done' | 'Blocked';
+  status: string;
   progress: number;
   subtasks: { title: string; done: boolean }[];
   logs: TaskLog[];
@@ -489,6 +489,46 @@ function ManagerDashboard() {
     }
   };
 
+  const handleApproveTask = async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ stage: 'Done' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Task approved and completed!', 'success');
+        await fetchDashboardData();
+      } else {
+        showToast(data.error || 'Failed to approve task', 'error');
+      }
+    } catch {
+      showToast('Error approving task', 'error');
+    }
+  };
+
+  const handleRejectTask = async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+        credentials: 'include',
+        body: JSON.stringify({ stage: 'In Progress' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Task rejected and sent back to In Progress.', 'info');
+        await fetchDashboardData();
+      } else {
+        showToast(data.error || 'Failed to reject task', 'error');
+      }
+    } catch {
+      showToast('Error rejecting task', 'error');
+    }
+  };
+
   const handleGenerateBriefing = () => {
     setIsBriefingLoading(true);
     setShowBriefingModal(true);
@@ -599,47 +639,81 @@ function ManagerDashboard() {
                       <p className="text-secondary text-xs">Authorized approvals for system resources and personnel override requests.</p>
                    </div>
                    
-                   <div className="space-y-4">
-                       {loadingApprovals ? (
-                         <SectionSpinner message="Loading Decisions..." />
-                       ) : approvalsError ? (
-                         <SectionError message={approvalsError} />
-                       ) : approvals.length === 0 ? (
-                         <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
-                           <Shield size={36} className="text-accent/30 mx-auto mb-4" />
-                           <p className="text-sm font-bold text-primary mb-1">Queue Clear</p>
-                           <p className="text-xs text-secondary font-medium">No pending approval requests require resolution.</p>
-                         </div>
-                       ) : approvals.map((req, i) => (
-                        <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/40 hover:shadow-md transition-all group">
-                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                              <div className="flex items-start gap-4">
-                                 <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center shrink-0 text-accent group-hover:border-accent/35 transition-colors">
-                                    <Shield size={18} />
-                                 </div>
-                                 <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                       <span className="text-xs font-bold text-primary">{req.user}</span>
-                                       <Badge text={req.type} type="info" />
-                                       <Badge text={req.priority} type={req.priority === 'Critical' ? 'danger' : req.priority === 'High' ? 'warning' : 'default'} />
-                                    </div>
-                                    <p className="text-[11px] text-secondary font-medium leading-relaxed">{req.detail}</p>
-                                    <div className="text-[9px] text-tertiary font-bold uppercase mt-2.5 tracking-wider font-mono">{req.id} · Requested {req.date}</div>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                 {req.status !== 'Pending' ? (
-                                    <Badge text={req.status} type={req.status === 'Authorized' ? 'success' : 'danger'} />
-                                 ) : (
-                                    <div className="flex items-center gap-2">
-                                       <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-rose-500/5 hover:text-rose-500 hover:border-rose-500/20 active:scale-95">Deny</button>
-                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary px-4 py-1.5 text-[10px] font-bold uppercase active:scale-95">Authorize</button>
-                                    </div>
-                                 )}
-                              </div>
+                   <div className="space-y-6">
+                       {/* Task Review Queue */}
+                       <div className="space-y-4">
+                         <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">📝 Task Review Queue</h3>
+                         {tasks.filter(t => t.status === 'Review' || t.status === 'Under Review' || t.status === 'Review Requested').length === 0 ? (
+                           <div className="p-8 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                             <p className="text-xs text-secondary font-medium">No tasks pending review.</p>
                            </div>
-                        </Card>
-                      ))}
+                         ) : (
+                           tasks.filter(t => t.status === 'Review' || t.status === 'Under Review' || t.status === 'Review Requested').map((task, i) => (
+                             <Card key={i} className="p-5 border-border/60 hover:border-accent/40 transition-all group">
+                               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                 <div className="flex items-start gap-4">
+                                   <div className="min-w-0">
+                                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                       <span className="text-xs font-bold text-primary">{task.title}</span>
+                                       <Badge text={task.priority} type={task.priority === 'Critical' ? 'danger' : 'default'} />
+                                     </div>
+                                     <p className="text-[11px] text-secondary font-medium">{task.desc}</p>
+                                     <div className="text-[9px] text-tertiary font-bold uppercase mt-2.5">Assignee: {task.owner}</div>
+                                   </div>
+                                 </div>
+                                 <div className="flex items-center gap-2 shrink-0">
+                                   <button onClick={() => handleRejectTask(task.id)} className="btn-enterprise-secondary px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-rose-500/5 hover:text-rose-500 hover:border-rose-500/20 active:scale-95">Reject</button>
+                                   <button onClick={() => handleApproveTask(task.id)} className="btn-enterprise-primary px-4 py-1.5 text-[10px] font-bold uppercase active:scale-95">Approve</button>
+                                 </div>
+                               </div>
+                             </Card>
+                           ))
+                         )}
+                       </div>
+
+                       {/* Deal Approvals */}
+                       <div className="space-y-4 pt-6 border-t border-border/60">
+                         <h3 className="text-xs font-bold uppercase tracking-widest text-secondary flex items-center gap-1.5">💰 Deal Approvals</h3>
+                         {loadingApprovals ? (
+                           <SectionSpinner message="Loading Decisions..." />
+                         ) : approvalsError ? (
+                           <SectionError message={approvalsError} />
+                         ) : approvals.length === 0 ? (
+                           <div className="p-8 text-center border border-dashed border-border rounded-2xl bg-surface/30">
+                             <Shield size={24} className="text-accent/30 mx-auto mb-2" />
+                             <p className="text-xs text-secondary font-medium">No pending deal approvals.</p>
+                           </div>
+                         ) : approvals.map((req, i) => (
+                           <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/40 hover:shadow-md transition-all group">
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                 <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center shrink-0 text-accent group-hover:border-accent/35 transition-colors">
+                                       <Shield size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                          <span className="text-xs font-bold text-primary">{req.user}</span>
+                                          <Badge text={req.type} type="info" />
+                                          <Badge text={req.priority} type={req.priority === 'Critical' ? 'danger' : req.priority === 'High' ? 'warning' : 'default'} />
+                                       </div>
+                                       <p className="text-[11px] text-secondary font-medium leading-relaxed">{req.detail}</p>
+                                       <div className="text-[9px] text-tertiary font-bold uppercase mt-2.5 tracking-wider font-mono">{req.id} · Requested {req.date}</div>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center gap-2 shrink-0">
+                                    {req.status !== 'Pending' ? (
+                                       <Badge text={req.status} type={req.status === 'Authorized' ? 'success' : 'danger'} />
+                                    ) : (
+                                       <div className="flex items-center gap-2">
+                                          <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-rose-500/5 hover:text-rose-500 hover:border-rose-500/20 active:scale-95">Deny</button>
+                                          <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary px-4 py-1.5 text-[10px] font-bold uppercase active:scale-95">Authorize</button>
+                                       </div>
+                                    )}
+                                 </div>
+                              </div>
+                           </Card>
+                         ))}
+                       </div>
                    </div>
                 </motion.div>
               )}
@@ -898,6 +972,34 @@ function ManagerDashboard() {
                          </div>
                       </button>
                    ))}
+                </div>
+             </Card>
+
+             {/* Overdue Tasks Widget */}
+             <Card className="p-0 overflow-hidden border-border/60">
+                <div className="flex justify-between items-center select-none p-5 hover:bg-base/30 transition-colors">
+                   <h3 className="text-[10px] font-bold text-rose-500 uppercase tracking-wider flex items-center gap-2">
+                      <AlertTriangle size={13} className="text-rose-500 animate-pulse" />
+                      Overdue Tasks
+                   </h3>
+                </div>
+                <div className="px-5 pb-5 space-y-2.5 max-h-[250px] overflow-y-auto custom-scrollbar">
+                   {tasks.filter(t => t.status !== 'Done' && t.deadline && new Date(t.deadline) < new Date()).length === 0 ? (
+                      <p className="text-[10px] text-secondary italic">No overdue tasks.</p>
+                   ) : (
+                      tasks.filter(t => t.status !== 'Done' && t.deadline && new Date(t.deadline) < new Date()).map((t, i) => (
+                         <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-red-500/20 transition-colors">
+                            <div className="flex justify-between items-center">
+                               <span className="text-xs font-bold text-primary truncate max-w-[150px]">{t.title}</span>
+                               <span className="text-[9px] font-bold text-rose-600 bg-rose-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">{t.priority}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] text-secondary font-medium">
+                               <span>Owner: {t.owner}</span>
+                               <span className="text-rose-500 font-bold">Due: {t.deadline}</span>
+                            </div>
+                         </div>
+                      ))
+                   )}
                 </div>
              </Card>
 
