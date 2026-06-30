@@ -49,6 +49,7 @@ export function TasksBoard() {
   const [ntStage, setNtStage] = useState('Backlog');
   const [ntProjectId, setNtProjectId] = useState('');
   const [ntAssigneeId, setNtAssigneeId] = useState('');
+  const [ntAssignedRole, setNtAssignedRole] = useState('');
   const [ntDescription, setNtDescription] = useState('');
   const [ntDueDate, setNtDueDate] = useState('');
   const [ntChecklist, setNtChecklist] = useState<{ title: string; checked: boolean }[]>([]);
@@ -67,6 +68,7 @@ export function TasksBoard() {
   const [detailPriority, setDetailPriority] = useState('Medium');
   const [detailStage, setDetailStage] = useState('Backlog');
   const [detailAssigneeId, setDetailAssigneeId] = useState('');
+  const [detailAssignedRole, setDetailAssignedRole] = useState('');
   const [detailDueDate, setDetailDueDate] = useState('');
   const [detailProjectId, setDetailProjectId] = useState('');
   const [detailChecklist, setDetailChecklist] = useState<{ title: string; checked: boolean }[]>([]);
@@ -283,6 +285,7 @@ export function TasksBoard() {
         setDetailPriority(fullTask.priority || 'Medium');
         setDetailStage(fullTask.stage || 'Backlog');
         setDetailAssigneeId(fullTask.assignedTo || '');
+        setDetailAssignedRole(fullTask.assignedRole || '');
         setDetailDueDate(fullTask.dueDate ? new Date(fullTask.dueDate).toISOString().substring(0, 10) : '');
         setDetailProjectId(fullTask.projectId || '');
         setDetailChecklist(fullTask.checklist || []);
@@ -313,6 +316,7 @@ export function TasksBoard() {
           priority: detailPriority,
           stage: detailStage,
           assignedTo: detailAssigneeId || null,
+          assignedRole: detailAssignedRole || '',
           dueDate: detailDueDate || null,
           projectId: detailProjectId || null,
           checklist: detailChecklist,
@@ -810,20 +814,29 @@ export function TasksBoard() {
                     <textarea value={ntDescription} onChange={e=>setNtDescription(e.target.value)} placeholder="Provide structured instructions for the task..." rows={3} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary resize-none" />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2">Associated Project</label>
-                      <select value={ntProjectId} onChange={e=>setNtProjectId(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                      <select value={ntProjectId} onChange={e=>setNtProjectId(e.target.value)} className="w-full px-4 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-xs text-primary">
                          <option value="">No Project</option>
                          {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2">Task Assignee</label>
-                      <select value={ntAssigneeId} onChange={e=>setNtAssigneeId(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-sm text-primary">
+                      <select value={ntAssigneeId} onChange={e => {
+                         const val = e.target.value;
+                         setNtAssigneeId(val);
+                         const selectedMember = assignableTeammates.find(m => m._id === val);
+                         if (selectedMember) {
+                           setNtAssignedRole(selectedMember.role);
+                         } else {
+                           setNtAssignedRole('');
+                         }
+                      }} className="w-full px-4 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent font-bold text-xs text-primary">
                          <option value="">Unassigned</option>
                          {assignableTeammates.map(m => (
-                           <option key={m._id} value={m._id}>{m.name} ({m.role} - {m.department || 'Gen'})</option>
+                           <option key={m._id} value={m._id}>{m.name} ({m.role})</option>
                          ))}
                       </select>
                     </div>
@@ -849,7 +862,7 @@ export function TasksBoard() {
 
                   <div>
                     <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2">Due Date</label>
-                    <input type="date" value={ntDueDate} onChange={e=>setNtDueDate(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" />
+                    <input type="date" value={ntDueDate} min={new Date().toISOString().substring(0, 10)} onChange={e=>setNtDueDate(e.target.value)} className="w-full px-5 py-3 border border-border bg-base rounded-2xl focus:outline-none focus:border-accent transition-all font-medium text-sm text-primary" />
                   </div>
 
                   <div>
@@ -878,7 +891,7 @@ export function TasksBoard() {
                       try {
                         const res = await fetch('/api/tasks', {
                           method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
+                          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
                           credentials: 'include',
                           body: JSON.stringify({
                             title: ntTitle,
@@ -887,6 +900,7 @@ export function TasksBoard() {
                             stage: ntStage,
                             projectId: ntProjectId || undefined,
                             assignedTo: ntAssigneeId || undefined,
+                            assignedRole: ntAssignedRole || undefined,
                             dueDate: ntDueDate || undefined,
                             checklist: ntChecklist,
                             tags: ['New']
@@ -896,7 +910,7 @@ export function TasksBoard() {
                         if (data.success) {
                           setTasks(prev => [data.task, ...prev]);
                           setIsNewTaskOpen(false);
-                          setNtTitle(''); setNtDescription(''); setNtProjectId(''); setNtAssigneeId(''); setNtDueDate(''); setNtChecklist([]);
+                          setNtTitle(''); setNtDescription(''); setNtProjectId(''); setNtAssigneeId(''); setNtAssignedRole(''); setNtDueDate(''); setNtChecklist([]);
                           showToast('Task created!', 'success');
                           triggerActivityLog('task_update', `Created new task: ${ntTitle}`);
                           fetchData();
@@ -1024,7 +1038,16 @@ export function TasksBoard() {
                       </div>
                       <div>
                         <label className="block text-[9px] font-bold text-tertiary uppercase tracking-widest mb-1 flex items-center gap-1.5"><User size={11} /> Assignee</label>
-                        <select value={detailAssigneeId} onChange={e=>setDetailAssigneeId(e.target.value)} disabled={!['Admin', 'Manager'].includes(user?.role || '')} className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs text-primary font-bold focus:outline-none focus:border-accent disabled:opacity-75">
+                        <select value={detailAssigneeId} onChange={e => {
+                           const val = e.target.value;
+                           setDetailAssigneeId(val);
+                           const selectedMember = assignableTeammates.find(m => m._id === val);
+                           if (selectedMember) {
+                             setDetailAssignedRole(selectedMember.role);
+                           } else {
+                             setDetailAssignedRole('');
+                           }
+                        }} disabled={!['Admin', 'Manager'].includes(user?.role || '')} className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs text-primary font-bold focus:outline-none focus:border-accent disabled:opacity-75">
                            <option value="">Unassigned</option>
                            {assignableTeammates.map(m => (
                              <option key={m._id} value={m._id}>{m.name} ({m.role})</option>
@@ -1045,7 +1068,7 @@ export function TasksBoard() {
                       </div>
                       <div>
                         <label className="block text-[9px] font-bold text-tertiary uppercase tracking-widest mb-1">Stage</label>
-                        <select value={detailStage} onChange={e=>setDetailStage(e.target.value)} disabled={!['Admin', 'Manager'].includes(user?.role || '')} className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs text-primary font-bold focus:outline-none focus:border-accent disabled:opacity-75">
+                        <select value={detailStage} onChange={e=>setDetailStage(e.target.value)} disabled={!['Admin', 'Manager'].includes(user?.role || '') && selectedTask?.assignedTo !== user?.id && selectedTask?.assignee !== user?.name && selectedTask?.assignedRole !== user?.role} className="w-full bg-base border border-border rounded-xl px-3 py-2 text-xs text-primary font-bold focus:outline-none focus:border-accent disabled:opacity-75">
                            {STAGES.map(s => <option key={s}>{s}</option>)}
                         </select>
                       </div>
@@ -1053,7 +1076,7 @@ export function TasksBoard() {
 
                     <div>
                       <label className="block text-[9px] font-bold text-tertiary uppercase tracking-widest mb-1 flex items-center gap-1.5"><Calendar size={11} /> Due Date</label>
-                      <input type="date" value={detailDueDate} onChange={e=>setDetailDueDate(e.target.value)} disabled={!['Admin', 'Manager'].includes(user?.role || '')} className="w-full bg-base border border-border rounded-xl px-4 py-2 text-xs text-primary font-semibold focus:outline-none focus:border-accent disabled:opacity-75" />
+                      <input type="date" value={detailDueDate} min={new Date().toISOString().substring(0, 10)} onChange={e=>setDetailDueDate(e.target.value)} disabled={!['Admin', 'Manager'].includes(user?.role || '')} className="w-full bg-base border border-border rounded-xl px-4 py-2.5 text-xs text-primary font-semibold focus:outline-none focus:border-accent disabled:opacity-75" />
                     </div>
 
                     {/* Checklist */}
@@ -1127,8 +1150,9 @@ export function TasksBoard() {
                        </div>
                      </div>
 
-                     {/* Save Button for Manager */}
-                     {['Admin', 'Manager'].includes(user?.role || '') && (
+                     {/* Save Button for Manager or Assignee */}
+                     {(['Admin', 'Manager'].includes(user?.role || '') || 
+                       (selectedTask && (selectedTask.assignedTo === user?.id || selectedTask.assignee === user?.name || selectedTask.assignedRole === user?.role))) && (
                        <div className="pt-4 border-t border-border/60 mt-auto flex justify-end gap-2">
                          <button type="button" onClick={() => setIsDetailOpen(false)} className="btn-enterprise-secondary px-4 py-2 text-xs font-bold">Cancel</button>
                          <button type="button" onClick={handleSaveDetail} disabled={savingTask} className="btn-enterprise-primary px-5 py-2 text-xs font-bold flex items-center gap-1.5">

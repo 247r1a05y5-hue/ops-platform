@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users,
@@ -23,6 +23,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSocket } from '@/hooks/useSocket';
 
 type UserObj = {
   _id: string;
@@ -63,6 +64,41 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userError, setUserError] = useState('');
+
+  // Real-time Presence
+  const { socket } = useSocket();
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!socket) return;
+    const onChatEvent = (payload: any) => {
+      if (payload.type === 'presence_snapshot') {
+        setOnlineUserIds(new Set<string>(payload.onlineUserIds ?? []));
+      } else if (payload.type === 'presence_change') {
+        const { userId, isOnline } = payload;
+        setOnlineUserIds(prev => {
+          const next = new Set(prev);
+          if (isOnline) {
+            next.add(userId);
+          } else {
+            next.delete(userId);
+          }
+          return next;
+        });
+      }
+    };
+    socket.on('chat_event', onChatEvent);
+    return () => {
+      socket.off('chat_event', onChatEvent);
+    };
+  }, [socket]);
+
+  const usersWithRealtimePresence = useMemo(() => {
+    return users.map(u => ({
+      ...u,
+      isOnline: onlineUserIds.has(u._id) || u.isOnline
+    }));
+  }, [users, onlineUserIds]);
 
   // Collapse states for widgets
   const [isMaintenanceCollapsed, setIsMaintenanceCollapsed] = useState(false);
@@ -446,14 +482,14 @@ export default function AdminPage() {
                         <td className="px-4 py-3"><div className="h-4 bg-base rounded w-16 ml-auto" /></td>
                       </tr>
                     ))
-                  ) : users.length === 0 ? (
+                  ) : usersWithRealtimePresence.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-10 text-center text-secondary">
                         No workspace users found matching the filter.
                       </td>
                     </tr>
                   ) : (
-                    users.map((u) => (
+                    usersWithRealtimePresence.map((u) => (
                       <tr key={u._id} className="hover:bg-base/30 transition-colors">
                         <td className="px-4 py-3">
                           <div className="font-semibold text-primary">{u.name}</div>
@@ -653,7 +689,21 @@ export default function AdminPage() {
                               <div className="text-secondary mt-1">{log.description}</div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="font-medium text-secondary">{log.name}</div>
+                              <div className="font-medium text-secondary flex items-center gap-1.5 justify-end">
+                                {(() => {
+                                  const uMatch = usersWithRealtimePresence.find(u => u.name.toLowerCase() === log.name.toLowerCase());
+                                  if (!uMatch) return null;
+                                  return (
+                                    <span
+                                      title={uMatch.suspended ? 'Suspended' : uMatch.isOnline ? 'Online' : 'Offline'}
+                                      className={`w-2 h-2 rounded-full shrink-0 ${
+                                        uMatch.suspended ? 'bg-red-500' : uMatch.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                                      }`}
+                                    />
+                                  );
+                                })()}
+                                <span>{log.name}</span>
+                              </div>
                               <div className="text-secondary/70 mt-1 flex items-center gap-1 justify-end">
                                 <Clock className="w-3 h-3" />
                                 {fmt(log.timestamp)}

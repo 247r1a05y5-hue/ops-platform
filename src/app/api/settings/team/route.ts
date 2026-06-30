@@ -24,6 +24,15 @@ export async function GET(req: NextRequest) {
       .sort({ name: 1 })
       .lean();
 
+    const { isUserOnline } = await import('@/lib/socket-server');
+    const membersWithPresence = members.map((u: any) => {
+      const online = isUserOnline(u._id.toString());
+      return {
+        ...u,
+        status: online ? 'Online' : (u.status || 'Offline')
+      };
+    });
+
     // Fetch pending invitations in the same workspace
     const invitationFilter = currentUser?.workspaceId
       ? { workspaceId: currentUser.workspaceId, status: 'pending', expiresAt: { $gt: new Date() } }
@@ -34,7 +43,7 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({ success: true, members, invitations });
+    return NextResponse.json({ success: true, members: membersWithPresence, invitations });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

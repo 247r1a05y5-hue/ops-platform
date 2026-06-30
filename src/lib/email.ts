@@ -213,6 +213,26 @@ export async function sendEmail({ event, to, vars }: { event: keyof typeof TEMPL
     throw new Error(`Invalid or blocked recipient address: ${targetTo}`);
   }
 
+  // Always log outgoing email content to console and local debug file for visibility
+  const debugInfo = `
+========================================
+[EMAIL SENT LOG] ${new Date().toISOString()}
+Event: ${event}
+To: ${targetTo}
+Subject: ${template.subject}
+Variables: ${JSON.stringify(vars, null, 2)}
+========================================
+`;
+  console.log(debugInfo);
+  if (typeof window === 'undefined') {
+    Promise.all([import('fs'), import('path')]).then(([fs, path]) => {
+      const logPath = path.join(process.cwd(), 'emails-debug.log');
+      fs.appendFileSync(logPath, debugInfo, 'utf-8');
+    }).catch(err => {
+      console.error('[email] Failed to write to emails-debug.log:', err);
+    });
+  }
+
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) {
     throw new Error('BREVO_API_KEY is not configured in the environment.');

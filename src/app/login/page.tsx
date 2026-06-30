@@ -45,17 +45,23 @@ export default function Login() {
   const [requires2FA, setRequires2FA] = useState(false);
   const [userId, setUserId] = useState('');
   const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [resetSuccessLink, setResetSuccessLink] = useState<string | null>(null);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setResetSuccessLink(null);
     try {
       const res = await fetch('/api/auth/password-reset', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({ email: forgotEmail }),
       });
       const data = await res.json();
-      setError(data.message || data.error || 'Request submitted.');
+      if (data.success) {
+        setResetSuccessLink(data.debugResetLink || null);
+        setError(data.message || 'If that email exists, a reset link has been sent.');
+      } else {
+        setError(data.error || 'Failed to request password reset.');
+      }
     } catch { setError('Connection error. Please try again.'); }
     finally { setLoading(false); }
   };
@@ -70,7 +76,7 @@ export default function Login() {
       try {
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
           body: JSON.stringify({
             email,
             password,
@@ -182,12 +188,42 @@ export default function Login() {
           </div>
         )}
 
-        {/* ── FORGOT PASSWORD FORM ── */}
+         {/* ── FORGOT PASSWORD FORM ── */}
         {forgotMode && (
           <form onSubmit={handleForgotPassword} aria-label="Password reset form">
             <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20, lineHeight: 1.5 }}>
               Enter your account email and we&apos;ll send a password reset link.
             </p>
+            {resetSuccessLink && (
+              <div style={{
+                background: 'rgba(79, 70, 229, 0.05)',
+                border: '1.5px solid #4f46e5',
+                borderRadius: 12,
+                padding: '16px',
+                marginBottom: 20,
+                fontSize: 13,
+                color: '#1e1b4b',
+                lineHeight: 1.5,
+                textAlign: 'left'
+              }}>
+                <p style={{ fontWeight: 800, color: '#4f46e5', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: '#4f46e5' }} />
+                  Development Reset Link:
+                </p>
+                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                  Since external email delivery is not configured on this host, click or copy the generated link below to reset your password:
+                </p>
+                <a href={resetSuccessLink} style={{
+                  color: '#4f46e5',
+                  fontWeight: 700,
+                  textDecoration: 'underline',
+                  wordBreak: 'break-all',
+                  fontSize: 12
+                }}>
+                  {resetSuccessLink}
+                </a>
+              </div>
+            )}
             <label htmlFor="forgot-email" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Email</label>
             <input
               id="forgot-email"
@@ -206,7 +242,7 @@ export default function Login() {
               {loading ? 'Sending…' : 'Send Reset Link'}
             </button>
             <p style={{ textAlign: 'center', fontSize: 13, color: '#6b7280', marginTop: 20 }}>
-              <button onClick={() => { setForgotMode(false); setError(null); }} type="button"
+              <button onClick={() => { setForgotMode(false); setError(null); setResetSuccessLink(null); }} type="button"
                 aria-label="Back to sign in"
                 style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: 700, cursor: 'pointer' }}>
                 Back to Sign In

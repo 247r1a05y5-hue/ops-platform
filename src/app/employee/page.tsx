@@ -566,7 +566,9 @@ function EmployeeDashboard() {
         const tasksData = await tasksRes.json();
         if (tasksData.success) {
           let userTasks = tasksData.tasks.filter((t: any) =>
-            t.assignee && (t.assignee.toLowerCase() === user.email.toLowerCase() || t.assignee.toLowerCase() === user.name.toLowerCase())
+            (t.assignedTo && t.assignedTo.toString() === user._id) ||
+            (t.assignee && (t.assignee.toLowerCase() === user.email.toLowerCase() || t.assignee.toLowerCase() === user.name.toLowerCase())) ||
+            (t.assignedRole && t.assignedRole === user.role)
           );
 
           // If no tasks are found, seed the mock ones in the DB for the user!

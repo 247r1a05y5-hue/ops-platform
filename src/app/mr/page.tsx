@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadCSV } from '@/utils/export';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
+import { useSocket } from '@/hooks/useSocket';
 
 // --- Shared UI Components ---
 
@@ -605,9 +606,11 @@ const TasksModule = ({
         const tasksData = await tasksRes.json();
         if (tasksData.success) {
           const filtered = tasksData.tasks.filter((t: any) => 
-            t.assignee === user?.name || t.assigneeId === user?.sub
+            (t.assignedTo && t.assignedTo.toString() === user?.sub) ||
+            (t.assignee && (t.assignee.toLowerCase() === user?.name?.toLowerCase() || t.assignee.toLowerCase() === user?.email?.toLowerCase())) ||
+            (t.assignedRole && t.assignedRole === user?.role)
           );
-          setTasks(filtered.length > 0 ? filtered : tasksData.tasks);
+          setTasks(filtered);
         }
       }
 
@@ -1162,6 +1165,7 @@ const ResourceModule = ({
 function MRDashboard() {
   const [activeTab, setActiveTab] = useState<'leads' | 'email' | 'finance' | 'resources' | 'tasks' | 'settings'>('leads');
   const { showToast } = useUI();
+  const { socket } = useSocket();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);

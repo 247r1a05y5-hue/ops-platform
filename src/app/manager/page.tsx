@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
 import { 
@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
 import { QUICK_SHORTCUTS, RECENT_APPROVALS_LOG, TEAM_HIGHLIGHTS } from '@/mock/manager';
+import { useSocket } from '@/hooks/useSocket';
 
 // --- Reusable Components (Admin Style) ---
 
@@ -197,6 +198,42 @@ function ManagerDashboard() {
   const [approvals, setApprovals] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Real-time Presence
+  const { socket } = useSocket();
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!socket) return;
+    const onChatEvent = (payload: any) => {
+      if (payload.type === 'presence_snapshot') {
+        setOnlineUserIds(new Set<string>(payload.onlineUserIds ?? []));
+      } else if (payload.type === 'presence_change') {
+        const { userId, isOnline } = payload;
+        setOnlineUserIds(prev => {
+          const next = new Set(prev);
+          if (isOnline) {
+            next.add(userId);
+          } else {
+            next.delete(userId);
+          }
+          return next;
+        });
+      }
+    };
+    socket.on('chat_event', onChatEvent);
+    return () => {
+      socket.off('chat_event', onChatEvent);
+    };
+  }, [socket]);
+
+  // Derived state combining DB values with socket-derived real-time presence
+  const employeesWithRealtimePresence = useMemo(() => {
+    return employees.map(emp => ({
+      ...emp,
+      status: (onlineUserIds.has(emp.id) ? 'Online' : emp.status) as 'Online' | 'Away' | 'Offline'
+    }));
+  }, [employees, onlineUserIds]);
 
   // Modals & form states
   const [showRolesModal, setShowRolesModal] = useState(false);
@@ -404,7 +441,7 @@ function ManagerDashboard() {
   // ── WORKFLOW MUTATIONS (DATABASE CONNECTED) ────────────────────────────────
   
   const toggleStatus = async (idx: number) => {
-    const emp = employees[idx];
+    const emp = employeesWithRealtimePresence[idx];
     const newStatus = emp.status === 'Online' ? 'Offline' : emp.status === 'Offline' ? 'Away' : 'Online';
     try {
       const res = await fetch('/api/settings/team', {
@@ -627,7 +664,7 @@ function ManagerDashboard() {
                    ) : teamError ? (
                      <SectionError message={teamError} />
                    ) : (
-                     <TeamModule employees={employees} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
+                      <TeamModule employees={employeesWithRealtimePresence} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
                    )}
                 </motion.div>
               )}

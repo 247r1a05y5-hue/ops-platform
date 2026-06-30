@@ -60,6 +60,7 @@ export default function AuditPage() {
   const [actionTypes, setActionTypes] = useState<string[]>([]);
   const [modules, setModules] = useState<string[]>([]);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [userPresenceMap, setUserPresenceMap] = useState<Record<string, { isOnline?: boolean; suspended?: boolean }>>({});
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -89,6 +90,22 @@ export default function AuditPage() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
   useEffect(() => { setPage(1); }, [search, actionFilter, moduleFilter, startDate, endDate]);
+
+  useEffect(() => {
+    fetch('/api/admin/users')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.users) {
+          const pMap: Record<string, { isOnline?: boolean; suspended?: boolean }> = {};
+          data.users.forEach((u: any) => {
+            pMap[u.name.toLowerCase()] = { isOnline: u.isOnline, suspended: u.suspended };
+            pMap[u.email.toLowerCase()] = { isOnline: u.isOnline, suspended: u.suspended };
+          });
+          setUserPresenceMap(pMap);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const fmt = (ts: string) =>
     new Date(ts).toLocaleString(undefined, {
@@ -252,8 +269,24 @@ export default function AuditPage() {
                             <span className="font-mono text-[11px] text-secondary whitespace-nowrap">{fmt(log.timestamp)}</span>
                           </td>
                           <td className="px-4 py-3.5">
-                            <div className="font-semibold text-primary text-xs">{log.performedBy}</div>
-                            <div className="text-[10px] text-secondary font-medium mt-0.5">{log.performedByRole}</div>
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <div className="font-semibold text-primary text-xs">{log.performedBy}</div>
+                                <div className="text-[10px] text-secondary font-medium mt-0.5">{log.performedByRole}</div>
+                              </div>
+                              {(() => {
+                                const presence = userPresenceMap[log.performedBy.toLowerCase()];
+                                if (!presence) return null;
+                                return (
+                                  <span
+                                    title={presence.suspended ? 'Suspended' : presence.isOnline ? 'Online' : 'Offline'}
+                                    className={`w-2.5 h-2.5 rounded-full shrink-0 border border-white/10 ${
+                                      presence.suspended ? 'bg-rose-500' : presence.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                                    }`}
+                                  />
+                                );
+                              })()}
+                            </div>
                           </td>
                           <td className="px-4 py-3.5">
                             <ActionBadge action={log.action} />

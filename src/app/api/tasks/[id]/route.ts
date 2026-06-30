@@ -32,6 +32,18 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ success: false, error: 'Access denied: task outside workspace.' }, { status: 403 });
     }
 
+    const isManagerOrAdmin = ['Admin', 'Manager'].includes(session.role);
+    if (!isManagerOrAdmin) {
+      const isAssigned =
+        (task.assignedTo && task.assignedTo.toString() === session.sub) ||
+        (task.assignee && (task.assignee.toLowerCase() === session.name.toLowerCase() || task.assignee.toLowerCase() === session.email.toLowerCase())) ||
+        (!task.assignedTo && task.assignedRole === session.role);
+
+      if (!isAssigned) {
+        return NextResponse.json({ success: false, error: 'Access denied: You are not assigned to this task.' }, { status: 403 });
+      }
+    }
+
     return NextResponse.json({ success: true, task });
   } catch (err) {
     console.error('[GET /api/tasks/:id] Error:', err);
@@ -67,13 +79,27 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ success: false, error: 'Access denied.' }, { status: 403 });
     }
 
+    // Validate due date if updated
+    if ('dueDate' in body && body.dueDate) {
+      const parsedDate = new Date(body.dueDate);
+      if (isNaN(parsedDate.getTime())) {
+        return NextResponse.json({ success: false, error: 'Invalid due date format.' }, { status: 400 });
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (parsedDate < today) {
+        return NextResponse.json({ success: false, error: 'Due date cannot be in the past.' }, { status: 400 });
+      }
+    }
+
     const isManagerOrAdmin = ['Admin', 'Manager'].includes(session.role);
 
     // Enforce assignee identity check for Employees and MRs
     if (!isManagerOrAdmin) {
       const isAssigned =
         (previousTask.assignedTo && previousTask.assignedTo.toString() === session.sub) ||
-        (previousTask.assignee && (previousTask.assignee.toLowerCase() === session.name.toLowerCase() || previousTask.assignee.toLowerCase() === session.email.toLowerCase()));
+        (previousTask.assignee && (previousTask.assignee.toLowerCase() === session.name.toLowerCase() || previousTask.assignee.toLowerCase() === session.email.toLowerCase())) ||
+        (!previousTask.assignedTo && previousTask.assignedRole === session.role);
 
       if (!isAssigned) {
         return NextResponse.json({ success: false, error: 'Access denied: You can only update tasks assigned to you.' }, { status: 403 });
@@ -81,9 +107,26 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     }
 
     // Role-based metadata edit restrictions
-    const managerOnlyFields = ['title', 'description', 'priority', 'dueDate', 'projectId', 'tags', 'assignedTo', 'assignee'];
+    const managerOnlyFields = ['title', 'description', 'priority', 'dueDate', 'projectId', 'tags', 'assignedTo', 'assignee', 'assignedRole'];
     if (!isManagerOrAdmin) {
-      const attemptedEdits = managerOnlyFields.filter(f => f in body);
+      const attemptedEdits = managerOnlyFields.filter(f => {
+        if (!(f in body)) return false;
+        let val1 = body[f];
+        let val2 = previousTask[f];
+
+        // Normalize null/undefined/empty string/empty array
+        if (val1 === null || val1 === undefined) val1 = '';
+        if (val2 === null || val2 === undefined) val2 = '';
+        if (Array.isArray(val1) && val1.length === 0) val1 = '';
+        if (Array.isArray(val2) && val2.length === 0) val2 = '';
+
+        // Normalize mongoose ObjectIds
+        if (val1 && typeof val1 === 'object' && val1.toString) val1 = val1.toString();
+        if (val2 && typeof val2 === 'object' && val2.toString) val2 = val2.toString();
+
+        return String(val1) !== String(val2);
+      });
+
       if (attemptedEdits.length > 0) {
         return NextResponse.json({
           success: false,
@@ -95,7 +138,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     const update: Record<string, any> = {};
 
     // ── Task Assignment changes & validation ──
-    if (isManagerOrAdmin && (body.assignedTo || body.assignee)) {
+    if (isManagerOrAdmin && ('assignedTo' in body || 'assignee' in body || 'assignedRole' in body)) {
       let resolvedNewAssignee = null;
       if (body.assignedTo) {
         if (mongoose.Types.ObjectId.isValid(body.assignedTo)) {
@@ -118,7 +161,9 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
           return NextResponse.json({ success: false, error: 'Assignee user is suspended.' }, { status: 400 });
         }
         // Allowed role check
-        if (!['Employee', 'Staff', 'MR', 'User'].includes(resolvedNewAssignee.role)) {
+        const allowedRoles = ['Employee', 'Staff', 'MR', 'User'];
+        const isAllowed = allowedRoles.some(r => r.toLowerCase() === (resolvedNewAssignee.role || '').toLowerCase());
+        if (!isAllowed) {
           return NextResponse.json({ success: false, error: `User with role '${resolvedNewAssignee.role}' cannot be assigned tasks.` }, { status: 400 });
         }
 
@@ -138,8 +183,19 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
             timestamp: new Date()
           };
 
+          // Normalize assignee role casing
+          const roleMap: Record<string, string> = {
+            admin: 'Admin',
+            manager: 'Manager',
+            staff: 'Staff',
+            user: 'User',
+            employee: 'Employee',
+            mr: 'MR'
+          };
+          const resolvedNewRole = roleMap[(body.assignedRole || resolvedNewAssignee.role || '').toLowerCase()] || body.assignedRole || resolvedNewAssignee.role || '';
+
           update.assignedTo = resolvedNewAssignee._id;
-          update.assignedRole = resolvedNewAssignee.role;
+          update.assignedRole = resolvedNewRole;
           update.assignee = resolvedNewAssignee.name;
           update.status = 'Assigned';
           update.stage = 'To Do';
@@ -159,6 +215,40 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
             'Task Assigned',
             `You have been assigned task "${previousTask.title}" by ${session.name}.`
           ).catch(console.error);
+        } else if ('assignedRole' in body && body.assignedRole !== previousTask.assignedRole) {
+          // Normalize assignedRole casing
+          const roleMap: Record<string, string> = {
+            admin: 'Admin',
+            manager: 'Manager',
+            staff: 'Staff',
+            user: 'User',
+            employee: 'Employee',
+            mr: 'MR'
+          };
+          update.assignedRole = roleMap[(body.assignedRole || '').toLowerCase()] || body.assignedRole || '';
+        }
+      } else {
+        // No specific assignee, check if we are updating assignedRole or unassigning
+        if ('assignedTo' in body && !body.assignedTo) {
+          update.assignedTo = null;
+          update.assignee = '';
+          update.status = 'Draft';
+        }
+        if ('assignedRole' in body) {
+          const allowedRoles = ['Admin', 'Manager', 'Staff', 'User', 'Employee', 'MR', ''];
+          const isAllowed = allowedRoles.some(r => r.toLowerCase() === (body.assignedRole || '').toLowerCase());
+          if (!isAllowed) {
+            return NextResponse.json({ success: false, error: `Invalid assigned role '${body.assignedRole}'.` }, { status: 400 });
+          }
+          const roleMap: Record<string, string> = {
+            admin: 'Admin',
+            manager: 'Manager',
+            staff: 'Staff',
+            user: 'User',
+            employee: 'Employee',
+            mr: 'MR'
+          };
+          update.assignedRole = roleMap[(body.assignedRole || '').toLowerCase()] || body.assignedRole || '';
         }
       }
     }
@@ -229,6 +319,9 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
         update.status = 'Accepted';
         update.stage = 'To Do';
         update.acceptedAt = new Date();
+        update.assignedTo = new mongoose.Types.ObjectId(session.sub);
+        update.assignee = session.name;
+        update.assignedRole = session.role;
         update.activity = [...(update.activity || previousTask.activity || []), {
           action: 'Accepted',
           performedBy: session.name,

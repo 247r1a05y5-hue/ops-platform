@@ -24,7 +24,7 @@ function ResetForm() {
     try {
       const res  = await fetch('/api/auth/password-reset', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
         body: JSON.stringify({ email, token, newPassword: password }),
       });
       const data = await res.json();

@@ -42,14 +42,21 @@ export async function GET(req: NextRequest) {
     }
 
     // Role-based visibility enforcement
-    // Employees and MRs can only retrieve tasks assigned to them
+    // Employees and MRs can only retrieve tasks assigned specifically to them, or general role tasks if not assigned to someone else
     if (session.role === 'Staff' || session.role === 'Employee' || session.role === 'MR' || session.role === 'User') {
       query.$and = [
         {
           $or: [
             { assignedTo: new mongoose.Types.ObjectId(session.sub) },
             { assignee: session.name },
-            { assignee: session.email }
+            { assignee: session.email },
+            {
+              assignedRole: session.role,
+              $or: [
+                { assignedTo: { $exists: false } },
+                { assignedTo: null }
+              ]
+            }
           ]
         }
       ];
@@ -132,9 +139,29 @@ export async function POST(req: NextRequest) {
       }
       // Validate role clearance: only Employee/Staff/MR/User
       const allowedRoles = ['Employee', 'Staff', 'MR', 'User'];
-      if (!allowedRoles.includes(resolvedAssignee.role)) {
+      const isAllowed = allowedRoles.some(r => r.toLowerCase() === (resolvedAssignee.role || '').toLowerCase());
+      if (!isAllowed) {
         return NextResponse.json({ success: false, error: `Assignee role '${resolvedAssignee.role}' is not authorized for task assignments.` }, { status: 400 });
       }
+    }
+
+    let resolvedAssignedRole = body.assignedRole || (resolvedAssignee ? resolvedAssignee.role : '');
+    if (resolvedAssignedRole) {
+      const allowedRoles = ['Admin', 'Manager', 'Staff', 'User', 'Employee', 'MR'];
+      const isAllowed = allowedRoles.some(r => r.toLowerCase() === resolvedAssignedRole.toLowerCase());
+      if (!isAllowed) {
+        return NextResponse.json({ success: false, error: `Invalid assigned role '${resolvedAssignedRole}'.` }, { status: 400 });
+      }
+      // Normalize role casing
+      const roleMap: Record<string, string> = {
+        admin: 'Admin',
+        manager: 'Manager',
+        staff: 'Staff',
+        user: 'User',
+        employee: 'Employee',
+        mr: 'MR'
+      };
+      resolvedAssignedRole = roleMap[resolvedAssignedRole.toLowerCase()] || resolvedAssignedRole;
     }
 
     // Validate due date
@@ -143,6 +170,11 @@ export async function POST(req: NextRequest) {
       const parsedDate = new Date(dueDate);
       if (isNaN(parsedDate.getTime())) {
         return NextResponse.json({ success: false, error: 'Invalid due date format.' }, { status: 400 });
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (parsedDate < today) {
+        return NextResponse.json({ success: false, error: 'Due date cannot be in the past.' }, { status: 400 });
       }
       resolvedDueDate = parsedDate;
     }
@@ -169,7 +201,7 @@ export async function POST(req: NextRequest) {
       priority: resolvedPriority,
       assignee: resolvedAssignee ? resolvedAssignee.name : '',
       assignedTo: resolvedAssignee ? resolvedAssignee._id : null,
-      assignedRole: resolvedAssignee ? resolvedAssignee.role : '',
+      assignedRole: resolvedAssignedRole,
       assignedBy: session.sub,
       workspaceId,
       status: initialStatus,

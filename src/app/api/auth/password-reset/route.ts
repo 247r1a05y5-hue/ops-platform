@@ -73,20 +73,36 @@ export async function POST(req: NextRequest) {
       console.error('[AuditLog] Password reset request audit log failed:', err.message);
     }
 
-    const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    let appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    if (appUrl.includes('YOUR_RAILWAY_DOMAIN')) {
+      const origin = req.headers.get('origin') || req.headers.get('referer');
+      if (origin) {
+        try {
+          appUrl = new URL(origin).origin;
+        } catch (_) {
+          appUrl = 'http://localhost:3000';
+        }
+      } else {
+        appUrl = 'http://localhost:3000';
+      }
+    }
     const resetLink = `${appUrl}/reset-password?token=${plainToken}&email=${encodeURIComponent(user.email)}`;
 
+    let emailSent = true;
     await sendEmail({
       event: 'password_reset',
       to: user.email,
       vars: { name: user.name, resetLink },
     }).catch(err => {
       console.error('[PasswordReset] Email send failed:', err.message);
+      emailSent = false;
     });
 
     return NextResponse.json({
       success: true,
       message: 'If that email exists, a reset link has been sent.',
+      debugResetLink: resetLink,
+      emailSent,
     });
 
   } catch (err) {
