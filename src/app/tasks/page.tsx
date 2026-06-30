@@ -1,6 +1,6 @@
 'use client';
 import {
-  useState, useEffect, useCallback, Suspense, useRef,
+  useState, useEffect, useCallback, Suspense,
 } from 'react';
 import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
@@ -10,15 +10,20 @@ import { downloadCSV } from '@/utils/export';
 import { triggerActivityLog } from '@/utils/activity';
 import {
   LayoutDashboard, LayoutList, Calendar, BarChart2, Users,
-  Plus, Search, Filter, Download, X, Folder, ChevronRight,
-  ChevronDown, GripVertical, Circle, CheckCircle2, Clock,
-  AlertCircle, Tag, SlidersHorizontal, ArrowUpDown, Star,
-  Trash2, CheckSquare, FolderOpen, Loader2, RefreshCw,
-  ClipboardList, TrendingUp, Zap, MoreHorizontal, User,
-  FileText, MessageSquare, Paperclip, History, ChevronLeft,
-  AlignLeft, ListChecks, Timer, Flag, BookOpen, PanelRightOpen,
-  PanelRightClose, Layers,
+  Plus, GripVertical, Clock, Trash2, FolderOpen, Loader2, RefreshCw,
+  ClipboardList, TrendingUp, Zap, User, Download, AlertCircle,
+  ChevronLeft, ChevronRight, Flag, PanelRightOpen,
+  PanelRightClose, Layers, Folder, Activity, CheckCircle2, Circle,
+  Paperclip, ListChecks, Timer, History, AlignLeft,
 } from 'lucide-react';
+import {
+  OpsButton, OpsInput, OpsSelect, OpsSearch, OpsBadge,
+  OpsAvatar, OpsTable, OpsTableHead, OpsTableBody,
+  OpsTableRow, OpsTableCell, OpsTableHeadCell,
+  OpsModal, OpsEmptyState, OpsErrorState,
+  OpsFilterChip,
+} from '@/components/ui/ops';
+import { TaskDrawer } from '@/components/TaskDrawer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,8 +60,7 @@ type TeamMember = {
   role: string;
 };
 
-type ViewType = 'board' | 'list' | 'calendar' | 'workload' | 'reports';
-type GroupBy = 'stage' | 'priority' | 'assignee' | 'project';
+type ViewType = 'board' | 'list' | 'timeline' | 'calendar' | 'workload' | 'reports';
 type SortBy = 'createdAt' | 'dueDate' | 'priority' | 'title';
 
 const STAGES = ['Backlog', 'In Progress', 'Review', 'Done'] as const;
@@ -66,24 +70,27 @@ const PRIORITY_ORDER: Record<string, number> = { Critical: 4, High: 3, Medium: 2
 // ─── Colour helpers ───────────────────────────────────────────────────────────
 
 function stageDot(stage: string) {
-  return stage === 'Done' ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
-    : stage === 'In Progress' ? 'bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.5)]'
-    : stage === 'Review' ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.4)]'
+  return stage === 'Done'
+    ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
+    : stage === 'In Progress'
+    ? 'bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.5)]'
+    : stage === 'Review'
+    ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.4)]'
     : 'bg-zinc-400';
 }
 
-function stageBadge(stage: string) {
-  return stage === 'Done' ? 'badge-enterprise badge-enterprise-success'
-    : stage === 'In Progress' ? 'badge-enterprise badge-enterprise-info'
-    : stage === 'Review' ? 'badge-enterprise badge-enterprise-warning'
-    : 'badge-enterprise';
+function stageVariant(stage: string): 'success' | 'info' | 'warning' | 'default' {
+  if (stage === 'Done') return 'success';
+  if (stage === 'In Progress') return 'info';
+  if (stage === 'Review') return 'warning';
+  return 'default';
 }
 
-function priorityBadge(p: string) {
-  return p === 'Critical' ? 'badge-enterprise badge-enterprise-danger'
-    : p === 'High' ? 'badge-enterprise badge-enterprise-warning'
-    : p === 'Medium' ? 'badge-enterprise badge-enterprise-info'
-    : 'badge-enterprise';
+function priorityVariant(p: string): 'danger' | 'warning' | 'info' | 'default' {
+  if (p === 'Critical') return 'danger';
+  if (p === 'High') return 'warning';
+  if (p === 'Medium') return 'info';
+  return 'default';
 }
 
 function priorityIcon(p: string) {
@@ -95,10 +102,7 @@ function priorityIcon(p: string) {
   return <Flag size={10} className={cls} />;
 }
 
-function initials(name?: string) {
-  if (!name) return '?';
-  return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-}
+// ─── relativeDate helper (used by Timeline & Calendar views) ─────────────────
 
 function relativeDate(iso?: string) {
   if (!iso) return null;
@@ -112,358 +116,12 @@ function relativeDate(iso?: string) {
   return `${Math.abs(diff)}d ago`;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function EmptyBoard({ onNew }: { onNew: () => void }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-5 py-20">
-      <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
-        <CheckSquare size={32} />
-      </div>
-      <div className="text-center">
-        <h3 className="text-base font-bold text-primary mb-1">No tasks found</h3>
-        <p className="text-xs text-secondary max-w-xs">Create your first task to start tracking work across your team.</p>
-      </div>
-      <button onClick={onNew} className="btn-enterprise-primary flex items-center gap-2">
-        <Plus size={14} /> New Task
-      </button>
-    </div>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="flex gap-4 h-full min-w-max p-6">
-      {STAGES.map(s => (
-        <div key={s} className="w-[280px] flex flex-col gap-3">
-          <div className="skeleton-enterprise h-5 w-32 rounded mb-1" />
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-surface border border-border/50 rounded-xl p-4 space-y-3">
-              <div className="flex justify-between">
-                <div className="skeleton-enterprise h-2.5 w-14 rounded" />
-                <div className="skeleton-enterprise h-2.5 w-12 rounded" />
-              </div>
-              <div className="skeleton-enterprise h-3.5 w-full rounded" />
-              <div className="skeleton-enterprise h-3 w-2/3 rounded" />
-              <div className="flex gap-1.5 pt-1">
-                <div className="skeleton-enterprise h-4 w-14 rounded-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Right Inspector Panel ────────────────────────────────────────────────────
-
-type InspectorTab = 'overview' | 'activity' | 'checklist' | 'attachments' | 'timelogs';
-
-function RightInspector({
-  task,
-  teamMembers,
-  onClose,
-  onUpdate,
-  isUpdating,
-}: {
-  task: Task;
-  teamMembers: TeamMember[];
-  onClose: () => void;
-  onUpdate: (id: string, fields: Partial<Task>) => Promise<void>;
-  isUpdating: boolean;
-}) {
-  const [tab, setTab] = useState<InspectorTab>('overview');
-  const [localStage, setLocalStage] = useState(task.stage);
-  const [localPriority, setLocalPriority] = useState(task.priority);
-  const [localAssignee, setLocalAssignee] = useState(task.assignee || '');
-  const [logNote, setLogNote] = useState('');
-
-  // sync when task changes
-  useEffect(() => {
-    setLocalStage(task.stage);
-    setLocalPriority(task.priority);
-    setLocalAssignee(task.assignee || '');
-  }, [task]);
-
-  const TABS: { id: InspectorTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview', label: 'Overview', icon: <AlignLeft size={13} /> },
-    { id: 'checklist', label: 'Checklist', icon: <ListChecks size={13} /> },
-    { id: 'attachments', label: 'Files', icon: <Paperclip size={13} /> },
-    { id: 'timelogs', label: 'Logs', icon: <Timer size={13} /> },
-    { id: 'activity', label: 'Activity', icon: <History size={13} /> },
-  ];
-
-  return (
-    <motion.div
-      initial={{ x: 380, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 380, opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-      className="w-[380px] shrink-0 bg-surface border-l border-border/60 flex flex-col h-full overflow-hidden"
-    >
-      {/* Inspector header */}
-      <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between bg-base/40 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[10px] font-bold text-secondary/70 uppercase tracking-widest">{task.code || 'TASK'}</span>
-          <span className="text-border/60">·</span>
-          <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${stageBadge(task.stage)}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${stageDot(task.stage)}`} />
-            {task.stage}
-          </span>
-        </div>
-        <button onClick={onClose} className="p-1.5 hover:bg-base rounded-lg text-secondary hover:text-primary transition-colors">
-          <X size={15} />
-        </button>
-      </div>
-
-      {/* Title */}
-      <div className="px-5 py-4 border-b border-border/40 shrink-0">
-        <h2 className="text-sm font-bold text-primary leading-snug">{task.title}</h2>
-        {task.description && (
-          <p className="text-xs text-secondary mt-1.5 leading-relaxed">{task.description}</p>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-0.5 px-4 pt-3 pb-0 shrink-0 border-b border-border/40">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-t-lg transition-all border-b-2 -mb-px ${
-              tab === t.id
-                ? 'text-accent border-accent bg-accent/5'
-                : 'text-secondary hover:text-primary border-transparent hover:bg-base/50'
-            }`}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {tab === 'overview' && (
-          <div className="p-5 space-y-5">
-            {/* Status */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Stage</label>
-              <select
-                value={localStage}
-                onChange={e => setLocalStage(e.target.value)}
-                className="select-enterprise !text-xs"
-              >
-                {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            {/* Priority */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Priority</label>
-              <select
-                value={localPriority}
-                onChange={e => setLocalPriority(e.target.value)}
-                className="select-enterprise !text-xs"
-              >
-                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-
-            {/* Assignee */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Assignee</label>
-              <select
-                value={localAssignee}
-                onChange={e => setLocalAssignee(e.target.value)}
-                className="select-enterprise !text-xs"
-              >
-                <option value="">Unassigned</option>
-                {teamMembers.map(m => (
-                  <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Due Date */}
-            {task.dueDate && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Due Date</label>
-                <div className={`flex items-center gap-2 text-xs font-semibold ${
-                  new Date(task.dueDate) < new Date() && task.stage !== 'Done'
-                    ? 'text-red-500' : 'text-primary'
-                }`}>
-                  <Clock size={12} />
-                  {new Date(task.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-                  {' '}
-                  <span className="text-secondary font-normal">({relativeDate(task.dueDate)})</span>
-                </div>
-              </div>
-            )}
-
-            {/* Progress */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Progress</label>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-1.5 bg-border/40 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent rounded-full transition-all duration-500"
-                    style={{ width: `${task.progress ?? 0}%` }}
-                  />
-                </div>
-                <span className="text-xs font-bold text-secondary tabular-nums">{task.progress ?? 0}%</span>
-              </div>
-            </div>
-
-            {/* Tags */}
-            {task.tags && task.tags.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Labels</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {task.tags.map(tag => (
-                    <span key={tag} className="badge-enterprise badge-enterprise-info text-[10px]">{tag}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Meta */}
-            <div className="pt-2 border-t border-border/40 space-y-2">
-              {task.createdBy && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-secondary">Created by</span>
-                  <span className="font-semibold text-primary">{task.createdBy}</span>
-                </div>
-              )}
-              {task.createdAt && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-secondary">Created</span>
-                  <span className="font-semibold text-primary">{new Date(task.createdAt).toLocaleDateString()}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Save button */}
-            <button
-              disabled={isUpdating}
-              onClick={() => onUpdate(task._id, { stage: localStage, priority: localPriority, assignee: localAssignee })}
-              className="btn-enterprise-primary w-full flex items-center justify-center gap-2"
-            >
-              {isUpdating && <Loader2 size={13} className="animate-spin" />}
-              {isUpdating ? 'Saving…' : 'Save Changes'}
-            </button>
-          </div>
-        )}
-
-        {tab === 'checklist' && (
-          <div className="p-5">
-            {!task.subtasks || task.subtasks.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <ListChecks size={28} className="text-border" />
-                <p className="text-xs text-secondary">No checklist items yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {task.subtasks.map((st, i) => (
-                  <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${
-                    st.done ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-base/40 border-border/40'
-                  }`}>
-                    {st.done
-                      ? <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
-                      : <Circle size={15} className="text-border shrink-0" />}
-                    <span className={`text-xs font-medium ${st.done ? 'line-through text-secondary' : 'text-primary'}`}>
-                      {st.title}
-                    </span>
-                  </div>
-                ))}
-                <div className="pt-2">
-                  <div className="flex items-center gap-2 text-xs text-secondary">
-                    <span className="font-bold text-primary">{task.subtasks.filter(s => s.done).length}</span>
-                    / {task.subtasks.length} completed
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === 'attachments' && (
-          <div className="p-5 flex flex-col items-center gap-3 py-10 text-center">
-            <Paperclip size={28} className="text-border" />
-            <p className="text-xs text-secondary">File attachments are managed from the backend.</p>
-          </div>
-        )}
-
-        {tab === 'timelogs' && (
-          <div className="p-5 space-y-4">
-            {/* Add log entry */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-secondary uppercase tracking-widest">Add Work Log</label>
-              <textarea
-                value={logNote}
-                onChange={e => setLogNote(e.target.value)}
-                placeholder="Describe what you worked on…"
-                rows={3}
-                className="input-enterprise resize-none !py-2.5"
-              />
-              <button
-                disabled={!logNote.trim() || isUpdating}
-                onClick={async () => {
-                  const newLog = { time: new Date().toISOString(), note: logNote.trim(), author: 'You' };
-                  const updatedLogs = [...(task.logs || []), newLog];
-                  await onUpdate(task._id, { logs: updatedLogs });
-                  setLogNote('');
-                }}
-                className="btn-enterprise-primary w-full !py-2 !text-xs"
-              >
-                {isUpdating ? 'Saving…' : 'Log Work'}
-              </button>
-            </div>
-
-            {/* Existing logs */}
-            {task.logs && task.logs.length > 0 ? (
-              <div className="space-y-2">
-                {[...task.logs].reverse().map((log, i) => (
-                  <div key={i} className="bg-base/50 border border-border/40 rounded-lg p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-accent">{log.author}</span>
-                      <span className="text-[10px] text-secondary">{new Date(log.time).toLocaleString()}</span>
-                    </div>
-                    <p className="text-xs text-primary">{log.note}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <Timer size={24} className="text-border mx-auto mb-2" />
-                <p className="text-xs text-secondary">No work logs recorded yet.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === 'activity' && (
-          <div className="p-5 flex flex-col items-center gap-3 py-10 text-center">
-            <History size={28} className="text-border" />
-            <p className="text-xs text-secondary">Full activity timeline is available in the Audit Logs.</p>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
-}
 
 // ─── Kanban Board ─────────────────────────────────────────────────────────────
 
 function KanbanBoard({
-  tasks,
-  onDrop,
-  onSelectTask,
-  selectedTaskId,
-  draggedId,
-  setDraggedId,
-  dragFromStage,
-  setDragFromStage,
+  tasks, onDrop, onSelectTask, selectedTaskId,
+  draggedId, setDraggedId, dragFromStage, setDragFromStage,
 }: {
   tasks: Task[];
   onDrop: (id: string, fromStage: string, toStage: string) => void;
@@ -590,16 +248,16 @@ function KanbanBoard({
                       <div className="flex items-center justify-between pt-2 border-t border-border/30">
                         <div className="flex items-center gap-1.5">
                           {task.assignee ? (
-                            <div className="w-5 h-5 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[7px] font-bold border border-accent/20">
-                              {initials(task.assignee)}
-                            </div>
+                            <OpsAvatar name={task.assignee} size="xs" />
                           ) : (
                             <div className="w-5 h-5 rounded-full bg-border/40 flex items-center justify-center">
                               <User size={9} className="text-secondary" />
                             </div>
                           )}
                           {task.assignee && (
-                            <span className="text-[9px] text-secondary font-medium truncate max-w-[80px]">{task.assignee.split(' ')[0]}</span>
+                            <span className="text-[9px] text-secondary font-medium truncate max-w-[80px]">
+                              {task.assignee.split(' ')[0]}
+                            </span>
                           )}
                         </div>
                         {task.dueDate && (
@@ -624,14 +282,8 @@ function KanbanBoard({
 // ─── List View ────────────────────────────────────────────────────────────────
 
 function ListView({
-  tasks,
-  selectedIds,
-  onToggle,
-  onToggleAll,
-  onSelectTask,
-  onBulkMove,
-  onBulkDelete,
-  canDelete,
+  tasks, selectedIds, onToggle, onToggleAll,
+  onSelectTask, onBulkMove, onBulkDelete, canDelete,
 }: {
   tasks: Task[];
   selectedIds: Set<string>;
@@ -650,8 +302,8 @@ function ListView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <table className="table-enterprise w-full">
-          <thead className="sticky top-0 z-10">
+        <OpsTable>
+          <OpsTableHead>
             <tr>
               <th className="w-10 px-4 text-center">
                 <input
@@ -661,17 +313,17 @@ function ListView({
                   className="w-3.5 h-3.5 rounded border-border accent-accent"
                 />
               </th>
-              <th className="px-3 w-[90px]">Code</th>
-              <th className="px-3">Title</th>
-              <th className="px-3 w-[110px]">Priority</th>
-              <th className="px-3 w-[110px]">Stage</th>
-              <th className="px-3 w-[120px]">Assignee</th>
-              <th className="px-3 w-[100px]">Due Date</th>
-              <th className="px-3 w-[80px] text-center">Progress</th>
-              <th className="px-3 w-[80px]">Tags</th>
+              <OpsTableHeadCell className="w-[90px]">Code</OpsTableHeadCell>
+              <OpsTableHeadCell>Title</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[110px]">Priority</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[110px]">Stage</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[130px]">Assignee</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[100px]">Due Date</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[80px] text-center">Progress</OpsTableHeadCell>
+              <OpsTableHeadCell className="w-[100px]">Tags</OpsTableHeadCell>
             </tr>
-          </thead>
-          <tbody>
+          </OpsTableHead>
+          <OpsTableBody>
             {paged.length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center py-16 text-secondary text-xs">
@@ -682,44 +334,45 @@ function ListView({
             {paged.map(task => {
               const overdue = task.dueDate && new Date(task.dueDate) < new Date() && task.stage !== 'Done';
               return (
-                <tr
+                <OpsTableRow
                   key={task._id}
+                  selected={selectedIds.has(task._id)}
                   onClick={() => onSelectTask(task)}
-                  className={`cursor-pointer ${selectedIds.has(task._id) ? 'bg-accent/5' : 'hover:bg-accent/[0.02]'}`}
+                  className="cursor-pointer"
                 >
-                  <td className="px-4 text-center" onClick={e => { e.stopPropagation(); onToggle(task._id); }}>
+                  <OpsTableCell className="text-center" onClick={e => { e.stopPropagation(); onToggle(task._id); }}>
                     <input
                       type="checkbox"
                       checked={selectedIds.has(task._id)}
                       onChange={() => onToggle(task._id)}
                       className="w-3.5 h-3.5 rounded border-border accent-accent"
                     />
-                  </td>
-                  <td className="px-3">
+                  </OpsTableCell>
+                  <OpsTableCell>
                     <span className="font-mono text-[10px] font-bold text-secondary">{task.code || '—'}</span>
-                  </td>
-                  <td className="px-3">
-                    <span className="font-semibold text-primary text-xs hover:text-accent transition-colors line-clamp-1">{task.title}</span>
-                  </td>
-                  <td className="px-3">
-                    <span className={priorityBadge(task.priority)}>{task.priority}</span>
-                  </td>
-                  <td className="px-3">
-                    <span className={stageBadge(task.stage)}>{task.stage}</span>
-                  </td>
-                  <td className="px-3">
+                  </OpsTableCell>
+                  <OpsTableCell>
+                    <span className="font-semibold text-primary text-xs hover:text-accent transition-colors line-clamp-1">
+                      {task.title}
+                    </span>
+                  </OpsTableCell>
+                  <OpsTableCell>
+                    <OpsBadge variant={priorityVariant(task.priority)}>{task.priority}</OpsBadge>
+                  </OpsTableCell>
+                  <OpsTableCell>
+                    <OpsBadge variant={stageVariant(task.stage)} dot>{task.stage}</OpsBadge>
+                  </OpsTableCell>
+                  <OpsTableCell>
                     {task.assignee ? (
                       <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[7px] font-bold shrink-0">
-                          {initials(task.assignee)}
-                        </div>
-                        <span className="text-xs text-primary truncate">{task.assignee}</span>
+                        <OpsAvatar name={task.assignee} size="xs" />
+                        <span className="text-xs text-primary truncate max-w-[90px]">{task.assignee}</span>
                       </div>
                     ) : (
                       <span className="text-xs text-secondary italic">Unassigned</span>
                     )}
-                  </td>
-                  <td className="px-3">
+                  </OpsTableCell>
+                  <OpsTableCell>
                     {task.dueDate ? (
                       <span className={`text-xs font-medium ${overdue ? 'text-red-500' : 'text-secondary'}`}>
                         {new Date(task.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
@@ -727,26 +380,28 @@ function ListView({
                     ) : (
                       <span className="text-xs text-secondary/40">—</span>
                     )}
-                  </td>
-                  <td className="px-3 text-center">
+                  </OpsTableCell>
+                  <OpsTableCell className="text-center">
                     <span className="text-[10px] font-bold text-secondary">{task.progress ?? 0}%</span>
-                  </td>
-                  <td className="px-3">
+                  </OpsTableCell>
+                  <OpsTableCell>
                     <div className="flex gap-1 flex-wrap">
                       {task.tags.slice(0, 1).map(tag => (
-                        <span key={tag} className="badge-enterprise text-[9px]">{tag}</span>
+                        <OpsBadge key={tag} variant="default">{tag}</OpsBadge>
                       ))}
-                      {task.tags.length > 1 && <span className="text-[9px] text-secondary">+{task.tags.length - 1}</span>}
+                      {task.tags.length > 1 && (
+                        <span className="text-[9px] text-secondary">+{task.tags.length - 1}</span>
+                      )}
                     </div>
-                  </td>
-                </tr>
+                  </OpsTableCell>
+                </OpsTableRow>
               );
             })}
-          </tbody>
-        </table>
+          </OpsTableBody>
+        </OpsTable>
       </div>
 
-      {/* Pagination footer */}
+      {/* Pagination */}
       <div className="border-t border-border/60 px-5 py-3 flex items-center justify-between bg-base/20 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-secondary">Rows:</span>
@@ -780,7 +435,9 @@ function ListView({
                 key={pg}
                 onClick={() => setCurrentPage(pg)}
                 className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                  currentPage === pg ? 'bg-accent text-white shadow' : 'border border-border/60 bg-surface text-secondary hover:text-primary'
+                  currentPage === pg
+                    ? 'bg-accent text-white shadow'
+                    : 'border border-border/60 bg-surface text-secondary hover:text-primary'
                 }`}
               >{pg}</button>
             );
@@ -806,7 +463,9 @@ function ListView({
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface border border-border/80 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-5 backdrop-blur-md"
           >
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-accent/15 text-accent font-bold text-xs flex items-center justify-center">{selectedIds.size}</div>
+              <div className="w-6 h-6 rounded-full bg-accent/15 text-accent font-bold text-xs flex items-center justify-center">
+                {selectedIds.size}
+              </div>
               <span className="text-xs font-semibold text-primary">task{selectedIds.size !== 1 ? 's' : ''} selected</span>
             </div>
             <div className="h-4 w-px bg-border/60" />
@@ -819,13 +478,11 @@ function ListView({
               {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             {canDelete && (
-              <button onClick={onBulkDelete} className="btn-enterprise-danger !py-1.5 !text-xs flex items-center gap-1.5">
+              <OpsButton variant="danger" size="sm" onClick={onBulkDelete}>
                 <Trash2 size={12} /> Delete
-              </button>
+              </OpsButton>
             )}
-            <button onClick={() => {}} className="text-xs text-secondary hover:text-primary font-semibold transition-colors">
-              Clear
-            </button>
+            <button className="text-xs text-secondary hover:text-primary font-semibold transition-colors">Clear</button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -833,51 +490,223 @@ function ListView({
   );
 }
 
+// ─── Timeline View ────────────────────────────────────────────────────────────
+
+function TimelineView({ tasks }: { tasks: Task[] }) {
+  const withDue = tasks.filter(t => t.dueDate).sort(
+    (a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime()
+  );
+
+  if (withDue.length === 0) {
+    return (
+      <div className="p-8">
+        <OpsEmptyState
+          icon={<Calendar size={32} />}
+          title="No scheduled tasks"
+          description="Tasks with due dates will appear on the timeline."
+        />
+      </div>
+    );
+  }
+
+  // Build month groups
+  type Group = { month: string; tasks: Task[] };
+  const groups: Group[] = [];
+  for (const task of withDue) {
+    const d = new Date(task.dueDate!);
+    const label = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const last = groups[groups.length - 1];
+    if (!last || last.month !== label) groups.push({ month: label, tasks: [task] });
+    else last.tasks.push(task);
+  }
+
+  const today = new Date();
+
+  return (
+    <div className="p-6 space-y-8 max-w-4xl">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-8 h-8 rounded-xl bg-accent/10 text-accent flex items-center justify-center">
+          <Activity size={16} />
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-primary">Task Timeline</h2>
+          <p className="text-xs text-secondary">{withDue.length} tasks with deadlines</p>
+        </div>
+      </div>
+
+      {groups.map(group => (
+        <div key={group.month}>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{group.month}</span>
+            <div className="flex-1 h-px bg-border/40" />
+            <span className="text-[10px] text-secondary">{group.tasks.length} tasks</span>
+          </div>
+          <div className="space-y-2 pl-4 border-l-2 border-border/40">
+            {group.tasks.map(task => {
+              const d = new Date(task.dueDate!);
+              const overdue = d < today && task.stage !== 'Done';
+              const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+              return (
+                <div key={task._id} className="relative flex items-start gap-4 pb-2">
+                  {/* Timeline dot */}
+                  <div className="absolute -left-[21px] top-3 w-3.5 h-3.5 rounded-full border-2 border-surface flex items-center justify-center" style={{
+                    background: overdue ? '#ef4444' : task.stage === 'Done' ? '#10b981' : 'var(--accent-primary)'
+                  }} />
+
+                  {/* Date column */}
+                  <div className="w-16 shrink-0 pt-2">
+                    <div className={`text-[11px] font-bold ${overdue ? 'text-red-500' : 'text-secondary'}`}>{dayLabel}</div>
+                  </div>
+
+                  {/* Card */}
+                  <div className={`flex-1 bg-surface border rounded-xl p-3.5 transition-all hover:shadow-md ${
+                    overdue ? 'border-red-500/20 bg-red-500/[0.02]' : 'border-border/50'
+                  }`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-[9px] font-bold text-secondary/60 uppercase">{task.code}</span>
+                          <OpsBadge variant={stageVariant(task.stage)} dot>{task.stage}</OpsBadge>
+                          {overdue && <OpsBadge variant="danger">Overdue</OpsBadge>}
+                        </div>
+                        <h4 className="text-xs font-semibold text-primary line-clamp-1">{task.title}</h4>
+                        {task.description && (
+                          <p className="text-[11px] text-secondary mt-0.5 line-clamp-1">{task.description}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <OpsBadge variant={priorityVariant(task.priority)}>{task.priority}</OpsBadge>
+                        {task.assignee && <OpsAvatar name={task.assignee} size="xs" />}
+                      </div>
+                    </div>
+                    {(task.progress ?? 0) > 0 && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <div className="flex-1 h-1 bg-border/30 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-accent rounded-full"
+                            style={{ width: `${task.progress ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-bold text-secondary tabular-nums">{task.progress ?? 0}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Calendar View ────────────────────────────────────────────────────────────
+
+function CalendarView({ tasks }: { tasks: Task[] }) {
+  const tasksWithDue = tasks.filter(t => t.dueDate);
+  return (
+    <div className="p-6 flex flex-col gap-4">
+      <div className="w-full card-enterprise !p-5 space-y-3">
+        <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Upcoming Deadlines</h3>
+        {tasksWithDue.length === 0 ? (
+          <OpsEmptyState
+            icon={<Calendar size={28} />}
+            title="No tasks with due dates"
+            description="Assign due dates to tasks to see them here."
+            compact
+          />
+        ) : (
+          <div className="space-y-2">
+            {tasksWithDue
+              .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+              .map(task => {
+                const overdue = new Date(task.dueDate!) < new Date() && task.stage !== 'Done';
+                return (
+                  <div key={task._id} className="flex items-center gap-4 p-3 bg-base/50 border border-border/40 rounded-xl">
+                    <div className={`w-10 text-center shrink-0 ${overdue ? 'text-red-500' : 'text-secondary'}`}>
+                      <div className="text-[10px] font-bold uppercase">
+                        {new Date(task.dueDate!).toLocaleDateString(undefined, { month: 'short' })}
+                      </div>
+                      <div className="text-lg font-black leading-none">{new Date(task.dueDate!).getDate()}</div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-primary truncate">{task.title}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <OpsBadge variant={stageVariant(task.stage)} dot>{task.stage}</OpsBadge>
+                        {overdue && <OpsBadge variant="danger">Overdue</OpsBadge>}
+                      </div>
+                    </div>
+                    {task.assignee && <OpsAvatar name={task.assignee} size="xs" />}
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Workload View ────────────────────────────────────────────────────────────
 
 function WorkloadView({ tasks, teamMembers }: { tasks: Task[]; teamMembers: TeamMember[] }) {
-  const members = teamMembers.length > 0 ? teamMembers : [{ _id: 'unassigned', name: 'Unassigned', email: '', role: '' }];
+  const members = teamMembers.length > 0
+    ? teamMembers
+    : [{ _id: 'unassigned', name: 'Unassigned', email: '', role: '' }];
+
+  const membersWithLoad = members.map(member => {
+    const assigned = tasks.filter(t =>
+      t.assignee && (
+        t.assignee.toLowerCase() === member.name.toLowerCase() ||
+        t.assignee.toLowerCase() === member.email.toLowerCase()
+      )
+    );
+    const done = assigned.filter(t => t.stage === 'Done').length;
+    const inProgress = assigned.filter(t => t.stage === 'In Progress').length;
+    const overdue = assigned.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.stage !== 'Done').length;
+    const completion = assigned.length > 0 ? Math.round((done / assigned.length) * 100) : 0;
+    return { member, assigned, done, inProgress, overdue, completion };
+  }).filter(m => m.assigned.length > 0);
+
+  if (membersWithLoad.length === 0) {
+    return (
+      <div className="p-8">
+        <OpsEmptyState
+          icon={<Users size={32} />}
+          title="No workload data"
+          description="Assign tasks to team members to see their workload here."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="grid grid-cols-1 gap-3">
-        {members.map(member => {
-          const assigned = tasks.filter(t =>
-            t.assignee && (t.assignee.toLowerCase() === member.name.toLowerCase() || t.assignee.toLowerCase() === member.email.toLowerCase())
-          );
-          const done = assigned.filter(t => t.stage === 'Done').length;
-          const inProgress = assigned.filter(t => t.stage === 'In Progress').length;
-          const overdue = assigned.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.stage !== 'Done').length;
-          const completion = assigned.length > 0 ? Math.round((done / assigned.length) * 100) : 0;
-
-          return (
-            <div key={member._id} className="card-enterprise !p-4 flex items-center gap-5">
-              <div className="w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold shrink-0 border border-accent/20">
-                {initials(member.name)}
+        {membersWithLoad.map(({ member, assigned, done, inProgress, overdue, completion }) => (
+          <div key={member._id} className="card-enterprise !p-4 flex items-center gap-5">
+            <OpsAvatar name={member.name} size="md" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm font-bold text-primary truncate">{member.name}</span>
+                <span className="text-xs text-secondary font-medium">{assigned.length} tasks</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-bold text-primary truncate">{member.name}</span>
-                  <span className="text-xs text-secondary font-medium">{assigned.length} tasks</span>
-                </div>
-                <div className="h-1.5 bg-border/30 rounded-full overflow-hidden mb-1.5">
-                  <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${completion}%` }} />
-                </div>
-                <div className="flex items-center gap-4 text-[10px] font-semibold">
-                  <span className="text-emerald-500">{done} done</span>
-                  <span className="text-indigo-400">{inProgress} in progress</span>
-                  {overdue > 0 && <span className="text-red-500">{overdue} overdue</span>}
-                  <span className="text-secondary ml-auto">{completion}% complete</span>
-                </div>
+              <div className="h-1.5 bg-border/30 rounded-full overflow-hidden mb-1.5">
+                <div
+                  className="h-full bg-accent rounded-full transition-all"
+                  style={{ width: `${completion}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-4 text-[10px] font-semibold">
+                <span className="text-emerald-500">{done} done</span>
+                <span className="text-indigo-400">{inProgress} in progress</span>
+                {overdue > 0 && <span className="text-red-500">{overdue} overdue</span>}
+                <span className="text-secondary ml-auto">{completion}% complete</span>
               </div>
             </div>
-          );
-        })}
-        {members.every(m => !tasks.some(t => t.assignee && (t.assignee.toLowerCase() === m.name.toLowerCase()))) && (
-          <div className="flex flex-col items-center gap-3 py-16 text-center col-span-full">
-            <Users size={32} className="text-border" />
-            <p className="text-sm text-secondary">No assigned tasks to display workload.</p>
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
@@ -889,7 +718,8 @@ function ReportsView({ tasks }: { tasks: Task[] }) {
   const byStage = STAGES.map(s => ({ label: s, count: tasks.filter(t => t.stage === s).length }));
   const byPriority = PRIORITIES.map(p => ({ label: p, count: tasks.filter(t => t.priority === p).length }));
   const overdue = tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.stage !== 'Done').length;
-  const completion = tasks.length > 0 ? Math.round((tasks.filter(t => t.stage === 'Done').length / tasks.length) * 100) : 0;
+  const completion = tasks.length > 0
+    ? Math.round((tasks.filter(t => t.stage === 'Done').length / tasks.length) * 100) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -924,7 +754,9 @@ function ReportsView({ tasks }: { tasks: Task[] }) {
                 <div key={label}>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="font-semibold text-primary">{label}</span>
-                    <span className="text-secondary font-bold tabular-nums">{count} <span className="font-normal text-secondary/60">({pct}%)</span></span>
+                    <span className="text-secondary font-bold tabular-nums">
+                      {count} <span className="font-normal text-secondary/60">({pct}%)</span>
+                    </span>
                   </div>
                   <div className="h-1.5 bg-border/30 rounded-full overflow-hidden">
                     <div
@@ -956,7 +788,9 @@ function ReportsView({ tasks }: { tasks: Task[] }) {
                       {priorityIcon(label)}
                       <span className="font-semibold text-primary">{label}</span>
                     </div>
-                    <span className="text-secondary font-bold tabular-nums">{count} <span className="font-normal text-secondary/60">({pct}%)</span></span>
+                    <span className="text-secondary font-bold tabular-nums">
+                      {count} <span className="font-normal text-secondary/60">({pct}%)</span>
+                    </span>
                   </div>
                   <div className="h-1.5 bg-border/30 rounded-full overflow-hidden">
                     <div
@@ -979,49 +813,29 @@ function ReportsView({ tasks }: { tasks: Task[] }) {
   );
 }
 
-// ─── Calendar View (placeholder) ─────────────────────────────────────────────
+// ─── Loading Skeleton ─────────────────────────────────────────────────────────
 
-function CalendarView({ tasks }: { tasks: Task[] }) {
-  const tasksWithDue = tasks.filter(t => t.dueDate);
+function LoadingSkeleton() {
   return (
-    <div className="p-6 flex flex-col items-center gap-4">
-      <div className="w-full card-enterprise !p-5 space-y-3">
-        <h3 className="text-xs font-bold text-secondary uppercase tracking-widest">Upcoming Deadlines</h3>
-        {tasksWithDue.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8 text-center">
-            <Calendar size={28} className="text-border" />
-            <p className="text-xs text-secondary">No tasks with due dates.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {tasksWithDue
-              .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
-              .map(task => {
-                const overdue = new Date(task.dueDate!) < new Date() && task.stage !== 'Done';
-                return (
-                  <div key={task._id} className="flex items-center gap-4 p-3 bg-base/50 border border-border/40 rounded-xl">
-                    <div className={`w-10 text-center shrink-0 ${overdue ? 'text-red-500' : 'text-secondary'}`}>
-                      <div className="text-[10px] font-bold uppercase">{new Date(task.dueDate!).toLocaleDateString(undefined, { month: 'short' })}</div>
-                      <div className="text-lg font-black leading-none">{new Date(task.dueDate!).getDate()}</div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-primary truncate">{task.title}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={stageBadge(task.stage)}>{task.stage}</span>
-                        {overdue && <span className="text-[9px] font-bold text-red-500 uppercase">Overdue</span>}
-                      </div>
-                    </div>
-                    {task.assignee && (
-                      <div className="w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[8px] font-bold shrink-0">
-                        {initials(task.assignee)}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
+    <div className="flex gap-4 h-full min-w-max p-6">
+      {STAGES.map(s => (
+        <div key={s} className="w-[280px] flex flex-col gap-3">
+          <div className="skeleton-enterprise h-5 w-32 rounded mb-1" />
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-surface border border-border/50 rounded-xl p-4 space-y-3">
+              <div className="flex justify-between">
+                <div className="skeleton-enterprise h-2.5 w-14 rounded" />
+                <div className="skeleton-enterprise h-2.5 w-12 rounded" />
+              </div>
+              <div className="skeleton-enterprise h-3.5 w-full rounded" />
+              <div className="skeleton-enterprise h-3 w-2/3 rounded" />
+              <div className="flex gap-1.5 pt-1">
+                <div className="skeleton-enterprise h-4 w-14 rounded-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1036,14 +850,13 @@ function OperationsConsole() {
   // View state
   const [view, setView] = useState<ViewType>('board');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [inspectorTask, setInspectorTask] = useState<Task | null>(null);
+  const [inspectorTaskId, setInspectorTaskId] = useState<string | null>(null);
 
   // Data
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -1055,11 +868,11 @@ function OperationsConsole() {
   const [sortBy, setSortBy] = useState<SortBy>('createdAt');
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // Drag state
+  // Drag state (board)
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragFromStage, setDragFromStage] = useState<string | null>(null);
 
-  // Selection
+  // Selection (list)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Modals
@@ -1089,7 +902,6 @@ function OperationsConsole() {
     if (searchParams?.get('openProjectModal') === 'true') setNewProjectOpen(true);
   }, [searchParams]);
 
-  // Pre-fill project owner
   useEffect(() => {
     if (newProjectOpen && user?.name) setNpOwner(prev => prev || user.name);
   }, [newProjectOpen, user?.name]);
@@ -1116,18 +928,12 @@ function OperationsConsole() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Update inspector when task data changes
-  useEffect(() => {
-    if (inspectorTask) {
-      const fresh = tasks.find(t => t._id === inspectorTask._id);
-      if (fresh) setInspectorTask(fresh);
-    }
-  }, [tasks, inspectorTask]);
 
   // ── Computed filtered list ──────────────────────────────────────────────────
   const filtered = tasks
     .filter(t => {
-      if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase()) && !t.code?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          !t.code?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (filterStage && t.stage !== filterStage) return false;
       if (filterPriority && t.priority !== filterPriority) return false;
       if (filterAssignee) {
@@ -1149,10 +955,10 @@ function OperationsConsole() {
     });
 
   const hasActiveFilters = !!(filterStage || filterPriority || filterAssignee || filterProject || searchQuery);
+  const activeFilterCount = [filterStage, filterPriority, filterAssignee, filterProject].filter(Boolean).length;
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const updateTask = useCallback(async (id: string, fields: Partial<Task>) => {
-    setIsUpdating(true);
     try {
       const res = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',
@@ -1163,15 +969,12 @@ function OperationsConsole() {
       const data = await res.json();
       if (data.success) {
         setTasks(prev => prev.map(t => t._id === id ? { ...t, ...data.task } : t));
-        showToast('Task updated', 'success');
         triggerActivityLog('task_update', `Updated task`);
       } else {
         showToast(data.error || 'Update failed', 'error');
       }
     } catch {
       showToast('Network error', 'error');
-    } finally {
-      setIsUpdating(false);
     }
   }, [showToast]);
 
@@ -1185,9 +988,7 @@ function OperationsConsole() {
     setCreatingTask(true);
     try {
       const payload: Record<string, unknown> = {
-        title: ntTitle.trim(),
-        stage: ntStage,
-        priority: ntPriority,
+        title: ntTitle.trim(), stage: ntStage, priority: ntPriority,
         tags: ntTags ? ntTags.split(',').map(s => s.trim()).filter(Boolean) : ['New'],
       };
       if (ntAssignee) payload.assignee = ntAssignee;
@@ -1272,15 +1073,20 @@ function OperationsConsole() {
     setSelectedIds(new Set());
   };
 
+  const clearFilters = () => {
+    setFilterStage(''); setFilterPriority('');
+    setFilterAssignee(''); setFilterProject(''); setSearchQuery('');
+  };
+
   const canDelete = user?.role === 'Admin' || user?.role === 'Manager';
 
-  // ── Views ────────────────────────────────────────────────────────────────────
-  const NAV_VIEWS: { id: ViewType; label: string; icon: React.ReactNode }[] = [
-    { id: 'board', label: 'Board', icon: <LayoutDashboard size={14} /> },
-    { id: 'list', label: 'List', icon: <LayoutList size={14} /> },
-    { id: 'calendar', label: 'Calendar', icon: <Calendar size={14} /> },
-    { id: 'workload', label: 'Workload', icon: <Users size={14} /> },
-    { id: 'reports', label: 'Reports', icon: <BarChart2 size={14} /> },
+  const NAV_VIEWS = [
+    { id: 'board' as ViewType, label: 'Board', icon: <LayoutDashboard size={14} /> },
+    { id: 'list' as ViewType, label: 'List', icon: <LayoutList size={14} /> },
+    { id: 'timeline' as ViewType, label: 'Timeline', icon: <Activity size={14} /> },
+    { id: 'calendar' as ViewType, label: 'Calendar', icon: <Calendar size={14} /> },
+    { id: 'workload' as ViewType, label: 'Workload', icon: <Users size={14} /> },
+    { id: 'reports' as ViewType, label: 'Reports', icon: <BarChart2 size={14} /> },
   ];
 
   return (
@@ -1288,7 +1094,8 @@ function OperationsConsole() {
 
       {/* ── Enterprise Header ──────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-border/60 bg-surface/60 backdrop-blur-sm z-20">
-        {/* Breadcrumb + title row */}
+
+        {/* Breadcrumb + title + actions */}
         <div className="px-6 pt-5 pb-0 flex items-start justify-between">
           <div>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold text-secondary mb-2">
@@ -1303,44 +1110,50 @@ function OperationsConsole() {
               <div>
                 <h1 className="text-lg font-bold text-primary leading-tight">Operations Console</h1>
                 <p className="text-[11px] text-secondary font-medium">
-                  {loading ? 'Loading…' : `${filtered.length} task${filtered.length !== 1 ? 's' : ''} · ${projects.length} project${projects.length !== 1 ? 's' : ''}`}
+                  {loading
+                    ? 'Loading…'
+                    : `${filtered.length} task${filtered.length !== 1 ? 's' : ''} · ${projects.length} project${projects.length !== 1 ? 's' : ''}`}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <OpsButton
+              variant="ghost"
+              size="sm"
               onClick={fetchData}
               disabled={loading}
-              className="p-2 border border-border/60 bg-base text-secondary hover:text-primary rounded-lg transition-all disabled:opacity-50"
               title="Refresh"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            </button>
-            <button
+            </OpsButton>
+            <OpsButton
+              variant="secondary"
+              size="sm"
               onClick={() => downloadCSV(tasks, 'OPS_Tasks_Export')}
-              className="btn-enterprise-secondary !py-2 !px-3 !text-xs flex items-center gap-1.5"
             >
               <Download size={13} /> Export
-            </button>
-            <button
+            </OpsButton>
+            <OpsButton
+              variant="secondary"
+              size="sm"
               onClick={() => setNewProjectOpen(true)}
-              className="btn-enterprise-secondary !py-2 !px-3 !text-xs flex items-center gap-1.5"
             >
               <FolderOpen size={13} /> New Project
-            </button>
-            <button
+            </OpsButton>
+            <OpsButton
+              variant="primary"
+              size="sm"
               onClick={() => setNewTaskOpen(true)}
-              className="btn-enterprise-primary !py-2 !px-3 !text-xs flex items-center gap-2"
             >
               <Plus size={14} /> New Task
-            </button>
+            </OpsButton>
           </div>
         </div>
 
-        {/* View tabs + toolbar */}
-        <div className="flex items-center gap-0 px-6 pt-3 pb-0 border-b-0">
+        {/* View tabs + search/filter toolbar */}
+        <div className="flex items-center gap-0 px-6 pt-3 pb-0">
           <div className="flex items-center gap-0 flex-1">
             {NAV_VIEWS.map(v => (
               <button
@@ -1357,29 +1170,15 @@ function OperationsConsole() {
             ))}
           </div>
 
-          {/* Toolbar */}
+          {/* Toolbar right */}
           <div className="flex items-center gap-2 pb-2">
-            {/* Search */}
-            <div className="relative">
-              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search tasks…"
-                className="input-enterprise !py-1.5 pl-8 !text-xs w-52"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-secondary hover:text-primary"
-                >
-                  <X size={11} />
-                </button>
-              )}
-            </div>
+            <OpsSearch
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search tasks…"
+              className="w-48"
+            />
 
-            {/* Filter toggle */}
             <button
               onClick={() => setFilterOpen(f => !f)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
@@ -1388,14 +1187,15 @@ function OperationsConsole() {
                   : 'border-border/60 bg-base text-secondary hover:text-primary'
               }`}
             >
-              <SlidersHorizontal size={12} />
+              <Zap size={12} />
               Filter
-              {hasActiveFilters && <span className="w-4 h-4 rounded-full bg-accent text-white text-[9px] font-black flex items-center justify-center">
-                {[filterStage, filterPriority, filterAssignee, filterProject].filter(Boolean).length}
-              </span>}
+              {activeFilterCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-accent text-white text-[9px] font-black flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
 
-            {/* Sort */}
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as SortBy)}
@@ -1407,15 +1207,16 @@ function OperationsConsole() {
               <option value="title">A → Z</option>
             </select>
 
-            {/* Inspector toggle */}
             <button
-              onClick={() => inspectorTask ? setInspectorTask(null) : undefined}
+              onClick={() => inspectorTaskId ? setInspectorTaskId(null) : undefined}
               className={`p-1.5 border rounded-lg text-xs transition-all ${
-                inspectorTask ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border/60 bg-base text-secondary hover:text-primary'
+                inspectorTaskId
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-border/60 bg-base text-secondary hover:text-primary'
               }`}
-              title={inspectorTask ? 'Close inspector' : 'Open inspector by clicking a task'}
+              title={inspectorTaskId ? 'Close inspector' : 'Click a task to open inspector'}
             >
-              {inspectorTask ? <PanelRightClose size={13} /> : <PanelRightOpen size={13} />}
+              {inspectorTaskId ? <PanelRightClose size={13} /> : <PanelRightOpen size={13} />}
             </button>
           </div>
         </div>
@@ -1430,33 +1231,94 @@ function OperationsConsole() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden border-t border-border/40"
             >
-              <div className="flex items-center gap-3 px-6 py-3 bg-base/40">
+              <div className="flex items-center gap-2 px-6 py-3 bg-base/40 flex-wrap">
                 <span className="text-[10px] font-bold text-secondary uppercase tracking-widest shrink-0">Filters:</span>
-                <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="select-enterprise !w-auto !py-1 !text-xs">
-                  <option value="">All stages</option>
-                  {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className="select-enterprise !w-auto !py-1 !text-xs">
-                  <option value="">All priorities</option>
-                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="select-enterprise !w-auto !py-1 !text-xs">
-                  <option value="">All projects</option>
-                  {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-                </select>
-                <input
-                  type="text"
-                  value={filterAssignee}
-                  onChange={e => setFilterAssignee(e.target.value)}
-                  placeholder="Assignee name…"
-                  className="input-enterprise !py-1 !text-xs w-40"
-                />
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Stage filter */}
+                  <div className="flex items-center gap-1">
+                    <OpsFilterChip
+                      label="Stage"
+                      value={filterStage || undefined}
+                      active={!!filterStage}
+                      onClear={() => setFilterStage('')}
+                    />
+                    {!filterStage && (
+                      <select
+                        value={filterStage}
+                        onChange={e => setFilterStage(e.target.value)}
+                        className="select-enterprise !w-auto !py-1 !text-xs"
+                      >
+                        <option value="">All stages</option>
+                        {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Priority filter */}
+                  <div className="flex items-center gap-1">
+                    <OpsFilterChip
+                      label="Priority"
+                      value={filterPriority || undefined}
+                      active={!!filterPriority}
+                      onClear={() => setFilterPriority('')}
+                    />
+                    {!filterPriority && (
+                      <select
+                        value={filterPriority}
+                        onChange={e => setFilterPriority(e.target.value)}
+                        className="select-enterprise !w-auto !py-1 !text-xs"
+                      >
+                        <option value="">All priorities</option>
+                        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Project filter */}
+                  <div className="flex items-center gap-1">
+                    <OpsFilterChip
+                      label="Project"
+                      value={projects.find(p => p._id === filterProject)?.name}
+                      active={!!filterProject}
+                      onClear={() => setFilterProject('')}
+                    />
+                    {!filterProject && (
+                      <select
+                        value={filterProject}
+                        onChange={e => setFilterProject(e.target.value)}
+                        className="select-enterprise !w-auto !py-1 !text-xs"
+                      >
+                        <option value="">All projects</option>
+                        {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Assignee filter */}
+                  <input
+                    type="text"
+                    value={filterAssignee}
+                    onChange={e => setFilterAssignee(e.target.value)}
+                    placeholder="Assignee name…"
+                    className="input-enterprise !py-1 !text-xs w-36"
+                  />
+                  {filterAssignee && (
+                    <OpsFilterChip
+                      label="Assignee"
+                      value={filterAssignee}
+                      active
+                      onClear={() => setFilterAssignee('')}
+                    />
+                  )}
+                </div>
+
                 {hasActiveFilters && (
                   <button
-                    onClick={() => { setFilterStage(''); setFilterPriority(''); setFilterAssignee(''); setFilterProject(''); setSearchQuery(''); }}
-                    className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors flex items-center gap-1"
+                    onClick={clearFilters}
+                    className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors flex items-center gap-1 ml-1"
                   >
-                    <X size={11} /> Clear all
+                    Clear all
                   </button>
                 )}
               </div>
@@ -1479,6 +1341,7 @@ function OperationsConsole() {
               className="shrink-0 border-r border-border/60 bg-surface/50 overflow-hidden"
             >
               <div className="w-[220px] h-full overflow-y-auto custom-scrollbar p-4 space-y-6">
+
                 {/* Projects */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1494,7 +1357,9 @@ function OperationsConsole() {
                       key={p._id}
                       onClick={() => setFilterProject(filterProject === p._id ? '' : p._id)}
                       className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all text-left group ${
-                        filterProject === p._id ? 'bg-accent/10 text-accent' : 'hover:bg-base/70 text-secondary hover:text-primary'
+                        filterProject === p._id
+                          ? 'bg-accent/10 text-accent'
+                          : 'hover:bg-base/70 text-secondary hover:text-primary'
                       }`}
                     >
                       <Folder size={12} className={filterProject === p._id ? 'text-accent' : 'text-accent/60'} />
@@ -1506,16 +1371,16 @@ function OperationsConsole() {
                   ))}
                 </div>
 
-                {/* Saved Views */}
+                {/* Quick Filters */}
                 <div>
                   <span className="text-[9px] font-black text-secondary uppercase tracking-widest block mb-2">Quick Filters</span>
                   {[
-                    { label: 'All Tasks', fn: () => { setFilterStage(''); setFilterPriority(''); setFilterAssignee(''); setFilterProject(''); } },
+                    { label: 'All Tasks', fn: clearFilters },
                     { label: 'My Tasks', fn: () => { if (user?.name) setFilterAssignee(user.name); } },
-                    { label: 'Overdue', fn: () => setFilterStage('') },
                     { label: 'High Priority', fn: () => setFilterPriority('High') },
                     { label: 'Critical', fn: () => setFilterPriority('Critical') },
                     { label: 'In Review', fn: () => setFilterStage('Review') },
+                    { label: 'In Progress', fn: () => setFilterStage('In Progress') },
                   ].map(item => (
                     <button
                       key={item.label}
@@ -1533,8 +1398,10 @@ function OperationsConsole() {
                   {['Frontend', 'Backend', 'Database', 'UI/UX', 'DevOps', 'New'].map(tag => (
                     <button
                       key={tag}
-                      onClick={() => setSearchQuery(tag)}
-                      className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg text-secondary hover:text-primary hover:bg-base/70 transition-all font-medium flex items-center gap-2"
+                      onClick={() => setSearchQuery(searchQuery === tag ? '' : tag)}
+                      className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-all font-medium flex items-center gap-2 ${
+                        searchQuery === tag ? 'text-accent bg-accent/10' : 'text-secondary hover:text-primary hover:bg-base/70'
+                      }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-accent/40 shrink-0" />
                       {tag}
@@ -1542,7 +1409,7 @@ function OperationsConsole() {
                   ))}
                 </div>
 
-                {/* Priorities */}
+                {/* By Priority */}
                 <div>
                   <span className="text-[9px] font-black text-secondary uppercase tracking-widest block mb-2">By Priority</span>
                   {PRIORITIES.map(p => (
@@ -1558,9 +1425,11 @@ function OperationsConsole() {
                   ))}
                 </div>
 
-                {/* Teams (future-ready) */}
+                {/* Teams — future-ready */}
                 <div>
-                  <span className="text-[9px] font-black text-secondary uppercase tracking-widest block mb-2">Teams <span className="normal-case font-normal text-secondary/50">(coming soon)</span></span>
+                  <span className="text-[9px] font-black text-secondary uppercase tracking-widest block mb-2">
+                    Teams <span className="normal-case font-normal text-secondary/50">(coming soon)</span>
+                  </span>
                   <p className="text-[10px] text-secondary italic px-1">Team grouping will be available in v2</p>
                 </div>
               </div>
@@ -1568,12 +1437,12 @@ function OperationsConsole() {
           )}
         </AnimatePresence>
 
-        {/* Sidebar toggle button */}
+        {/* Sidebar toggle */}
         <button
           onClick={() => setSidebarOpen(s => !s)}
-          className="absolute left-0 bottom-8 z-30 w-5 h-10 flex items-center justify-center bg-surface border border-border/60 border-l-0 rounded-r-lg text-secondary hover:text-primary transition-colors"
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          className="absolute bottom-8 z-30 w-5 h-10 flex items-center justify-center bg-surface border border-border/60 border-l-0 rounded-r-lg text-secondary hover:text-primary transition-colors"
           style={{ left: sidebarOpen ? 220 : 0 }}
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           {sidebarOpen ? <ChevronLeft size={11} /> : <ChevronRight size={11} />}
         </button>
@@ -1581,15 +1450,13 @@ function OperationsConsole() {
         {/* Main content */}
         <div className="flex-1 overflow-hidden flex flex-col min-w-0">
           {error ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <AlertCircle size={36} className="text-red-400" />
-              <div className="text-center">
-                <p className="font-bold text-primary mb-1">Failed to load data</p>
-                <p className="text-xs text-secondary max-w-sm">{error}</p>
-              </div>
-              <button onClick={fetchData} className="btn-enterprise-primary flex items-center gap-2">
-                <RefreshCw size={13} /> Retry
-              </button>
+            <div className="flex-1 flex items-center justify-center p-8">
+              <OpsErrorState
+                kind="network"
+                title="Failed to load data"
+                description={error}
+                onRetry={fetchData}
+              />
             </div>
           ) : loading ? (
             <LoadingSkeleton />
@@ -1598,14 +1465,25 @@ function OperationsConsole() {
               <div className={`flex-1 overflow-auto ${view === 'board' ? 'overflow-x-auto' : ''}`}>
                 {view === 'board' && (
                   filtered.length === 0 && !hasActiveFilters ? (
-                    <div className="p-6"><EmptyBoard onNew={() => setNewTaskOpen(true)} /></div>
+                    <div className="p-8">
+                      <OpsEmptyState
+                        icon={<ClipboardList size={32} />}
+                        title="No tasks yet"
+                        description="Create your first task to start tracking work across your team."
+                        action={
+                          <OpsButton variant="primary" onClick={() => setNewTaskOpen(true)}>
+                            <Plus size={14} /> New Task
+                          </OpsButton>
+                        }
+                      />
+                    </div>
                   ) : (
                     <div className="p-5">
                       <KanbanBoard
                         tasks={filtered}
                         onDrop={handleDrop}
-                        onSelectTask={setInspectorTask}
-                        selectedTaskId={inspectorTask?._id}
+                        onSelectTask={t => setInspectorTaskId(t._id)}
+                        selectedTaskId={inspectorTaskId ?? undefined}
                         draggedId={draggedId}
                         setDraggedId={setDraggedId}
                         dragFromStage={dragFromStage}
@@ -1618,237 +1496,194 @@ function OperationsConsole() {
                   <ListView
                     tasks={filtered}
                     selectedIds={selectedIds}
-                    onToggle={id => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; })}
+                    onToggle={id => setSelectedIds(prev => {
+                      const n = new Set(prev);
+                      n.has(id) ? n.delete(id) : n.add(id);
+                      return n;
+                    })}
                     onToggleAll={() => {
                       const allIds = filtered.map(t => t._id);
                       const allSelected = allIds.every(id => selectedIds.has(id));
                       setSelectedIds(allSelected ? new Set() : new Set(allIds));
                     }}
-                    onSelectTask={setInspectorTask}
+                    onSelectTask={t => setInspectorTaskId(t._id)}
                     onBulkMove={handleBulkMove}
                     onBulkDelete={handleBulkDelete}
                     canDelete={canDelete}
                   />
                 )}
+                {view === 'timeline' && <TimelineView tasks={filtered} />}
                 {view === 'calendar' && <CalendarView tasks={filtered} />}
                 {view === 'workload' && <WorkloadView tasks={filtered} teamMembers={teamMembers} />}
                 {view === 'reports' && <ReportsView tasks={filtered} />}
               </div>
 
               {/* Right Inspector */}
-              <AnimatePresence>
-                {inspectorTask && (
-                  <RightInspector
-                    key={inspectorTask._id}
-                    task={inspectorTask}
-                    teamMembers={teamMembers}
-                    onClose={() => setInspectorTask(null)}
-                    onUpdate={updateTask}
-                    isUpdating={isUpdating}
-                  />
-                )}
-              </AnimatePresence>
+              <TaskDrawer
+                open={!!inspectorTaskId}
+                onClose={() => setInspectorTaskId(null)}
+                taskId={inspectorTaskId}
+                onUpdateSuccess={fetchData}
+                projects={projects}
+                teamMembers={teamMembers}
+              />
             </div>
           )}
         </div>
       </div>
 
       {/* ── Create Task Modal ─────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {newTaskOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/65 backdrop-blur-md"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-              className="bg-surface w-full max-w-2xl rounded-2xl border border-border shadow-2xl overflow-hidden"
+      <OpsModal
+        open={newTaskOpen}
+        onClose={() => setNewTaskOpen(false)}
+        title="Create Task"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <OpsButton variant="secondary" onClick={() => setNewTaskOpen(false)}>Cancel</OpsButton>
+            <OpsButton
+              variant="primary"
+              disabled={creatingTask || !ntTitle.trim()}
+              loading={creatingTask}
+              onClick={handleCreateTask}
             >
-              <div className="flex items-center justify-between p-6 border-b border-border bg-base/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
-                    <Plus size={16} />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-primary">Create Task</h2>
-                    <p className="text-[10px] text-secondary">Add a new task to your workspace</p>
-                  </div>
-                </div>
-                <button onClick={() => setNewTaskOpen(false)} className="p-1.5 hover:bg-base rounded-lg text-secondary hover:text-primary transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
+              {creatingTask ? 'Creating…' : 'Create Task'}
+            </OpsButton>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-5">
+          <div className="col-span-2">
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Task Title *</label>
+            <OpsInput
+              value={ntTitle}
+              onChange={e => setNtTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateTask()}
+              placeholder="e.g. Implement user authentication flow"
+              autoFocus
+            />
+          </div>
 
-              <div className="p-6 grid grid-cols-2 gap-5">
-                {/* Title - full width */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Task Title *</label>
-                  <input
-                    type="text"
-                    value={ntTitle}
-                    onChange={e => setNtTitle(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateTask()}
-                    placeholder="e.g. Implement user authentication flow"
-                    className="input-enterprise !py-3 !text-sm"
-                    autoFocus
-                  />
-                </div>
+          <div className="col-span-2">
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Description</label>
+            <textarea
+              value={ntDescription}
+              onChange={e => setNtDescription(e.target.value)}
+              placeholder="What needs to be done? (optional)"
+              rows={2}
+              className="input-enterprise !py-2.5 resize-none"
+            />
+          </div>
 
-                {/* Description - full width */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Description</label>
-                  <textarea
-                    value={ntDescription}
-                    onChange={e => setNtDescription(e.target.value)}
-                    placeholder="What needs to be done? (optional)"
-                    rows={2}
-                    className="input-enterprise !py-2.5 resize-none"
-                  />
-                </div>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Stage</label>
+            <OpsSelect
+              value={ntStage}
+              onChange={e => setNtStage(e.target.value)}
+              options={STAGES.map(s => ({ value: s, label: s }))}
+            />
+          </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Stage</label>
-                  <select value={ntStage} onChange={e => setNtStage(e.target.value)} className="select-enterprise">
-                    {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Priority</label>
+            <OpsSelect
+              value={ntPriority}
+              onChange={e => setNtPriority(e.target.value)}
+              options={PRIORITIES.map(p => ({ value: p, label: p }))}
+            />
+          </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Priority</label>
-                  <select value={ntPriority} onChange={e => setNtPriority(e.target.value)} className="select-enterprise">
-                    {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Assign to</label>
+            <OpsSelect
+              value={ntAssignee}
+              onChange={e => setNtAssignee(e.target.value)}
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...teamMembers.map(m => ({ value: m.name, label: `${m.name} (${m.role})` })),
+              ]}
+            />
+          </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Assign to</label>
-                  <select value={ntAssignee} onChange={e => setNtAssignee(e.target.value)} className="select-enterprise">
-                    <option value="">Unassigned</option>
-                    {teamMembers.map(m => <option key={m._id} value={m.name}>{m.name} ({m.role})</option>)}
-                  </select>
-                </div>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project</label>
+            <OpsSelect
+              value={ntProjectId}
+              onChange={e => setNtProjectId(e.target.value)}
+              options={[
+                { value: '', label: 'No project' },
+                ...projects.map(p => ({ value: p._id, label: p.name })),
+              ]}
+            />
+          </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project</label>
-                  <select value={ntProjectId} onChange={e => setNtProjectId(e.target.value)} className="select-enterprise">
-                    <option value="">No project</option>
-                    {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-                  </select>
-                </div>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Due Date</label>
+            <OpsInput type="date" value={ntDueDate} onChange={e => setNtDueDate(e.target.value)} />
+          </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Due Date</label>
-                  <input type="date" value={ntDueDate} onChange={e => setNtDueDate(e.target.value)} className="input-enterprise" />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Labels <span className="normal-case font-normal text-secondary/50">(comma-separated)</span></label>
-                  <input
-                    type="text"
-                    value={ntTags}
-                    onChange={e => setNtTags(e.target.value)}
-                    placeholder="Frontend, Backend, UI/UX"
-                    className="input-enterprise"
-                  />
-                </div>
-              </div>
-
-              <div className="px-6 py-4 border-t border-border flex justify-end gap-3 bg-base/20">
-                <button onClick={() => setNewTaskOpen(false)} className="btn-enterprise-secondary !text-xs">Cancel</button>
-                <button
-                  onClick={handleCreateTask}
-                  disabled={creatingTask || !ntTitle.trim()}
-                  className="btn-enterprise-primary !text-xs flex items-center gap-2 !px-6"
-                >
-                  {creatingTask && <Loader2 size={12} className="animate-spin" />}
-                  {creatingTask ? 'Creating…' : 'Create Task'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">
+              Labels <span className="normal-case font-normal text-secondary/50">(comma-separated)</span>
+            </label>
+            <OpsInput
+              value={ntTags}
+              onChange={e => setNtTags(e.target.value)}
+              placeholder="Frontend, Backend, UI/UX"
+            />
+          </div>
+        </div>
+      </OpsModal>
 
       {/* ── Create Project Modal ──────────────────────────────────────────── */}
-      <AnimatePresence>
-        {newProjectOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/65 backdrop-blur-md"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-              className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden"
+      <OpsModal
+        open={newProjectOpen}
+        onClose={() => setNewProjectOpen(false)}
+        title="Create Project"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <OpsButton variant="secondary" onClick={() => setNewProjectOpen(false)}>Cancel</OpsButton>
+            <OpsButton
+              variant="primary"
+              disabled={creatingProject || !npName.trim()}
+              loading={creatingProject}
+              onClick={handleCreateProject}
             >
-              <div className="flex items-center justify-between p-6 border-b border-border bg-base/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
-                    <FolderOpen size={16} />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-primary">Create Project</h2>
-                    <p className="text-[10px] text-secondary">Group related tasks under a project</p>
-                  </div>
-                </div>
-                <button onClick={() => setNewProjectOpen(false)} className="p-1.5 hover:bg-base rounded-lg text-secondary hover:text-primary transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project Name *</label>
-                  <input
-                    type="text"
-                    value={npName}
-                    onChange={e => setNpName(e.target.value)}
-                    placeholder="e.g. Q3 Sales Campaign"
-                    className="input-enterprise !py-3"
-                    autoFocus
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Deadline</label>
-                    <input type="date" value={npDeadline} onChange={e => setNpDeadline(e.target.value)} className="input-enterprise" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Owner</label>
-                    <select value={npOwner} onChange={e => setNpOwner(e.target.value)} className="select-enterprise">
-                      {user?.name && <option value={user.name}>{user.name} (You)</option>}
-                      {teamMembers.filter(m => m.name !== user?.name).map(m => (
-                        <option key={m._id} value={m.name}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-6 py-4 border-t border-border flex justify-end gap-3 bg-base/20">
-                <button onClick={() => setNewProjectOpen(false)} className="btn-enterprise-secondary !text-xs">Cancel</button>
-                <button
-                  onClick={handleCreateProject}
-                  disabled={creatingProject || !npName.trim()}
-                  className="btn-enterprise-primary !text-xs flex items-center gap-2 !px-6"
-                >
-                  {creatingProject && <Loader2 size={12} className="animate-spin" />}
-                  {creatingProject ? 'Creating…' : 'Create Project'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {creatingProject ? 'Creating…' : 'Create Project'}
+            </OpsButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project Name *</label>
+            <OpsInput
+              value={npName}
+              onChange={e => setNpName(e.target.value)}
+              placeholder="e.g. Q3 Sales Campaign"
+              autoFocus
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Deadline</label>
+              <OpsInput type="date" value={npDeadline} onChange={e => setNpDeadline(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Owner</label>
+              <OpsSelect
+                value={npOwner}
+                onChange={e => setNpOwner(e.target.value)}
+                options={[
+                  ...(user?.name ? [{ value: user.name, label: `${user.name} (You)` }] : []),
+                  ...teamMembers.filter(m => m.name !== user?.name).map(m => ({ value: m.name, label: m.name })),
+                ]}
+              />
+            </div>
+          </div>
+        </div>
+      </OpsModal>
     </div>
   );
 }

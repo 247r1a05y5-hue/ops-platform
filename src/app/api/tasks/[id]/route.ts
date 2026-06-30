@@ -6,6 +6,21 @@ import { logActivity } from '@/lib/activity';
 
 type Ctx = { params: Promise<{ id: string }> };
 
+export async function GET(req: NextRequest, ctx: Ctx) {
+  const { error } = await requireAuth(req);
+  if (error) return error;
+
+  try {
+    await connectDB();
+    const { id } = await ctx.params;
+    const task = await Task.findById(id).lean();
+    if (!task) return NextResponse.json({ success: false, error: 'Task not found.' }, { status: 404 });
+    return NextResponse.json({ success: true, task });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
 export async function PUT(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;

@@ -1,455 +1,211 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUI } from '@/context/UIContext';
+import { useAuth } from '@/context/AuthContext';
 import { 
-  Users, Sparkles, Zap, FileText, ChevronRight, ChevronDown, ArrowUpRight,
-  Shield, ShieldCheck, Download, Layers, Activity, CheckCircle, X,
-  Lock, RefreshCw, CheckSquare, TrendingUp, Settings, BarChart3, Clock, AlertTriangle
+  Activity, ArrowUpRight, BarChart2, Briefcase, Calendar, ChevronDown, 
+  ChevronRight, Clipboard, Clock, Download, FileText, Folder, Flag,
+  Layers, Lock, Loader2, MessageSquare, Plus, Search, Shield, 
+  ShieldCheck, Sparkles, AlertCircle, RefreshCw, Trash2, User, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import SharedSettingsModule from '@/components/SharedSettingsModule';
 import { triggerActivityLog } from '@/utils/activity';
-import { QUICK_SHORTCUTS, RECENT_APPROVALS_LOG, TEAM_HIGHLIGHTS } from '@/mock/manager';
+import {
+  OpsButton, OpsInput, OpsSelect, OpsBadge, OpsAvatar, 
+  OpsTable, OpsTableHead, OpsTableBody, OpsTableRow, OpsTableCell, 
+  OpsTableHeadCell, OpsModal, OpsEmptyState, OpsErrorState
+} from '@/components/ui/ops';
+import { TaskDrawer } from '@/components/TaskDrawer';
 
-// --- Reusable Components (Admin Style) ---
-
-const Card = ({ children, className = "", delay = 0 }: { children: React.ReactNode, className?: string, delay?: number }) => {
-  const hasBg = className.split(' ').some(c => c.startsWith('bg-'));
-  const hasPadding = className.split(' ').some(c => c.startsWith('p-') || c.startsWith('px-') || c.startsWith('py-'));
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay, ease: "easeOut" }}
-      className={`card-enterprise ${hasBg ? "" : "bg-surface"} ${hasPadding ? "" : ""} ${className}`}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-const Badge = ({ text, type = "default" }: { text: string, type?: 'default' | 'success' | 'warning' | 'danger' | 'info' }) => {
-  const styles = {
-    default: "badge-enterprise-default",
-    success: "badge-enterprise-success",
-    warning: "badge-enterprise-warning",
-    danger: "badge-enterprise-danger",
-    info: "badge-enterprise-info"
-  };
-  return (
-    <span className={`${styles[type]} text-[9px] font-bold uppercase tracking-wider`}>
-      {text}
-    </span>
-  );
-};
-
-// --- Interfaces & Mock Data Types ---
+// ─── Interfaces ─────────────────────────────────────────────────────────────
 
 interface ManagerEmployee {
-  id: string;          // mapped from member._id — used for PATCH /api/settings/team
-  name: string;        // member.name  (DB: UserSchema.name)
-  email: string;       // member.email (DB: UserSchema.email)
-  role: string;        // member.role  (DB: UserSchema.role)
-  status: 'Online' | 'Away' | 'Offline'; // member.status (DB: UserSchema.status)
-  // ── Derived from task data (not stored on User doc) ──
-  performance: string; // computed: % of tasks Done  e.g. '87%'
-  workload: string;    // computed: 'High' | 'Optimal' | 'Balanced' | 'Low'
-  attendance: string;  // computed: deterministic hash off name, '95%–99%'
-  color: string;       // computed: CSS class e.g. 'bg-indigo-500'
-  avatar: string;      // computed: initials e.g. 'SB'
-  activeTasks: number; // computed: tasks.filter(stage !== 'Done').length
-}
-
-interface TaskLog {
-  time: string;
-  author: string;
-  note: string;
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  performance: string;
+  workload: string;
+  color: string;
+  avatar: string;
+  activeTasks: number;
 }
 
 interface ManagerTask {
-  id: string;
+  _id: string;
   title: string;
-  desc: string;
-  priority: 'Critical' | 'High' | 'Medium' | 'Low';
-  owner: string;
-  deadline: string;
-  status: 'To Do' | 'In Progress' | 'Under Review' | 'Done' | 'Blocked';
+  description: string;
+  priority: string;
+  assignee: string;
+  dueDate: string;
+  stage: string;
   progress: number;
+  code: string;
+  projectId?: string;
   subtasks: { title: string; done: boolean }[];
-  logs: TaskLog[];
+  logs: { time: string; note: string; author: string }[];
 }
 
-// Mapped approval shape (derived from ApprovalRequest + populated Lead)
-interface ApprovalItem {
-  id: string;       // req._id
-  user: string;     // req.requestedByName  or req.requestedBy.name
-  type: string;     // req.reason  e.g. 'Close deal'
-  detail: string;   // constructed from req.leadId.name / company / dealValue
-  date: string;     // req.createdAt formatted
-  priority: string; // derived from dealValue: Critical | High | Medium | Low
-  status: string;   // 'Authorized' | 'Denied' | 'Pending' (mapped from approved|rejected|pending)
+interface Project {
+  _id: string;
+  name: string;
+  deadline?: string;
+  owner?: string;
 }
 
-// --- Sub-Modules ---
+interface LeadApproval {
+  _id: string;
+  requestedByName: string;
+  reason: string;
+  dealValue: string;
+  createdAt: string;
+  status: string;
+  leadId?: {
+    name: string;
+    company: string;
+    value?: string;
+  };
+}
 
-const TeamModule = ({ employees, onToggleStatus, onManageRoles }: { employees: ManagerEmployee[]; onToggleStatus: (index: number) => void; onManageRoles: () => void }) => (
-  <div className="space-y-6">
-    <div className="flex justify-between items-end mb-2">
-       <div>
-          <h2 className="text-xl font-bold text-primary">Team Velocity</h2>
-          <p className="text-secondary text-xs">Real-time personnel engagement and performance metrics.</p>
-       </div>
-       <button onClick={onManageRoles} className="text-xs font-bold text-accent flex items-center gap-1 hover:underline cursor-pointer">
-          Manage Clearance & Roles <ArrowUpRight size={14}/>
-       </button>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {employees.map((emp, i) => (
-        <Card key={i} delay={i * 0.05} className="group border-border/60 p-5 hover:border-accent/40 transition-all">
-           <div className="flex items-center gap-4 mb-4">
-              <div className="relative shrink-0">
-                <div className={`w-12 h-12 rounded-xl ${emp.color} text-white flex items-center justify-center text-sm font-bold shadow-sm group-hover:scale-105 transition-transform`}>
-                   {emp.avatar}
-                </div>
-                <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-surface ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-amber-500' : 'bg-red-500'}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                 <h4 className="text-sm font-bold text-primary truncate">{emp.name}</h4>
-                 <p className="text-[10px] font-bold text-secondary uppercase tracking-wider mt-0.5">{emp.role}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                 <button onClick={() => onToggleStatus(i)} className="px-2 py-0.5 rounded-full bg-base border border-border/80 text-[10px] font-bold text-secondary hover:text-accent hover:border-accent/40 transition-colors flex items-center gap-1.5 select-none active:scale-95">
-                    <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Online' ? 'bg-emerald-500' : emp.status === 'Away' ? 'bg-amber-500' : 'bg-red-500'} animate-pulse`} />
-                    <span>{emp.status}</span>
-                 </button>
-                 <span className="text-[10px] text-secondary font-semibold flex items-center gap-1">
-                   <CheckCircle size={10} className="text-secondary/60" /> {emp.activeTasks} Active Tasks
-                 </span>
-              </div>
-           </div>
-           <div className="space-y-2.5">
-              <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-tertiary">
-                 <span>Efficiency Rating</span>
-                 <span className="text-xs font-bold text-primary font-mono">{emp.performance}</span>
-              </div>
-              <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
-                 <motion.div initial={{ width: 0 }} animate={{ width: emp.performance }} transition={{ duration: 1, delay: 0.3 }} className="h-full bg-gradient-to-r from-accent to-indigo-500 rounded-full"></motion.div>
-              </div>
-              <div className="flex justify-between items-center pt-3 border-t border-border mt-4">
-                 <span className="text-[10px] font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                   Workload: 
-                   <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
-                     emp.workload === 'High' ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20' :
-                     emp.workload === 'Optimal' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
-                     'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                   }`}>{emp.workload}</span>
-                 </span>
-                 <span className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Attendance: <span className="text-secondary/70 font-semibold normal-case">Not tracked</span></span>
-              </div>
-           </div>
-        </Card>
-      ))}
-    </div>
-  </div>
-);
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-const SectionSpinner = ({ message }: { message: string }) => (
-  <div className="flex items-center justify-center p-12 text-primary bg-surface/20 border border-border/60 border-dashed rounded-2xl">
-     <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-        <div className="text-[10px] font-bold uppercase tracking-widest text-secondary animate-pulse">{message}</div>
-     </div>
-  </div>
-);
+const STAGES = ['Backlog', 'In Progress', 'Review', 'Done'] as const;
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const;
 
-const SectionError = ({ message }: { message: string }) => (
-  <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2">
-     <AlertTriangle size={14} />
-     <span>{message}</span>
-  </div>
-);
-
-// --- Main Manager Dashboard Shell ---
+// ─── Main Manager Dashboard ──────────────────────────────────────────────────
 
 function ManagerDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showToast } = useUI();
-  
-  const [activeTab, setActiveTab] = useState<'team' | 'approvals' | 'progress' | 'reports' | 'settings'>('team');
-  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
 
-  // Section specific loading and error states
-  const [loadingTeam, setLoadingTeam] = useState(false);
-  const [teamError, setTeamError] = useState<string | null>(null);
+  // Unified Loading & Error State
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [loadingApprovals, setLoadingApprovals] = useState(false);
-  const [approvalsError, setApprovalsError] = useState<string | null>(null);
-
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
-
-  // Database persistent states
-  const [employees, setEmployees] = useState<ManagerEmployee[]>([]);
+  // Core Data
   const [tasks, setTasks] = useState<ManagerTask[]>([]);
-  const [approvals, setApprovals] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<ManagerEmployee[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [approvals, setApprovals] = useState<LeadApproval[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Modals & form states
+  // Filters & Interactivity
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals & Drawers
+  const [inspectorTaskId, setInspectorTaskId] = useState<string | null>(null);
   const [showRolesModal, setShowRolesModal] = useState(false);
-  const [editingEmployees, setEditingEmployees] = useState<ManagerEmployee[]>([]);
   const [showBriefingModal, setShowBriefingModal] = useState(false);
-  const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [briefingStep, setBriefingStep] = useState(0);
-
-  // Collapse states for sidebar cards
-  const [isPulseCollapsed, setIsPulseCollapsed] = useState(false);
-  const [isInsightsCollapsed, setIsInsightsCollapsed] = useState(false);
-  const [isQuickLinksCollapsed, setIsQuickLinksCollapsed] = useState(false);
-
-  // getVelocityData returns normalised heights for the chart bars.
-  // Returns fallback bars when no task data exists.
-  const getVelocityData = (): number[] => {
-    if (tasks.length === 0) return Array(12).fill(15); // flat baseline bars
-    const buckets = Array(12).fill(0);
-    tasks.forEach(t => {
-      const idx = t.id ? (t.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 12) : 0;
-      buckets[idx] += t.progress || 0;
-    });
-    const maxVal = Math.max(...buckets, 1);
-    return buckets.map(val => Math.min(100, Math.max(15, Math.round((val / maxVal) * 80) + 15)));
-  };
-
-  // ── DATA FETCHING ENGINE ───────────────────────────────────────────────────
+  const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   
-  const fetchDashboardData = async () => {
-    setLoadingTeam(true);
-    setTeamError(null);
-    try {
-      const teamRes = await fetch('/api/settings/team', { credentials: 'include' });
-      if (!teamRes.ok) throw new Error(`HTTP error! status: ${teamRes.status}`);
-      const teamData = await teamRes.json();
-      if (!teamData.success) throw new Error(teamData.error);
-      
-      const tasksRes = await fetch('/api/tasks', { credentials: 'include' });
-      if (!tasksRes.ok) throw new Error(`HTTP error! status: ${tasksRes.status}`);
-      const tasksData = await tasksRes.json();
-      if (!tasksData.success) throw new Error(tasksData.error);
-      
-      const mappedEmployees: ManagerEmployee[] = teamData.members.map((member: any) => {
-        const initials = member.name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2);
-        
-        const userTasks = tasksData.tasks.filter((t: any) => 
-          t.assignee && (t.assignee.toLowerCase() === member.name.toLowerCase() || t.assignee.toLowerCase() === member.email.toLowerCase())
-        );
-        const activeTasksCount = userTasks.filter((t: any) => t.stage !== 'Done').length;
-        const doneTasks = userTasks.filter((t: any) => t.stage === 'Done').length;
-        const totalTasks = userTasks.length;
-        
-        const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-accent', 'bg-orange-500', 'bg-rose-500', 'bg-purple-500', 'bg-pink-500'];
-        const colorIdx = member.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % colors.length;
-        const color = colors[colorIdx];
-        
-        const performanceVal = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 85;
-        
-        let workload = 'Low';
-        if (activeTasksCount > 3) workload = 'High';
-        else if (activeTasksCount > 1) workload = 'Optimal';
-        else if (activeTasksCount === 1) workload = 'Balanced';
-        
-        const attendanceVal = 95 + (member.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % 5);
-        
-        return {
-          id: member._id,
-          name: member.name,
-          email: member.email,
-          role: member.role,
-          status: member.status || 'Offline',
-          performance: `${performanceVal}%`,
-          workload,
-          attendance: `${attendanceVal}%`,
-          color,
-          avatar: initials,
-          activeTasks: activeTasksCount
-        };
-      });
-      setEmployees(mappedEmployees);
-      
-      const mappedTasks: ManagerTask[] = tasksData.tasks.map((t: any) => {
-        return {
-          id: t._id,
-          title: t.title,
-          desc: t.description || 'Strategic operational directive.',
-          priority: t.priority || 'Medium',
-          owner: t.assignee || 'Unassigned',
-          deadline: t.dueDate ? new Date(t.dueDate).toISOString().substring(0, 10) : '',
-          status: t.stage,
-          progress: t.progress || (t.stage === 'Done' ? 100 : 0),
-          subtasks: t.subtasks || [],
-          logs: t.logs || []
-        };
-      });
-      setTasks(mappedTasks);
-      
-    } catch (err: any) {
-      console.error('Error fetching dashboard data:', err);
-      const msg = err.message || 'Failed to load dashboard data from database';
-      setTeamError(msg);
-      showToast(msg, 'error');
-    } finally {
-      setLoadingTeam(false);
-    }
-  };
+  // Creation Modals
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
 
-  const fetchApprovals = async () => {
-    setLoadingApprovals(true);
-    setApprovalsError(null);
-    try {
-      const res = await fetch('/api/leads/approval', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      const mappedApprovals = data.requests.map((req: any) => {
-        const valStr = req.dealValue || req.leadId?.value || '0';
-        const valNumeric = parseFloat(valStr.replace(/[^0-9.]/g, '')) || 0;
-        let calculatedPriority = 'Low';
-        if (valNumeric >= 100000) calculatedPriority = 'Critical';
-        else if (valNumeric >= 25000) calculatedPriority = 'High';
-        else if (valNumeric >= 5000) calculatedPriority = 'Medium';
+  // New task form state
+  const [ntTitle, setNtTitle] = useState('');
+  const [ntPriority, setNtPriority] = useState('Medium');
+  const [ntStage, setNtStage] = useState('Backlog');
+  const [ntAssignee, setNtAssignee] = useState('');
+  const [ntDueDate, setNtDueDate] = useState('');
+  const [ntDescription, setNtDescription] = useState('');
+  const [ntProjectId, setNtProjectId] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
 
-        return {
-          id: req._id,
-          user: req.requestedByName || req.requestedBy?.name || 'Unknown',
-          type: req.reason || 'Deal Approval Request',
-          detail: `Requested approval for lead "${req.leadId?.name || 'Unknown'}" (${req.leadId?.company || 'No Company'}). Value: ${req.dealValue || req.leadId?.value || '$0'}`,
-          date: new Date(req.createdAt).toLocaleDateString() + ' ' + new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          priority: calculatedPriority,
-          status: req.status === 'approved' ? 'Authorized' : req.status === 'rejected' ? 'Denied' : 'Pending'
-        };
-      });
-      setApprovals(mappedApprovals);
-    } catch (err: any) {
-      console.error('Error fetching approvals:', err);
-      setApprovalsError(err.message || 'Failed to load approvals');
-    } finally {
-      setLoadingApprovals(false);
-    }
-  };
+  // New project form state
+  const [npName, setNpName] = useState('');
+  const [npDeadline, setNpDeadline] = useState('');
+  const [npOwner, setNpOwner] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
 
-  const fetchAnalytics = async () => {
-    setLoadingAnalytics(true);
-    setAnalyticsError(null);
-    try {
-      const res = await fetch('/api/analytics?period=month', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (data.success) {
-        setAnalytics(data);
-      } else {
-        throw new Error(data.error || 'Failed to load analytics');
-      }
-    } catch (err: any) {
-      console.error('Error fetching analytics:', err);
-      setAnalyticsError((err as any).message || 'Failed to load analytics');
-    } finally {
-      setLoadingAnalytics(false);
-    }
-  };
+  // Role permissions helpers
+  const isAdminOrManager = user?.role === 'Admin' || user?.role === 'Manager';
 
-  const loadAllData = async () => {
-    setIsLoading(true);
+  // ─── Fetch Engine ──────────────────────────────────────────────────────────
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
     try {
-      try {
-        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-        const meData = await meRes.json();
-        if (meData.success) {
-          setCurrentUser(meData.user);
-        }
-      } catch (meErr) {
-        console.error('Error fetching manager self auth:', meErr);
-      }
-      await Promise.all([
-        fetchDashboardData(),
-        fetchApprovals(),
-        fetchAnalytics()
+      const [tRes, pRes, uRes, aRes, analRes] = await Promise.all([
+        fetch('/api/tasks', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/projects', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/users', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/leads/approval', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/analytics?period=month', { credentials: 'include', cache: 'no-store' }),
       ]);
-    } catch (err) {
-      console.error('Error loading all data:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    loadAllData();
+      if (!tRes.ok || !pRes.ok || !uRes.ok || !aRes.ok) {
+        throw new Error('Failed to synchronize with central databases.');
+      }
+
+      const [tData, pData, uData, aData, analData] = await Promise.all([
+        tRes.json(), pRes.json(), uRes.json(), aRes.json(), analRes.json()
+      ]);
+
+      if (tData.success) setTasks(tData.tasks);
+      if (pData.success) setProjects(pData.projects);
+      if (aData.success) setApprovals(aData.requests || []);
+      if (analData.success) setAnalytics(analData);
+
+      if (uData.success && Array.isArray(uData.users)) {
+        // Map users to local ManagerEmployee structures
+        const mappedEmployees: ManagerEmployee[] = uData.users.map((member: any) => {
+          const initials = member.name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2);
+          const userTasks = (tData.tasks || []).filter((t: any) => 
+            t.assignee && (t.assignee.toLowerCase() === member.name.toLowerCase() || t.assignee.toLowerCase() === member.email.toLowerCase())
+          );
+          const activeTasksCount = userTasks.filter((t: any) => t.stage !== 'Done').length;
+          const doneTasks = userTasks.filter((t: any) => t.stage === 'Done').length;
+          const totalTasks = userTasks.length;
+          
+          const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-accent', 'bg-orange-500', 'bg-rose-500', 'bg-purple-500', 'bg-pink-500'];
+          const colorIdx = member.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % colors.length;
+          
+          const performanceVal = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 85;
+          let workload = 'Low';
+          if (activeTasksCount > 3) workload = 'High';
+          else if (activeTasksCount > 1) workload = 'Optimal';
+          else if (activeTasksCount === 1) workload = 'Balanced';
+
+          return {
+            _id: member._id,
+            name: member.name,
+            email: member.email,
+            role: member.role,
+            status: member.status || 'Offline',
+            performance: `${performanceVal}%`,
+            workload,
+            color: colors[colorIdx],
+            avatar: initials,
+            activeTasks: activeTasksCount
+          };
+        });
+        setEmployees(mappedEmployees);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Operational feed lost connection. Retry below.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => {
-    const tab = searchParams?.get('tab');
-    if (tab && ['team', 'approvals', 'progress', 'reports', 'settings'].includes(tab)) {
-      setActiveTab(tab as any);
-    }
-  }, [searchParams]);
+    fetchData();
+  }, [fetchData]);
 
-  useEffect(() => {
-    if (showRolesModal) {
-      setEditingEmployees(JSON.parse(JSON.stringify(employees)));
-    }
-  }, [showRolesModal, employees]);
-
-  // ── WORKFLOW MUTATIONS (DATABASE CONNECTED) ────────────────────────────────
-  
-  const toggleStatus = async (idx: number) => {
-    const emp = employees[idx];
-    const newStatus = emp.status === 'Online' ? 'Offline' : emp.status === 'Offline' ? 'Away' : 'Online';
-    try {
-      const res = await fetch('/api/settings/team', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-        credentials: 'include',
-        body: JSON.stringify({ userId: (emp as any).id, status: newStatus })
-      });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      
-      showToast(`Status of ${emp.name} updated to ${newStatus}`, 'success');
-      await fetchDashboardData();
-      triggerActivityLog('workflow_action', `Toggled check-in status for employee ${emp.name} to ${newStatus}`).catch(console.error);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update status', 'error');
-    }
-  };
-
-  const handleUpdateRoles = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      for (const emp of editingEmployees) {
-        const original = employees.find(originalEmp => (originalEmp as any).id === (emp as any).id);
-        if (original && original.role !== emp.role) {
-          const res = await fetch('/api/settings/team', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
-            credentials: 'include',
-            body: JSON.stringify({ userId: (emp as any).id, role: emp.role })
-          });
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-          const data = await res.json();
-          if (!data.success) throw new Error(data.error);
-        }
-      }
-      showToast('Personnel roles and structural ranks updated successfully!', 'success');
-      await fetchDashboardData();
-      triggerActivityLog('workflow_action', 'Updated personnel roles and structural ranks').catch(console.error);
-      setShowRolesModal(false);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update roles', 'error');
-    }
-  };
+  // ─── Actions & Submissions ─────────────────────────────────────────────────
 
   const handleAuthorizeApproval = async (approvalId: string) => {
     try {
@@ -459,14 +215,16 @@ function ManagerDashboard() {
         credentials: 'include',
         body: JSON.stringify({ status: 'approved' })
       });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      showToast('Approval authorized successfully.', 'success');
-      triggerActivityLog('workflow_action', `Authorized approval request ${approvalId}`).catch(console.error);
-      await fetchApprovals();
+      if (data.success) {
+        showToast('Approval request authorized', 'success');
+        triggerActivityLog('workflow_action', `Authorized override request ${approvalId}`);
+        fetchData(true);
+      } else {
+        throw new Error(data.error);
+      }
     } catch (err: any) {
-      showToast(err.message || 'Failed to authorize approval', 'error');
+      showToast(err.message || 'Authorization failed', 'error');
     }
   };
 
@@ -478,15 +236,75 @@ function ManagerDashboard() {
         credentials: 'include',
         body: JSON.stringify({ status: 'rejected' })
       });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      showToast('Approval request denied.', 'success');
-      triggerActivityLog('workflow_action', `Denied approval request ${approvalId}`).catch(console.error);
-      await fetchApprovals();
+      if (data.success) {
+        showToast('Approval request rejected', 'warning');
+        triggerActivityLog('workflow_action', `Denied override request ${approvalId}`);
+        fetchData(true);
+      } else {
+        throw new Error(data.error);
+      }
     } catch (err: any) {
-      showToast(err.message || 'Failed to deny approval', 'error');
+      showToast(err.message || 'Deny process failed', 'error');
     }
+  };
+
+  const handleCreateTask = async () => {
+    if (!ntTitle.trim()) { showToast('Title is required', 'warning'); return; }
+    setCreatingTask(false);
+    setCreatingTask(true);
+    try {
+      const payload: Record<string, any> = {
+        title: ntTitle.trim(), stage: ntStage, priority: ntPriority,
+        tags: ['Management'],
+      };
+      if (ntAssignee) payload.assignee = ntAssignee;
+      if (ntDueDate) payload.dueDate = ntDueDate;
+      if (ntDescription) payload.description = ntDescription;
+      if (ntProjectId) payload.projectId = ntProjectId;
+
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewTaskOpen(false);
+        setNtTitle(''); setNtPriority('Medium'); setNtStage('Backlog');
+        setNtAssignee(''); setNtDueDate(''); setNtDescription(''); setNtProjectId('');
+        showToast('Task launched successfully', 'success');
+        triggerActivityLog('task_creation', `Created task: ${data.task.title}`);
+        fetchData(true);
+      } else {
+        showToast(data.error || 'Task launch failed', 'error');
+      }
+    } catch { showToast('Network database error', 'error'); }
+    finally { setCreatingTask(false); }
+  };
+
+  const handleCreateProject = async () => {
+    if (!npName.trim()) { showToast('Project name is required', 'warning'); return; }
+    setCreatingProject(true);
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: npName.trim(), deadline: npDeadline, owner: npOwner }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewProjectOpen(false);
+        setNpName(''); setNpDeadline(''); setNpOwner('');
+        showToast('Project configured', 'success');
+        fetchData(true);
+      } else {
+        showToast(data.error || 'Project creation failed', 'error');
+      }
+    } catch { showToast('Network database error', 'error'); }
+    finally { setCreatingProject(false); }
   };
 
   const handleGenerateBriefing = () => {
@@ -498,23 +316,17 @@ function ManagerDashboard() {
     setTimeout(() => setIsBriefingLoading(false), 1800);
   };
 
-  const handleApplyBriefingDirective = () => {
-    showToast('Briefing directive broadcasted to Department Hub!', 'success');
-    triggerActivityLog('workflow_action', 'Applied executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
-    setShowBriefingModal(false);
-  };
-
   const handleDownloadCSV = (reportTitle: string) => {
     let csvContent = "data:text/csv;charset=utf-8,";
     if (reportTitle.includes("Personnel Yield")) {
-      csvContent += "Employee,Role,Efficiency,Workload,Attendance\n";
+      csvContent += "Employee,Role,Efficiency,Workload\n";
       employees.forEach(emp => {
-        csvContent += `${emp.name},${emp.role},${emp.performance},${emp.workload},${emp.attendance}\n`;
+        csvContent += `"${emp.name}","${emp.role}","${emp.performance}","${emp.workload}"\n`;
       });
     } else if (reportTitle.includes("Resource Efficiency")) {
-      csvContent += "Task ID,Title,Priority,Owner,Deadline,Progress,Status\n";
+      csvContent += "Code,Title,Priority,Owner,Deadline,Progress,Status\n";
       tasks.forEach(t => {
-        csvContent += `${t.id},${t.title},${t.priority},${t.owner},${t.deadline},${t.progress}%,${t.status}\n`;
+        csvContent += `"${t.code}","${t.title}","${t.priority}","${t.assignee}","${t.dueDate}","${t.progress}%","${t.stage}"\n`;
       });
     }
     const encodedUri = encodeURI(csvContent);
@@ -524,518 +336,628 @@ function ManagerDashboard() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast(`Spreadsheet for ${reportTitle} successfully compiled!`, 'success');
-    triggerActivityLog('export_csv', `Exported spreadsheet for ${reportTitle}`).catch(console.error);
+    showToast(`Compiled report spreadsheet!`, 'success');
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center min-h-[60vh] text-primary">
-         <div className="flex flex-col items-center gap-4">
-           <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-           <div className="text-xs font-bold uppercase tracking-widest animate-pulse">Loading Command Console...</div>
-         </div>
-      </div>
-    );
-  }
+  // ─── Computed Filtering ────────────────────────────────────────────────────
 
-  // Settings tab gets a full-page layout bypassing the two-column grid
-   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-8 py-8 md:py-10">
+  const filteredTasks = tasks.filter(t => {
+    if (selectedProjectId !== 'all' && t.projectId !== selectedProjectId) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = t.title.toLowerCase().includes(q);
+      const matchCode = t.code?.toLowerCase().includes(q);
+      const matchAssignee = t.assignee?.toLowerCase().includes(q);
+      if (!matchTitle && !matchCode && !matchAssignee) return false;
+    }
+    return true;
+  });
+
+  const todayStr = new Date().toISOString().substring(0, 10);
+
+  const todayTasks = filteredTasks.filter(t => t.dueDate && t.dueDate.substring(0, 10) === todayStr && t.stage !== 'Done');
+  const overdueTasks = filteredTasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.stage !== 'Done');
+  const blockedTasks = filteredTasks.filter(t => t.stage === 'Blocked');
+  const reviewTasks = filteredTasks.filter(t => t.stage === 'Review');
+  const upcomingDeadlines = filteredTasks
+    .filter(t => t.dueDate && t.stage !== 'Done' && new Date(t.dueDate) >= new Date())
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .slice(0, 5);
+
+  const activeProject = projects.find(p => p._id === selectedProjectId);
+
+  // ─── View Subcomponents ────────────────────────────────────────────────────
+
+  const WidgetHeader = ({ title, count, color = 'text-accent' }: { title: string; count: number; color?: string }) => (
+    <div className="flex items-center justify-between border-b border-border/40 pb-2 mb-3 shrink-0">
+      <span className="text-[10px] font-bold text-secondary uppercase tracking-widest">{title}</span>
+      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full bg-base border border-border/60 ${color}`}>
+        {count}
+      </span>
+    </div>
+  );
+
+  const MiniTaskCard = ({ task }: { task: ManagerTask }) => (
+    <div 
+      onClick={() => setInspectorTaskId(task._id)}
+      className="p-3 bg-base/40 border border-border/60 hover:border-accent/40 rounded-xl cursor-pointer hover:shadow-sm transition-all duration-150 group flex flex-col gap-2"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[9px] font-bold text-secondary/60 uppercase">{task.code}</span>
+        <OpsBadge variant={
+          task.priority === 'Critical' ? 'danger' 
+          : task.priority === 'High' ? 'warning' 
+          : task.priority === 'Medium' ? 'info' 
+          : 'default'
+        }>
+          {task.priority}
+        </OpsBadge>
+      </div>
+      <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors line-clamp-1">
+        {task.title}
+      </h4>
+      <div className="flex items-center justify-between pt-1 border-t border-border/30">
+        <div className="flex items-center gap-1.5">
+          <OpsAvatar name={task.assignee} size="xs" />
+          <span className="text-[9px] font-bold text-secondary truncate max-w-[80px]">
+            {task.assignee || 'Unassigned'}
+          </span>
+        </div>
+        {task.dueDate && (
+          <span className="text-[9px] font-bold text-secondary">
+            {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col flex-1 h-full bg-base text-primary overflow-hidden">
       
-      {/* Header Info Section */}
-      <motion.div 
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 border-b border-border/40 pb-8"
-      >
-        <div>
-          <div className="flex items-center gap-2.5 mb-2.5">
-             <Badge text="Executive Mode" type="info" />
-             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-             <span className="text-[10px] font-bold text-accent uppercase tracking-wider leading-none">Live System Feed</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-primary tracking-tight">Manager Command Panel</h1>
-          <p className="text-secondary text-sm mt-1">Direct oversight of personnel velocity, decision overrides, and performance charts.</p>
-        </div>
+      {/* ─── Top Header Bar ─────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-border/60 bg-surface/60 backdrop-blur-sm px-6 py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 z-20">
         
-        <div className="flex items-center gap-4 shrink-0">
-           <div className="bg-surface border border-border p-3.5 rounded-xl flex items-center gap-4 shadow-sm">
-              <div className="text-right border-r border-border pr-4">
-                 <div className="text-[9px] font-bold text-secondary uppercase tracking-wider leading-none">System Health</div>
-                 <div className="text-base font-bold text-primary mt-1.5 leading-none font-mono">99.8%</div>
-              </div>
-              <div className="flex items-center gap-2">
-                 <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/20">
-                    <Activity size={18} />
-                 </div>
-              </div>
-           </div>
-        </div>
-      </motion.div>
-
-      {/* Main Grid Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 md:gap-10">
-        
-        {/* Left/Middle Column (Dynamic Content) */}
-        <div className="xl:col-span-2 space-y-8 md:space-y-10">
-           <AnimatePresence mode="wait">
-              {activeTab === 'team' && (
-                <motion.div key="team" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                   {loadingTeam ? (
-                     <SectionSpinner message="Fetching Team Analytics..." />
-                   ) : teamError ? (
-                     <SectionError message={teamError} />
-                   ) : employees.length === 0 ? (
-                     <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
-                       <Users size={36} className="text-accent/30 mx-auto mb-4 animate-pulse" />
-                       <h3 className="text-sm font-bold text-primary mb-1">No Personnel Configured</h3>
-                       <p className="text-xs text-secondary font-medium">Please define department members or ranks in structural settings.</p>
-                     </div>
-                   ) : (
-                     <TeamModule employees={employees} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
-                   )}
-                </motion.div>
-              )}
-              
-              {activeTab === 'approvals' && (
-                <motion.div key="approvals" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
-                   <div className="flex flex-col gap-1 mb-6">
-                      <h2 className="text-xl font-bold text-primary">Decision Protocols</h2>
-                      <p className="text-secondary text-xs">Authorized approvals for system resources and personnel override requests.</p>
-                   </div>
-                   
-                   <div className="space-y-4">
-                       {loadingApprovals ? (
-                         <SectionSpinner message="Loading Decisions..." />
-                       ) : approvalsError ? (
-                         <SectionError message={approvalsError} />
-                       ) : approvals.length === 0 ? (
-                         <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
-                           <Shield size={36} className="text-accent/30 mx-auto mb-4" />
-                           <p className="text-sm font-bold text-primary mb-1">Queue Clear</p>
-                           <p className="text-xs text-secondary font-medium">No pending approval requests require resolution.</p>
-                         </div>
-                       ) : approvals.map((req, i) => (
-                        <Card key={i} delay={i * 0.05} className="p-5 border-border/60 hover:border-accent/40 hover:shadow-md transition-all group">
-                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                              <div className="flex items-start gap-4">
-                                 <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center shrink-0 text-accent group-hover:border-accent/35 transition-colors">
-                                    <Shield size={18} />
-                                 </div>
-                                 <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                       <span className="text-xs font-bold text-primary">{req.user}</span>
-                                       <Badge text={req.type} type="info" />
-                                       <Badge text={req.priority} type={req.priority === 'Critical' ? 'danger' : req.priority === 'High' ? 'warning' : 'default'} />
-                                    </div>
-                                    <p className="text-[11px] text-secondary font-medium leading-relaxed">{req.detail}</p>
-                                    <div className="text-[9px] text-tertiary font-bold uppercase mt-2.5 tracking-wider font-mono">{req.id} · Requested {req.date}</div>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                 {req.status !== 'Pending' ? (
-                                    <Badge text={req.status} type={req.status === 'Authorized' ? 'success' : 'danger'} />
-                                 ) : (
-                                    <div className="flex items-center gap-2">
-                                       <button onClick={() => handleDenyApproval(req.id)} className="btn-enterprise-secondary px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-rose-500/5 hover:text-rose-500 hover:border-rose-500/20 active:scale-95">Deny</button>
-                                       <button onClick={() => handleAuthorizeApproval(req.id)} className="btn-enterprise-primary px-4 py-1.5 text-[10px] font-bold uppercase active:scale-95">Authorize</button>
-                                    </div>
-                                 )}
-                              </div>
-                           </div>
-                        </Card>
-                      ))}
-                   </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'progress' && (
-                <motion.div key="progress" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                  <div className="space-y-6">
-                     <div className="flex flex-col gap-1 mb-2">
-                        <h2 className="text-xl font-bold text-primary">Performance Velocity</h2>
-                        <p className="text-secondary text-xs">Deep analytics and trend projections for active departments.</p>
-                     </div>
-
-                     {loadingAnalytics ? (
-                       <SectionSpinner message="Fetching Performance Analytics..." />
-                     ) : analyticsError ? (
-                       <SectionError message={analyticsError} />
-                     ) : (tasks.length === 0 && !analytics) ? (
-                       <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
-                         <TrendingUp size={36} className="text-accent/30 mx-auto mb-4" />
-                         <h3 className="text-sm font-bold text-primary mb-1">Velocity Stream Empty</h3>
-                         <p className="text-xs text-secondary font-medium">Add task items or assign leads to render project charts.</p>
-                       </div>
-                     ) : (
-                       <>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="md:col-span-2 p-5 border-border/60">
-                           <div className="flex items-center justify-between mb-6">
-                              <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Velocity Output</h3>
-                              <Badge text="Last 30 Days" type="info" />
-                           </div>
-                           <div className="h-64 flex items-end gap-3 px-2 pb-2">
-                              {getVelocityData().map((h, i) => (
-                                <div key={i} className="flex-1 h-full flex flex-col justify-end items-center">
-                                   <div className="w-full h-48 flex items-end">
-                                      <motion.div 
-                                       initial={{ height: 0 }} 
-                                       animate={{ height: `${h}%` }} 
-                                       transition={{ delay: i * 0.03, duration: 0.8 }}
-                                       className="w-full bg-gradient-to-t from-accent/20 to-accent/80 rounded-t-lg group relative hover:from-accent hover:to-indigo-500 transition-all cursor-pointer shadow-sm"
-                                      >
-                                         <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[10px] font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-20 border border-border/30">
-                                           {h}% Yield
-                                         </div>
-                                      </motion.div>
-                                   </div>
-                                   <span className="text-[9px] font-bold text-tertiary mt-2.5 font-mono">W{i+1}</span>
-                                </div>
-                              ))}
-                           </div>
-                        </Card>
-                        <div className="space-y-6">
-                           <Card className="relative overflow-hidden group p-5 border-border/60">
-                              <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-50"></div>
-                              <div className="relative z-10">
-                                 <div className="flex items-center gap-3 mb-4">
-                                    <Sparkles size={18} className="text-accent animate-pulse" />
-                                    <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">Completion Rate</h4>
-                                 </div>
-                                 <div className="text-5xl font-black mb-3 tracking-tighter text-accent font-mono">
-                                    {analytics ? `${analytics.tasks.completionRate}%` : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
-                                  </div>
-                                  <p className="text-[11px] text-secondary font-medium leading-relaxed">
-                                    {analytics ? `Tasks: ${analytics.tasks.change} vs last period. ${analytics.tasks.total} total initiatives tracked.` : `${tasks.filter(t => t.status === 'Done').length} of ${tasks.length} tasks completed this period.`}
-                                  </p>
-                              </div>
-                           </Card>
-                           <Card className="p-5 border-border/60">
-                              <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider mb-4">Core Bottlenecks</h4>
-                              <div className="space-y-4">
-                                 <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between text-xs font-bold">
-                                       <span className="text-secondary">Lead Routing Handoff</span>
-                                       <span className="text-rose-500 font-mono">2.4 days</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
-                                       <div className="w-3/4 h-full bg-rose-500 rounded-full"></div>
-                                    </div>
-                                 </div>
-                                 <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between text-xs font-bold">
-                                       <span className="text-secondary">Egress Node Checks</span>
-                                       <span className="text-amber-500 font-mono">1.1 days</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-base rounded-full overflow-hidden border border-border/10">
-                                       <div className="w-1/2 h-full bg-amber-500 rounded-full"></div>
-                                    </div>
-                                 </div>
-                              </div>
-                           </Card>
-                        </div>
-                     </div>
-                       </>
-                     )}
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'reports' && (
-                <motion.div key="reports" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                   <div className="flex flex-col gap-1 mb-6">
-                      <h2 className="text-xl font-bold text-primary">Intelligence Reports</h2>
-                      <p className="text-secondary text-xs">Detailed data exports and cross-departmental analysis.</p>
-                   </div>
-                   {loadingTeam ? (
-                     <SectionSpinner message="Loading Reports..." />
-                   ) : teamError ? (
-                     <SectionError message={teamError} />
-                   ) : (employees.length === 0 && tasks.length === 0) ? (
-                     <div className="p-16 text-center border border-dashed border-border rounded-2xl bg-surface/30">
-                        <FileText size={36} className="text-accent/30 mx-auto mb-4" />
-                        <h3 className="text-sm font-bold text-primary mb-1">No Reports Available</h3>
-                        <p className="text-xs text-secondary font-medium">Add personnel or log tasks to compile system reports.</p>
-                     </div>
-                   ) : (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {[
-                          { title: 'Personnel Yield Q2 Report', size: '4.2 MB', type: 'CSV Spreadsheet' },
-                          { title: 'Resource Efficiency Matrix Summary', size: '1.8 MB', type: 'CSV Spreadsheet' },
-                          { title: 'Strategic Roadmap 2026 Directives', size: '12.4 MB', type: 'CSV Spreadsheet' },
-                        ].map((report, i) => (
-                          <Card key={i} className="flex items-center justify-between p-4.5 border-border/60 hover:border-accent/40 transition-colors group">
-                             <div className="flex items-center gap-3.5">
-                                <div className="w-10 h-10 rounded-xl bg-base border border-border flex items-center justify-center group-hover:border-accent/40 group-hover:text-accent transition-all shrink-0">
-                                   <FileText size={18} className="text-secondary group-hover:text-accent transition-colors" />
-                                </div>
-                                <div className="min-w-0">
-                                   <h4 className="text-xs font-bold text-primary truncate group-hover:text-accent transition-colors">{report.title}</h4>
-                                   <p className="text-[10px] text-secondary font-semibold uppercase tracking-wider mt-0.5">{report.size} · {report.type}</p>
-                                </div>
-                             </div>
-                             <button onClick={() => handleDownloadCSV(report.title)} className="btn-enterprise-secondary p-2 group-hover:text-accent group-hover:border-accent/30 active:scale-90" title="Export CSV">
-                                <Download size={14} />
-                             </button>
-                          </Card>
-                        ))}
-                     </div>
-                   )}
-                </motion.div>
-              )}
-           </AnimatePresence>
-        </div>
-
-          {/* Right Sidebar (Pulse, Shortcuts, Highlights & AI Briefings) */}
-          <div className="space-y-6">
-             {/* Strategic Pulse */}
-             <Card className="p-0 overflow-hidden border-border/60">
-                <div 
-                   className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
-                   onClick={() => setIsPulseCollapsed(!isPulseCollapsed)}
-                >
-                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
-                      <Activity size={13} className="text-secondary" />
-                      Strategic Pulse
-                   </h3>
-                   <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isPulseCollapsed ? '-rotate-90' : ''}`} />
-                </div>
-                 <motion.div 
-                    initial={false}
-                    animate={{ height: isPulseCollapsed ? 0 : 'auto', opacity: isPulseCollapsed ? 0 : 1 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                 >
-                    <div className="px-5 pb-5">
-                       {loadingAnalytics ? (
-                          <div className="py-8 flex flex-col items-center justify-center gap-2 border border-dashed border-border rounded-xl bg-base/5">
-                             <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                             <span className="text-[10px] text-secondary font-bold uppercase tracking-wider animate-pulse">Loading Pulse...</span>
-                          </div>
-                       ) : analyticsError ? (
-                          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-bold text-center flex items-center justify-center gap-1.5">
-                             <AlertTriangle size={12} />
-                             <span>Analytics System Offline</span>
-                          </div>
-                       ) : (tasks.length === 0 && !analytics) ? (
-                          <div className="text-center text-secondary/60 py-8 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
-                             No active performance data to track.
-                          </div>
-                       ) : (
-                          <div className="space-y-5">
-                             <div>
-                                <div className="flex justify-between items-center mb-2 text-xs">
-                                   <span className="font-semibold text-secondary">Global Performance</span>
-                                   <span className="font-bold text-emerald-500 font-mono">{analytics?.tasks?.change ?? analytics?.revenue?.change ?? '+0%'}</span>
-                                </div>
-                                <div className="h-10 flex items-end gap-1.5 px-1">
-                                   {[30, 45, 60, 40, 55, 80, 70, 90, 65, 85].map((h, i) => (
-                                     <div key={i} className="flex-1 bg-accent/20 rounded-t group relative cursor-pointer hover:bg-accent transition-colors" style={{ height: `${h}%` }}>
-                                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/30 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 font-mono">Week {i+1}</div>
-                                     </div>
-                                   ))}
-                                </div>
-                             </div>
-                             
-                             <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-border/40">
-                                <div className="p-3 bg-base border border-border rounded-xl">
-                                   <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Revenue</div>
-                                   <div className="text-sm font-bold text-primary font-mono">
-                                      {analytics?.revenue?.current
-                                        ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                                        : '₹0'}
-                                   </div>
-                                </div>
-                                <div className="p-3 bg-base border border-border rounded-xl">
-                                   <div className="text-[9px] font-bold text-tertiary uppercase tracking-wider mb-1">Task Rate</div>
-                                   <div className="text-sm font-bold text-primary font-mono">
-                                      {analytics
-                                        ? `${analytics.tasks.completionRate}%`
-                                        : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
-                                   </div>
-                                </div>
-                             </div>
-                          </div>
-                       )}
-                    </div>
-                 </motion.div>
-             </Card>
-
-             {/* Executive Insights (AI Briefing) */}
-             <Card className="relative group overflow-hidden p-0 border-border/60">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-accent/10 transition-colors pointer-events-none"></div>
-                <div className="relative z-10">
-                   <div 
-                      className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
-                      onClick={() => setIsInsightsCollapsed(!isInsightsCollapsed)}
-                   >
-                      <div className="flex items-center gap-2">
-                         <Zap size={13} className="text-accent animate-pulse" />
-                         <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Executive Insights</h3>
-                      </div>
-                      <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isInsightsCollapsed ? '-rotate-90' : ''}`} />
-                   </div>
-                   <motion.div 
-                      initial={false}
-                      animate={{ height: isInsightsCollapsed ? 0 : 'auto', opacity: isInsightsCollapsed ? 0 : 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                   >
-                      <div className="px-5 pb-5">
-                         <p className="text-xs text-secondary leading-relaxed mb-4 font-medium">Based on last week&apos;s sprint velocity, we recommend accelerating the <b>R2 Migration</b> to bypass upcoming bandwidth throttles.</p>
-                         <button 
-                            onClick={handleGenerateBriefing} 
-                            className="btn-enterprise-primary w-full text-xs py-2 font-bold flex items-center justify-center gap-1.5"
-                         >
-                            <Sparkles size={13} /> Generate AI Briefing
-                         </button>
-                      </div>
-                   </motion.div>
-                </div>
-             </Card>
-
-             {/* Team Highlights Widget (Future Ready) */}
-             <Card className="p-0 overflow-hidden border-border/60">
-                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
-                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
-                      <Sparkles size={13} className="text-accent animate-pulse" />
-                      Team Highlights
-                   </h3>
-                </div>
-                <div className="px-5 pb-5 space-y-3">
-                   {TEAM_HIGHLIGHTS.map((h, i) => (
-                      <div key={i} className="p-3 bg-base border border-border/60 rounded-xl flex flex-col gap-1 hover:border-accent/30 transition-colors">
-                         <span className="text-[9px] font-bold text-tertiary uppercase tracking-wider">{h.label}</span>
-                         <span className="text-xs font-bold text-primary">{h.value}</span>
-                         <span className="text-[10px] text-secondary font-medium">{h.trend}</span>
-                      </div>
-                   ))}
-                   {TEAM_HIGHLIGHTS.length === 0 && (
-                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
-                         No performance highlights recorded.
-                      </div>
-                   )}
-                </div>
-             </Card>
-
-             {/* Quick Team Shortcuts (Future Ready) */}
-             <Card className="p-0 overflow-hidden border-border/60">
-                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
-                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
-                      <Zap size={13} className="text-purple-500 animate-pulse" />
-                      Quick Shortcuts
-                   </h3>
-                </div>
-                <div className="px-5 pb-5 space-y-2.5">
-                   {QUICK_SHORTCUTS.map((item, i) => (
-                      <button 
-                         key={i} 
-                         onClick={() => {
-                            showToast(`Shortcut execution: ${item.name}`, 'success');
-                            triggerActivityLog('workflow_action', `Executed manager shortcut: [${item.name}]`).catch(console.error);
-                         }} 
-                         className="w-full text-left p-3 bg-base border border-border/60 rounded-xl hover:border-accent/40 hover:bg-accent/[0.01] transition-all flex items-start gap-2.5 active:scale-98"
-                      >
-                         <Lock size={12} className="text-secondary/70 mt-0.5 shrink-0" />
-                         <div>
-                            <div className="text-xs font-bold text-primary">{item.name}</div>
-                            <div className="text-[10px] text-secondary font-medium mt-0.5 leading-relaxed">{item.description}</div>
-                         </div>
-                      </button>
-                   ))}
-                   {QUICK_SHORTCUTS.length === 0 && (
-                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
-                         No operational shortcuts configured.
-                      </div>
-                   )}
-                </div>
-             </Card>
-
-             {/* Recently Approved Widget (Real Database Approvals) */}
-             <Card className="p-0 overflow-hidden border-border/60">
-                <div className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors">
-                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
-                      <ShieldCheck size={13} className="text-emerald-500" />
-                      Recently Approved
-                   </h3>
-                </div>
-                <div className="px-5 pb-5">
-                   {loadingApprovals ? (
-                      <div className="py-6 flex flex-col items-center justify-center gap-2 border border-dashed border-border rounded-xl bg-base/5">
-                         <div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                         <span className="text-[10px] text-secondary font-bold uppercase tracking-wider animate-pulse">Loading approvals...</span>
-                      </div>
-                   ) : approvalsError ? (
-                      <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-bold text-center flex items-center justify-center gap-1">
-                         <AlertTriangle size={12} />
-                         <span>Approvals System Offline</span>
-                      </div>
-                   ) : approvals.filter(a => a.status === 'Authorized').length === 0 ? (
-                      <div className="text-center text-secondary/60 py-5 text-xs font-medium italic border border-dashed border-border rounded-xl bg-base/10">
-                         No recent authorizations logged.
-                      </div>
-                   ) : (
-                      <div className="space-y-3">
-                         {approvals.filter(a => a.status === 'Authorized').slice(0, 3).map((item, i) => (
-                            <div key={i} className="p-3 bg-base border border-border/60 rounded-xl space-y-1.5 hover:border-accent/35 transition-colors">
-                               <div className="flex justify-between items-center gap-2">
-                                  <span className="text-xs font-bold text-primary truncate">{item.user}</span>
-                                  <span className="text-[8.5px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">Approved</span>
-                               </div>
-                               <p className="text-[11px] text-secondary font-medium leading-relaxed">{item.detail}</p>
-                               <div className="text-[9px] text-tertiary font-bold uppercase pt-1 tracking-wider font-mono">Authorized {item.date}</div>
-                            </div>
-                         ))}
-                      </div>
-                   )}
-                </div>
-             </Card>
-
-             {/* Quick Links */}
-             <Card className="p-0 overflow-hidden border-border/60">
-                <div 
-                   className="flex justify-between items-center cursor-pointer select-none p-5 hover:bg-base/30 transition-colors" 
-                   onClick={() => setIsQuickLinksCollapsed(!isQuickLinksCollapsed)}
-                >
-                   <h3 className="text-[10px] font-bold text-tertiary uppercase tracking-wider flex items-center gap-2">
-                      <Layers size={13} className="text-secondary" />
-                      Quick Links
-                   </h3>
-                   <ChevronDown size={14} className={`text-secondary transition-transform duration-200 ${isQuickLinksCollapsed ? '-rotate-90' : ''}`} />
-                </div>
-                <motion.div 
-                   initial={false}
-                   animate={{ height: isQuickLinksCollapsed ? 0 : 'auto', opacity: isQuickLinksCollapsed ? 0 : 1 }}
-                   transition={{ duration: 0.2 }}
-                   className="overflow-hidden"
-                >
-                   <div className="px-5 pb-5 space-y-1">
-                      {[
-                        { name: 'Resource Allocation', icon: Layers, href: '/tasks' },
-                        { name: 'Security Audit', icon: ShieldCheck, href: '/manager?tab=approvals' },
-                        { name: 'Export Monthly Reports', icon: Download, href: '/manager?tab=reports' },
-                      ].map((link, i) => (
-                        <button 
-                           key={i} 
-                           onClick={() => router.push(link.href)} 
-                           className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-base/60 transition-all duration-200 group border border-transparent hover:border-border/30 text-left"
-                        >
-                           <div className="flex items-center gap-2.5">
-                              <link.icon size={13} className="text-secondary group-hover:text-accent transition-colors" />
-                              <span className="text-xs font-semibold text-secondary group-hover:text-primary transition-colors">{link.name}</span>
-                           </div>
-                           <ChevronRight size={12} className="text-tertiary group-hover:translate-x-0.5 transition-transform" />
-                        </button>
-                      ))}
-                   </div>
-                </motion.div>
-             </Card>
+        {/* Left: Project Switcher & Breadcrumb */}
+        <div className="flex items-center gap-4">
+          <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center border border-accent/20">
+            <Layers size={16} />
           </div>
+          <div>
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-secondary uppercase tracking-wider mb-1">
+              <span>Workspace</span>
+              <ChevronRight size={8} />
+              <span>Command Hub</span>
+            </div>
+            
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                className="select-enterprise !py-1 !text-xs font-bold !w-48 bg-transparent"
+              >
+                <option value="all">All Projects Combined</option>
+                {projects.map(p => (
+                  <option key={p._id} value={p._id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Center: Live Search */}
+        <div className="flex-1 max-w-md mx-0 sm:mx-4">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search initiatives, tasks, assignees..."
+              className="w-full bg-base border border-border/60 rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-accent text-primary font-medium"
+            />
+          </div>
+        </div>
+
+        {/* Right: Quick Actions & Refresh */}
+        <div className="flex items-center gap-2.5">
+          <OpsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            title="Refresh dashboard feeds"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          </OpsButton>
+          <OpsButton variant="secondary" size="sm" onClick={() => setNewProjectOpen(true)}>
+            <Folder size={12} /> New Project
+          </OpsButton>
+          <OpsButton variant="primary" size="sm" onClick={() => setNewTaskOpen(true)}>
+            <Plus size={13} /> Launch Task
+          </OpsButton>
+        </div>
       </div>
-    
-      {/* Executive Briefing Modal */}
+
+      {/* ─── Main Content Area ──────────────────────────────────────────────── */}
+      {error ? (
+        <div className="flex-1 flex items-center justify-center p-8">
+          <OpsErrorState
+            kind="network"
+            title="Database Connection Lost"
+            description={error}
+            onRetry={fetchData}
+          />
+        </div>
+      ) : loading ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
+          <Loader2 size={24} className="animate-spin text-accent" />
+          <span className="text-xs font-bold uppercase tracking-widest text-secondary animate-pulse">
+            Compiling Operational Telemetry...
+          </span>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+          
+          {/* Main Area: Top widgets grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+            
+            {/* Today Widget */}
+            <div className="card-enterprise !p-4 flex flex-col min-h-[220px] max-h-[300px]">
+              <WidgetHeader title="Due Today" count={todayTasks.length} color="text-indigo-400" />
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                {todayTasks.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center opacity-40 py-8">
+                    <span className="text-[10px] font-bold text-secondary uppercase">No tasks due today</span>
+                  </div>
+                ) : (
+                  todayTasks.map(t => <MiniTaskCard key={t._id} task={t} />)
+                )}
+              </div>
+            </div>
+
+            {/* Overdue Widget */}
+            <div className="card-enterprise !p-4 flex flex-col min-h-[220px] max-h-[300px]">
+              <WidgetHeader title="Overdue SLA" count={overdueTasks.length} color="text-red-500" />
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                {overdueTasks.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center opacity-40 py-8">
+                    <span className="text-[10px] font-bold text-secondary uppercase">SLA Deadlines Clear</span>
+                  </div>
+                ) : (
+                  overdueTasks.map(t => <MiniTaskCard key={t._id} task={t} />)
+                )}
+              </div>
+            </div>
+
+            {/* Blocked Widget */}
+            <div className="card-enterprise !p-4 flex flex-col min-h-[220px] max-h-[300px]">
+              <WidgetHeader title="Blocked Stream" count={blockedTasks.length} color="text-amber-500" />
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                {blockedTasks.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center opacity-40 py-8">
+                    <span className="text-[10px] font-bold text-secondary uppercase">No blocked dependencies</span>
+                  </div>
+                ) : (
+                  blockedTasks.map(t => <MiniTaskCard key={t._id} task={t} />)
+                )}
+              </div>
+            </div>
+
+            {/* Review Queue Widget */}
+            <div className="card-enterprise !p-4 flex flex-col min-h-[220px] max-h-[300px]">
+              <WidgetHeader title="Review Queue" count={reviewTasks.length} color="text-emerald-500" />
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                {reviewTasks.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center opacity-40 py-8">
+                    <span className="text-[10px] font-bold text-secondary uppercase">Queue clean & clear</span>
+                  </div>
+                ) : (
+                  reviewTasks.map(t => <MiniTaskCard key={t._id} task={t} />)
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Area: Team Capacity & Project Health row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Team Capacity Widget */}
+            <div className="card-enterprise !p-5 lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-primary">Department Personnel Velocity</h3>
+                  <p className="text-[10px] text-secondary font-medium mt-0.5">Real-time team distribution and efficiency loads.</p>
+                </div>
+                <OpsButton variant="ghost" size="xs" onClick={() => setShowRolesModal(true)}>
+                  Manage Roles <ArrowUpRight size={12} />
+                </OpsButton>
+              </div>
+
+              {employees.length === 0 ? (
+                <OpsEmptyState
+                  title="No staff allocated"
+                  description="Add department personnel in settings to monitor capacity."
+                  compact
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {employees.map(emp => (
+                    <div key={emp._id} className="p-3.5 bg-base/30 border border-border/60 rounded-xl space-y-3">
+                      <div className="flex items-center gap-3">
+                        <OpsAvatar name={emp.name} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-primary truncate leading-tight">{emp.name}</h4>
+                          <span className="text-[9px] text-secondary font-bold uppercase tracking-wider block mt-0.5">{emp.role}</span>
+                        </div>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                          emp.workload === 'High' ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                          : emp.workload === 'Optimal' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                          : 'bg-base border border-border/60 text-secondary'
+                        }`}>{emp.workload} Load</span>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-[9px] font-bold text-secondary uppercase">
+                          <span>Efficiency Index</span>
+                          <span className="text-primary font-mono">{emp.performance}</span>
+                        </div>
+                        <div className="w-full h-1 bg-border/40 rounded-full overflow-hidden">
+                          <div className="h-full bg-accent" style={{ width: emp.performance }} />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[9px] font-bold text-secondary uppercase pt-1 border-t border-border/30">
+                        <span>Active Tasks: {emp.activeTasks}</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Online' ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+                          {emp.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Project Health Widget */}
+            <div className="card-enterprise !p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-primary">Strategic Milestones</h3>
+                    <p className="text-[10px] text-secondary font-medium mt-0.5">Focus tracking on chosen initiative scope.</p>
+                  </div>
+                  <Briefcase size={14} className="text-secondary" />
+                </div>
+
+                {activeProject ? (
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-[9px] font-bold text-secondary uppercase tracking-widest block">Project Name</span>
+                      <h4 className="text-sm font-bold text-primary mt-1">{activeProject.name}</h4>
+                    </div>
+                    {activeProject.deadline && (
+                      <div>
+                        <span className="text-[9px] font-bold text-secondary uppercase tracking-widest block">Core Deadline</span>
+                        <span className="text-xs font-bold text-primary flex items-center gap-1.5 mt-1">
+                          <Calendar size={12} className="text-accent" />
+                          {new Date(activeProject.deadline).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[9px] font-bold text-secondary uppercase tracking-widest block">Task Allocation</span>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-2xl font-black text-accent font-mono">
+                          {filteredTasks.filter(t => t.stage === 'Done').length}
+                        </span>
+                        <span className="text-xs font-bold text-secondary">/ {filteredTasks.length} Completed</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-xs text-secondary leading-relaxed font-medium">
+                      Select a project from the top dropdown to render individual health matrices.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3.5 pt-2">
+                      <div className="p-3 bg-base/50 border border-border rounded-xl">
+                        <div className="text-[9px] font-bold text-secondary uppercase">All Initiatives</div>
+                        <div className="text-lg font-black text-primary font-mono mt-1">{tasks.length}</div>
+                      </div>
+                      <div className="p-3 bg-base/50 border border-border rounded-xl">
+                        <div className="text-[9px] font-bold text-secondary uppercase">Active Projects</div>
+                        <div className="text-lg font-black text-primary font-mono mt-1">{projects.length}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-border/40 mt-5 flex items-center gap-3">
+                <OpsButton variant="secondary" size="sm" className="w-full" onClick={handleGenerateBriefing}>
+                  <Sparkles size={12} /> Executive AI Brief
+                </OpsButton>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Area: Approvals & Upcoming SLA Deadlines row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Approvals Queue */}
+            <div className="card-enterprise !p-5 lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-primary">Override Approvals Required</h3>
+                  <p className="text-[10px] text-secondary font-medium mt-0.5">Personnel and Deal flow overrides waiting for security clearance.</p>
+                </div>
+                <Shield size={14} className="text-secondary" />
+              </div>
+
+              {approvals.length === 0 ? (
+                <OpsEmptyState
+                  title="Decision queue clear"
+                  description="No pending deal or personnel override clearances require authorization."
+                  compact
+                />
+              ) : (
+                <div className="space-y-3">
+                  {approvals.slice(0, 3).map(app => (
+                    <div key={app._id} className="p-4 bg-base/30 border border-border/60 hover:border-accent/30 rounded-xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-primary leading-none">{app.requestedByName}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-accent/10 border border-accent/20 text-accent rounded uppercase tracking-wider">{app.reason}</span>
+                          <span className="text-[9px] font-black text-primary font-mono uppercase">{app.dealValue}</span>
+                        </div>
+                        <p className="text-xs text-secondary font-medium leading-relaxed">
+                          Requested override clearance for lead: <b className="text-primary">{app.leadId?.name || 'Unknown'}</b> ({app.leadId?.company || 'No company'})
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {app.status === 'pending' ? (
+                          <>
+                            <OpsButton variant="ghost" size="xs" onClick={() => handleDenyApproval(app._id)}>
+                              Deny
+                            </OpsButton>
+                            <OpsButton variant="primary" size="xs" onClick={() => handleAuthorizeApproval(app._id)}>
+                              Authorize
+                            </OpsButton>
+                          </>
+                        ) : (
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                            app.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                            : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                          }`}>{app.status}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Upcoming Deadlines Widget */}
+            <div className="card-enterprise !p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-primary">SLA Timeline Warning</h3>
+                  <p className="text-[10px] text-secondary font-medium mt-0.5">Upcoming task deadlines monitored by SLA.</p>
+                </div>
+                <AlertCircle size={14} className="text-secondary" />
+              </div>
+
+              {upcomingDeadlines.length === 0 ? (
+                <OpsEmptyState
+                  title="No upcoming targets"
+                  description="Assign due dates to tasks to populate warning markers."
+                  compact
+                />
+              ) : (
+                <div className="space-y-3">
+                  {upcomingDeadlines.map(t => (
+                    <div 
+                      key={t._id}
+                      onClick={() => setInspectorTaskId(t._id)}
+                      className="p-3 bg-base/30 border border-border/60 hover:border-accent/40 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all duration-150 group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-[9px] font-bold text-secondary/60 block mb-0.5">{t.code}</span>
+                        <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors truncate">
+                          {t.title}
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-bold text-secondary shrink-0">
+                        {new Date(t.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Intelligence Reports CSV Section */}
+          <div className="card-enterprise !p-5 space-y-4">
+            <div>
+              <h3 className="text-xs font-bold text-primary">Compiled Analytics Sheets</h3>
+              <p className="text-[10px] text-secondary font-medium mt-0.5">Download database telemetry logs for auditing.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { title: 'Personnel Yield Q2 Report', type: 'Staff load matrix' },
+                { title: 'Resource Efficiency Matrix Summary', type: 'Task SLA metrics' },
+              ].map(sheet => (
+                <div key={sheet.title} className="p-4 bg-base/30 border border-border/60 hover:border-accent/30 rounded-xl flex items-center justify-between transition-colors group">
+                  <div>
+                    <h4 className="text-xs font-bold text-primary group-hover:text-accent transition-colors">{sheet.title}</h4>
+                    <span className="text-[9px] text-secondary font-bold uppercase tracking-wider block mt-0.5">{sheet.type}</span>
+                  </div>
+                  <OpsButton variant="secondary" size="xs" onClick={() => handleDownloadCSV(sheet.title)}>
+                    <Download size={12} /> Compile CSV
+                  </OpsButton>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Task Drawer ────────────────────────────────────────────────────── */}
+      <TaskDrawer
+        open={!!inspectorTaskId}
+        onClose={() => setInspectorTaskId(null)}
+        taskId={inspectorTaskId}
+        onUpdateSuccess={() => { fetchData(true); }}
+        projects={projects}
+        teamMembers={employees}
+      />
+
+      {/* ─── Create Task Modal ──────────────────────────────────────────────── */}
+      <OpsModal
+        open={newTaskOpen}
+        onClose={() => setNewTaskOpen(false)}
+        title="Launch Operation Task"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <OpsButton variant="secondary" onClick={() => setNewTaskOpen(false)}>Cancel</OpsButton>
+            <OpsButton
+              variant="primary"
+              disabled={creatingTask || !ntTitle.trim()}
+              loading={creatingTask}
+              onClick={handleCreateTask}
+            >
+              {creatingTask ? 'Launching…' : 'Launch Task'}
+            </OpsButton>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-5">
+          <div className="col-span-2">
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Task Title *</label>
+            <OpsInput
+              value={ntTitle}
+              onChange={e => setNtTitle(e.target.value)}
+              placeholder="e.g. Sync CDN assets with Cloudflare R2"
+              autoFocus
+            />
+          </div>
+
+          <div className="col-span-2">
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Description</label>
+            <textarea
+              value={ntDescription}
+              onChange={e => setNtDescription(e.target.value)}
+              placeholder="Provide strategic operational parameters..."
+              rows={3}
+              className="w-full bg-base border border-border/70 rounded-lg px-3 py-2 text-[13px] font-medium text-primary placeholder:text-secondary/50 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/15 resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Stage</label>
+            <OpsSelect
+              value={ntStage}
+              onChange={e => setNtStage(e.target.value)}
+              options={STAGES.map(s => ({ value: s, label: s }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Priority</label>
+            <OpsSelect
+              value={ntPriority}
+              onChange={e => setNtPriority(e.target.value)}
+              options={PRIORITIES.map(p => ({ value: p, label: p }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Assignee</label>
+            <OpsSelect
+              value={ntAssignee}
+              onChange={e => setNtAssignee(e.target.value)}
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...employees.map(m => ({ value: m.name, label: `${m.name} (${m.role})` })),
+              ]}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project Scope</label>
+            <OpsSelect
+              value={ntProjectId}
+              onChange={e => setNtProjectId(e.target.value)}
+              options={[
+                { value: '', label: 'No Specific Project' },
+                ...projects.map(p => ({ value: p._id, label: p.name })),
+              ]}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Due Date</label>
+            <OpsInput type="date" value={ntDueDate} onChange={e => setNtDueDate(e.target.value)} />
+          </div>
+        </div>
+      </OpsModal>
+
+      {/* ─── Create Project Modal ───────────────────────────────────────────── */}
+      <OpsModal
+        open={newProjectOpen}
+        onClose={() => setNewProjectOpen(false)}
+        title="Configure New Project"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <OpsButton variant="secondary" onClick={() => setNewProjectOpen(false)}>Cancel</OpsButton>
+            <OpsButton
+              variant="primary"
+              disabled={creatingProject || !npName.trim()}
+              loading={creatingProject}
+              onClick={handleCreateProject}
+            >
+              {creatingProject ? 'Configuring…' : 'Configure Project'}
+            </OpsButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Project Name *</label>
+            <OpsInput
+              value={npName}
+              onChange={e => setNpName(e.target.value)}
+              placeholder="e.g. APAC R2 Asset Cache Sync"
+              autoFocus
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Deadline Target</label>
+              <OpsInput type="date" value={npDeadline} onChange={e => setNpDeadline(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-1.5">Owner Manager</label>
+              <OpsSelect
+                value={npOwner}
+                onChange={e => setNpOwner(e.target.value)}
+                options={[
+                  ...(user?.name ? [{ value: user.name, label: `${user.name} (You)` }] : []),
+                  ...employees.filter(m => m.name !== user?.name).map(m => ({ value: m.name, label: m.name })),
+                ]}
+              />
+            </div>
+          </div>
+        </div>
+      </OpsModal>
+
+      {/* ─── Executive Briefing Modal ───────────────────────────────────────── */}
       <AnimatePresence>
         {showBriefingModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4">
@@ -1070,28 +992,28 @@ function ManagerDashboard() {
                   </div>
 
                   <div className="space-y-4 text-xs">
-                     <div className="grid grid-cols-3 gap-3">
-                       <div className="p-3 bg-base border border-border rounded-xl text-center">
-                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Utilisation</div>
-                         <div className="text-xs font-bold text-primary">
-                           {analytics ? `${(analytics.team.utilisation / 100).toFixed(2)}x` : '—'}
-                         </div>
-                       </div>
-                       <div className="p-3 bg-base border border-border rounded-xl text-center">
-                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Completion</div>
-                         <div className="text-xs font-bold text-emerald-500">
-                           {analytics ? `${analytics.tasks.completionRate}%` : `${tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'Done').length / tasks.length) * 100) : 0}%`}
-                         </div>
-                       </div>
-                       <div className="p-3 bg-base border border-border rounded-xl text-center">
-                         <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Revenue</div>
-                         <div className="text-xs font-bold text-accent">
-                           {analytics?.revenue?.current
-                             ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
-                             : '—'}
-                         </div>
-                       </div>
-                     </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3 bg-base border border-border rounded-xl text-center">
+                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Utilisation</div>
+                        <div className="text-xs font-bold text-primary">
+                          {analytics ? `${(analytics.team.utilisation / 100).toFixed(2)}x` : '—'}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-base border border-border rounded-xl text-center">
+                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Completion</div>
+                        <div className="text-xs font-bold text-emerald-500">
+                          {analytics ? `${analytics.tasks.completionRate}%` : '—'}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-base border border-border rounded-xl text-center">
+                        <div className="text-[9px] font-bold text-tertiary uppercase mb-0.5">Revenue</div>
+                        <div className="text-xs font-bold text-accent">
+                          {analytics?.revenue?.current
+                            ? `₹${Math.round(analytics.revenue.current).toLocaleString()}`
+                            : '—'}
+                        </div>
+                      </div>
+                    </div>
 
                     <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl space-y-2">
                       <div className="flex items-center gap-2 text-xs font-bold text-accent">
@@ -1105,27 +1027,22 @@ function ManagerDashboard() {
                     <div className="space-y-2.5">
                       <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-wider">Strategic Allocations</h4>
                       <div className="p-3 bg-base border border-border rounded-xl flex items-center justify-between text-xs">
-                        <span className="text-secondary">Reallocate <b className="text-primary">{employees[0]?.name || 'Personnel'}</b> to support <b className="text-primary">{employees[1]?.name || 'Staff'}</b></span>
+                        <span className="text-secondary">Reallocate <b className="text-primary">{employees[0]?.name || 'Personnel'}</b> to support critical review tracks</span>
                         <span className="font-bold text-accent text-[9px] uppercase">Actionable</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button 
-                      type="button" 
-                      onClick={() => setShowBriefingModal(false)}
-                      className="btn-enterprise-secondary flex-1 py-2 text-xs"
-                    >
+                    <OpsButton variant="secondary" className="flex-1" onClick={() => setShowBriefingModal(false)}>
                       Close
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={handleApplyBriefingDirective}
-                      className="btn-enterprise-primary flex-1 py-2 text-xs"
-                    >
+                    </OpsButton>
+                    <OpsButton variant="primary" className="flex-1" onClick={() => {
+                      showToast('Directive Sync Broadcasted', 'success');
+                      setShowBriefingModal(false);
+                    }}>
                       <Zap size={12} /> Apply Directive
-                    </button>
+                    </OpsButton>
                   </div>
                 </div>
               )}
@@ -1134,7 +1051,7 @@ function ManagerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Manage Roles Modal */}
+      {/* ─── Manage Roles Modal ─────────────────────────────────────────────── */}
       <AnimatePresence>
         {showRolesModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4">
@@ -1142,80 +1059,82 @@ function ManagerDashboard() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface border border-border rounded-3xl w-full max-w-md p-6 shadow-2xl relative"
+              className="bg-surface border border-border rounded-3xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200"
             >
               <h3 className="text-lg font-bold text-primary mb-2">Manage Personnel Roles</h3>
               <p className="text-secondary text-xs mb-6">Update structural ranks and operational clearances for team members.</p>
               
-              <form onSubmit={handleUpdateRoles} className="space-y-4">
-                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
-                  {editingEmployees.map((emp, idx) => (
-                    <div key={idx} className="p-3 bg-base border border-border rounded-2xl flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg ${emp.color} text-white flex items-center justify-center text-xs font-bold shadow-sm`}>
-                          {emp.avatar}
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-primary leading-tight">{emp.name}</h4>
-                          <span className="text-[8px] text-tertiary uppercase font-medium">ID: 00{idx + 1}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="w-1/2">
-                        <select
-                          value={emp.role}
-                          onChange={e => {
-                            const updated = [...editingEmployees];
-                            updated[idx].role = e.target.value;
-                            setEditingEmployees(updated);
-                          }}
-                          className="select-enterprise w-full text-xs px-3 py-1.5 cursor-pointer font-bold"
-                        >
-                          <option value="Employee">Employee</option>
-                          <option value="Staff">Staff</option>
-                          <option value="MR">MR</option>
-                          <option value="User">User</option>
-                          <option value="Manager">Manager</option>
-                        </select>
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                {employees.map((emp, idx) => (
+                  <div key={emp._id} className="p-3 bg-base border border-border rounded-2xl flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <OpsAvatar name={emp.name} size="sm" />
+                      <div>
+                        <h4 className="text-xs font-bold text-primary leading-tight">{emp.name}</h4>
+                        <span className="text-[8px] text-tertiary uppercase font-medium">Clearance: {emp.role}</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-                
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowRolesModal(false)}
-                    className="btn-enterprise-secondary flex-1 py-2 text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="btn-enterprise-primary flex-1 py-2 text-xs"
-                  >
-                    Apply Changes
-                  </button>
-                </div>
-              </form>
+                    
+                    <div className="w-1/2">
+                      <select
+                        value={emp.role}
+                        onChange={async e => {
+                          const newRole = e.target.value;
+                          try {
+                            const res = await fetch('/api/settings/team', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'client' },
+                              credentials: 'include',
+                              body: JSON.stringify({ userId: emp._id, role: newRole })
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              showToast(`Updated role of ${emp.name} to ${newRole}`, 'success');
+                              fetchData(true);
+                            } else {
+                              throw new Error(data.error);
+                            }
+                          } catch (err: any) {
+                            showToast(err.message || 'Failed to update clearance', 'error');
+                          }
+                        }}
+                        className="select-enterprise w-full text-xs px-3 py-1.5 cursor-pointer font-bold"
+                      >
+                        <option value="Employee">Employee</option>
+                        <option value="Staff">Staff</option>
+                        <option value="MR">MR</option>
+                        <option value="User">User</option>
+                        <option value="Manager">Manager</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex gap-3 pt-4 border-t border-border/40 mt-4">
+                <OpsButton variant="secondary" className="w-full" onClick={() => setShowRolesModal(false)}>
+                  Close
+                </OpsButton>
+              </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
-</div>
+    </div>
   );
 }
 
 export default function ManagerPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white">
-         <div className="text-sm font-bold uppercase tracking-widest animate-pulse">Loading Command Console...</div>
+      <div className="flex-1 flex items-center justify-center bg-base min-h-screen">
+        <div className="flex items-center gap-3 text-secondary">
+          <Loader2 size={20} className="animate-spin text-accent" />
+          <span className="text-sm font-medium">Loading Manager Dashboard…</span>
+        </div>
       </div>
     }>
-       <ManagerDashboard />
+      <ManagerDashboard />
     </Suspense>
   );
 }
-
