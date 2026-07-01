@@ -9,7 +9,8 @@ import {
   FileText, CornerDownRight, MessageCircle, Loader2,
   AlertCircle, PhoneCall, PhoneOff, PhoneIncoming,
   MicOff, VideoOff, CheckCheck, Check, Mic, Camera,
-  ArrowLeft, MonitorPlay,
+  ArrowLeft, MonitorPlay, MoreVertical, Trash2,
+  BellOff, CheckCircle,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -257,6 +258,12 @@ export default function ChatModule() {
   // ── New DM modal ──────────────────────────────────────────────────────────
   const [showNewDM, setShowNewDM]           = useState(false);
   const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceUser[]>([]);
+
+  // ── Conversation context-menu ─────────────────────────────────────────────
+  const [convMenuId, setConvMenuId]         = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingConvId, setDeletingConvId]   = useState<string | null>(null);
+  const [deleteToast, setDeleteToast]         = useState<string | null>(null);
 
   // ── Google Meet State ──────────────────────────────────────────────────────
   const [creatingMeet, setCreatingMeet] = useState(false);
@@ -1156,6 +1163,41 @@ export default function ChatModule() {
     finally { setFlagging(false); }
   };
 
+  // ── Delete Conversation ───────────────────────────────────────────────────
+
+  const handleDeleteConversation = async (convId: string) => {
+    setDeleteConfirmId(null);
+    setDeletingConvId(convId);
+
+    // Optimistic: remove from sidebar immediately
+    setConversations(prev => prev.filter(c => c._id !== convId));
+    if (activeConvId === convId) setActiveConvId(null);
+
+    try {
+      const res = await fetch(`/api/chat/conversations/${convId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Rollback: refetch conversations on error
+        await fetchConversations();
+        console.error('[Chat] delete conversation error:', data.error);
+        setDeleteToast('Could not delete conversation. Please try again.');
+        setTimeout(() => setDeleteToast(null), 4000);
+      } else {
+        setDeleteToast('Conversation deleted.');
+        setTimeout(() => setDeleteToast(null), 3000);
+      }
+    } catch (e) {
+      console.error('[Chat] delete conversation network error:', e);
+      await fetchConversations();
+      setDeleteToast('Network error. Please try again.');
+      setTimeout(() => setDeleteToast(null), 4000);
+    } finally {
+      setDeletingConvId(null);
+    }
+  };
+
   // ── New DM ────────────────────────────────────────────────────────────────
 
   const openNewDMModal = async () => {
@@ -1291,9 +1333,15 @@ export default function ChatModule() {
         .cm-slideUp { animation: slideUp 0.18s ease both; }
 
         /* ── Conversation item ── */
+        .cm-conv-wrap {
+          position:relative; display:flex; align-items:center;
+          margin:1px 6px; width:calc(100% - 12px);
+          border-radius:9px;
+        }
+        .cm-conv-wrap:hover .cm-conv-menu-btn { opacity:1; pointer-events:all; }
         .cm-conv {
           display:flex; align-items:center; gap:10px;
-          padding:9px 10px; margin:1px 6px; width:calc(100% - 12px);
+          padding:9px 10px; flex:1; min-width:0;
           border-radius:9px; cursor:pointer; border:none;
           background:none; text-align:left;
           transition:background 0.12s ease;
@@ -1302,6 +1350,42 @@ export default function ChatModule() {
         .cm-conv.active { background:var(--accent-primary); }
         .cm-conv.active .cm-conv-name { color:#fff; }
         .cm-conv.active .cm-conv-sub  { color:rgba(255,255,255,0.65); }
+
+        /* ── Three-dot menu button ── */
+        .cm-conv-menu-btn {
+          opacity:0; pointer-events:none;
+          position:absolute; right:6px; top:50%; transform:translateY(-50%);
+          z-index:10; border:none; background:none; cursor:pointer;
+          width:26px; height:26px; border-radius:7px;
+          display:flex; align-items:center; justify-content:center;
+          color:var(--text-secondary);
+          transition:opacity 0.12s, background 0.12s, color 0.12s;
+        }
+        .cm-conv-menu-btn:hover { background:var(--border-subtle); color:var(--text-primary); }
+        .cm-conv.active ~ .cm-conv-menu-btn { color:rgba(255,255,255,0.7); }
+        .cm-conv.active ~ .cm-conv-menu-btn:hover { background:rgba(255,255,255,0.15); color:#fff; }
+
+        /* ── Conv dropdown menu ── */
+        .cm-conv-dropdown {
+          position:absolute; right:0; top:calc(100% + 2px); z-index:200;
+          background:var(--bg-surface);
+          border:1px solid var(--border-subtle);
+          border-radius:10px; padding:4px;
+          min-width:160px;
+          box-shadow:0 8px 32px rgba(0,0,0,0.15);
+          animation:scaleIn 0.13s ease both;
+          transform-origin:top right;
+        }
+        .cm-conv-dropdown-item {
+          display:flex; align-items:center; gap:9px;
+          width:100%; padding:7px 10px; border:none; background:none;
+          border-radius:7px; cursor:pointer; font-family:inherit;
+          font-size:12.5px; font-weight:550; color:var(--text-primary);
+          text-align:left; transition:background 0.1s;
+        }
+        .cm-conv-dropdown-item:hover { background:var(--bg-base); }
+        .cm-conv-dropdown-item.danger { color:#ef4444; }
+        .cm-conv-dropdown-item.danger:hover { background:rgba(239,68,68,0.08); }
 
         /* ── Bubbles ── */
         .cm-bubble {
@@ -1738,66 +1822,121 @@ export default function ChatModule() {
               const otherUser = conv.otherParticipants[0];
               const isOnline = conv.type==='direct' && otherUser && onlineUsers.has(otherUser._id);
               const isActive = activeConvId===conv._id;
+              const menuOpen  = convMenuId === conv._id;
               return (
-                <button key={conv._id} onClick={()=>setActiveConvId(conv._id)}
-                  className={`cm-conv ${isActive?'active':''}`}
-                >
-                  <div style={{ position:'relative', flexShrink:0 }}>
-                    <div style={{
-                      width:36, height:36, borderRadius:'50%', flexShrink:0,
-                      background:`linear-gradient(135deg,${avatarBg(conv.name)})`,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontSize:11, fontWeight:800, color:'#fff',
-                    }}>
-                      {getInitials(conv.name)}
-                    </div>
-                    {conv.type==='direct' ? (
-                      <span style={{
-                        position:'absolute', bottom:0, right:0,
-                        width:9, height:9, borderRadius:'50%',
-                        background: isActive ? '#fff' : (isOnline?'#22c55e':'#6b7280'),
-                        border:`2px solid var(--bg-${isActive?'surface':'base'})`,
-                        boxShadow: isOnline&&!isActive ? '0 0 5px #22c55e66' : 'none',
-                        transition:'all 0.3s',
-                      }}/>
-                    ) : (
-                      <span style={{
-                        position:'absolute', bottom:0, right:0,
-                        width:13, height:13, borderRadius:'50%',
-                        background: isActive ? 'rgba(255,255,255,.3)' : 'var(--accent-primary)',
-                        border:'2px solid var(--bg-base)',
+                <div key={conv._id} className="cm-conv-wrap" style={{ position:'relative' }}>
+                  <button onClick={()=>setActiveConvId(conv._id)}
+                    className={`cm-conv ${isActive?'active':''}`}
+                    style={{ paddingRight: 32 }}
+                  >
+                    <div style={{ position:'relative', flexShrink:0 }}>
+                      <div style={{
+                        width:36, height:36, borderRadius:'50%', flexShrink:0,
+                        background:`linear-gradient(135deg,${avatarBg(conv.name)})`,
                         display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:11, fontWeight:800, color:'#fff',
                       }}>
-                        <Users size={7} color="#fff"/>
-                      </span>
-                    )}
-                  </div>
-
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4, marginBottom:1 }}>
-                      <span className="cm-conv-name" style={{
-                        fontSize:13, fontWeight:conv.unreadCount>0?750:600,
-                        color: isActive ? '#fff' : 'var(--text-primary)',
-                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
-                      }}>
-                        {conv.name}
-                      </span>
-                      {conv.unreadCount>0 && (
-                        <span className="cm-badge" style={{ background: isActive ? 'rgba(255,255,255,.9)' : 'var(--accent-primary)', color: isActive ? 'var(--accent-primary)' : '#fff' }}>
-                          {conv.unreadCount>99?'99+':conv.unreadCount}
+                        {getInitials(conv.name)}
+                      </div>
+                      {conv.type==='direct' ? (
+                        <span style={{
+                          position:'absolute', bottom:0, right:0,
+                          width:9, height:9, borderRadius:'50%',
+                          background: isActive ? '#fff' : (isOnline?'#22c55e':'#6b7280'),
+                          border:`2px solid var(--bg-${isActive?'surface':'base'})`,
+                          boxShadow: isOnline&&!isActive ? '0 0 5px #22c55e66' : 'none',
+                          transition:'all 0.3s',
+                        }}/>
+                      ) : (
+                        <span style={{
+                          position:'absolute', bottom:0, right:0,
+                          width:13, height:13, borderRadius:'50%',
+                          background: isActive ? 'rgba(255,255,255,.3)' : 'var(--accent-primary)',
+                          border:'2px solid var(--bg-base)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <Users size={7} color="#fff"/>
                         </span>
                       )}
                     </div>
-                    <p className="cm-conv-sub" style={{
-                      fontSize:11, margin:0,
-                      color: isActive ? 'rgba(255,255,255,.65)' : (conv.unreadCount>0 ? 'var(--text-primary)' : 'var(--text-secondary)'),
-                      fontWeight: conv.unreadCount>0 ? 600 : 400,
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                    }}>
-                      {conv.lastMessage||'No messages yet'}
-                    </p>
-                  </div>
-                </button>
+
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4, marginBottom:1 }}>
+                        <span className="cm-conv-name" style={{
+                          fontSize:13, fontWeight:conv.unreadCount>0?750:600,
+                          color: isActive ? '#fff' : 'var(--text-primary)',
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
+                        }}>
+                          {conv.name}
+                        </span>
+                        {conv.unreadCount>0 && (
+                          <span className="cm-badge" style={{ background: isActive ? 'rgba(255,255,255,.9)' : 'var(--accent-primary)', color: isActive ? 'var(--accent-primary)' : '#fff' }}>
+                            {conv.unreadCount>99?'99+':conv.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                      <p className="cm-conv-sub" style={{
+                        fontSize:11, margin:0,
+                        color: isActive ? 'rgba(255,255,255,.65)' : (conv.unreadCount>0 ? 'var(--text-primary)' : 'var(--text-secondary)'),
+                        fontWeight: conv.unreadCount>0 ? 600 : 400,
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      }}>
+                        {conv.lastMessage||'No messages yet'}
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Three-dot menu button */}
+                  <button
+                    id={`cm-menu-btn-${conv._id}`}
+                    className="cm-conv-menu-btn"
+                    title="More options"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setConvMenuId(menuOpen ? null : conv._id);
+                    }}
+                  >
+                    <MoreVertical size={14}/>
+                  </button>
+
+                  {/* Dropdown */}
+                  {menuOpen && (
+                    <>
+                      {/* invisible overlay to close on outside click */}
+                      <div
+                        style={{ position:'fixed', inset:0, zIndex:199 }}
+                        onClick={() => setConvMenuId(null)}
+                      />
+                      <div className="cm-conv-dropdown">
+                        <button
+                          className="cm-conv-dropdown-item"
+                          onClick={() => { setConvMenuId(null); setActiveConvId(conv._id); }}
+                        >
+                          <MessageSquare size={13}/> Open
+                        </button>
+                        <button
+                          className="cm-conv-dropdown-item"
+                          onClick={() => { setConvMenuId(null); markConversationAsRead(conv._id); }}
+                        >
+                          <CheckCircle size={13}/> Mark as Read
+                        </button>
+                        <button
+                          className="cm-conv-dropdown-item"
+                          onClick={() => { setConvMenuId(null); }}
+                        >
+                          <BellOff size={13}/> Mute
+                        </button>
+                        <div style={{ height:1, background:'var(--border-subtle)', margin:'3px 4px' }}/>
+                        <button
+                          className="cm-conv-dropdown-item danger"
+                          onClick={() => { setConvMenuId(null); setDeleteConfirmId(conv._id); }}
+                        >
+                          <Trash2 size={13}/> Delete Conversation
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -2616,6 +2755,94 @@ export default function ChatModule() {
                 Dismiss
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ══ DELETE CONVERSATION CONFIRMATION MODAL ══ */}
+        {deleteConfirmId && (() => {
+          const convToDelete = conversations.find(c => c._id === deleteConfirmId);
+          const convName = convToDelete?.name ?? 'this conversation';
+          return (
+            <div className="cm-fadeIn" style={{
+              position:'absolute', inset:0, zIndex:300,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              background:'rgba(0,0,0,.55)', backdropFilter:'blur(10px)',
+              borderRadius:16,
+            }}>
+              <div className="cm-scaleIn" style={{
+                background:'var(--bg-surface)',
+                border:'1px solid var(--border-subtle)',
+                borderRadius:18, width:340, padding:'28px 28px 24px',
+                boxShadow:'0 24px 64px rgba(0,0,0,.35)',
+                textAlign:'center',
+              }}>
+                {/* Icon */}
+                <div style={{
+                  width:52, height:52, borderRadius:14,
+                  background:'rgba(239,68,68,0.12)',
+                  border:'1.5px solid rgba(239,68,68,0.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  margin:'0 auto 16px',
+                }}>
+                  <Trash2 size={22} color="#ef4444"/>
+                </div>
+
+                <div style={{ fontSize:16, fontWeight:780, color:'var(--text-primary)', marginBottom:8, letterSpacing:'-0.01em' }}>
+                  Delete Conversation?
+                </div>
+                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'0 0 22px', lineHeight:1.55, fontWeight:480 }}>
+                  <strong style={{ color:'var(--text-primary)' }}>{convName}</strong> will be removed from your sidebar.
+                  Messages and files are preserved for audit purposes.
+                </p>
+
+                <div style={{ display:'flex', gap:10 }}>
+                  <button
+                    className="cm-pill ghost"
+                    style={{ flex:1, justifyContent:'center', fontSize:13 }}
+                    onClick={() => setDeleteConfirmId(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="cm-pill danger"
+                    style={{ flex:1, justifyContent:'center', fontSize:13, gap:6 }}
+                    disabled={deletingConvId === deleteConfirmId}
+                    onClick={() => handleDeleteConversation(deleteConfirmId)}
+                  >
+                    {deletingConvId === deleteConfirmId
+                      ? <><Loader2 size={13} style={{ animation:'spin 1s linear infinite' } as any}/> Deleting…</>
+                      : <><Trash2 size={13}/> Delete</>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ══ DELETE TOAST ══ */}
+        {deleteToast && (
+          <div className="cm-slideUp" style={{
+            position:'absolute', bottom:20, left:20, zIndex:200,
+            background: deleteToast.startsWith('Could') || deleteToast.startsWith('Network')
+              ? 'rgba(239,68,68,0.93)' : 'rgba(15,23,42,0.92)',
+            backdropFilter:'blur(10px)',
+            border:'1px solid rgba(255,255,255,0.1)',
+            borderRadius:12, padding:'10px 16px',
+            display:'flex', alignItems:'center', gap:8,
+            boxShadow:'0 8px 24px rgba(0,0,0,.25)',
+          }}>
+            {deleteToast.startsWith('Could') || deleteToast.startsWith('Network')
+              ? <AlertCircle size={14} color="#fff"/>
+              : <CheckCheck size={14} color="#4ade80"/>
+            }
+            <span style={{ fontSize:12, fontWeight:600, color:'#fff' }}>{deleteToast}</span>
+            <button
+              onClick={() => setDeleteToast(null)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,0.55)', display:'flex', marginLeft:4, padding:0 }}
+            >
+              <X size={12}/>
+            </button>
           </div>
         )}
 

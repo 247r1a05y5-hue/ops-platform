@@ -37,10 +37,11 @@ async function _GET(req: NextRequest) {
   if (!currentUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
   const workspaceId = mainWs._id;
 
-  // Fetch conversations for this user in their workspace
+  // Fetch conversations for this user in their workspace (exclude soft-deleted)
   const conversations = await Conversation.find({
     workspaceId,
     participants: session.sub,
+    deletedAt: { $exists: false },
   })
     .sort({ lastMessageAt: -1 })
     .lean() as any[];
