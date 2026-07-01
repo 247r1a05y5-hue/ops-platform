@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Install dependencies
 # ==========================================
-FROM node:18-alpine AS deps
+FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN npm ci
 # ==========================================
 # Stage 2: Build the application
 # ==========================================
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -29,7 +29,7 @@ RUN npm run build
 # ==========================================
 # Stage 3: Production runner
 # ==========================================
-FROM node:18-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -55,7 +55,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 COPY --from=builder --chown=nextjs:nodejs /app/lib ./lib
 
 # Install only production dependencies to minimize size and vulnerabilities
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Set directory permissions for user nextjs
 RUN chown -R nextjs:nodejs /app
