@@ -82,7 +82,7 @@ export function TasksBoard() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ _id: string; name: string; role: string; department?: string }[]>([]);
 
   // Pagination & Bulk Selection states
   const [currentPage, setCurrentPage] = useState(1);

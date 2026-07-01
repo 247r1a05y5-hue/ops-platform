@@ -198,6 +198,11 @@ function ManagerDashboard() {
   const [approvals, setApprovals] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  // Filter & search states
+  const [filterOwner, setFilterOwner] = useState<string>('All');
+  const [filterPriority, setFilterPriority] = useState<string>('All');
+  const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Real-time Presence
   const { socket } = useSocket();
@@ -246,6 +251,12 @@ function ManagerDashboard() {
   const [isPulseCollapsed, setIsPulseCollapsed] = useState(false);
   const [isInsightsCollapsed, setIsInsightsCollapsed] = useState(false);
   const [isQuickLinksCollapsed, setIsQuickLinksCollapsed] = useState(false);
+
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
+  const [newTaskOwner, setNewTaskOwner] = useState('');
+  const [newTaskDeadline, setNewTaskDeadline] = useState('');
 
   // getVelocityData returns normalised heights for the chart bars.
   // Returns fallback bars when no task data exists.
@@ -576,6 +587,8 @@ function ManagerDashboard() {
   };
 
   const handleApplyBriefingDirective = () => {
+    const firstEmp = employees[0]?.name || 'Personnel';
+    const secondEmp = employees[1]?.name || 'Staff';
     showToast('Briefing directive broadcasted to Department Hub!', 'success');
     triggerActivityLog('workflow_action', 'Applied executive briefing directive: [APAC Cloudflare Sync]').catch(console.error);
     setShowBriefingModal(false);
@@ -666,10 +679,10 @@ function ManagerDashboard() {
                    ) : (
                       <TeamModule employees={employeesWithRealtimePresence} onManageRoles={() => setShowRolesModal(true)} onToggleStatus={toggleStatus} />
                    )}
-                </motion.div>
-              )}
-              
-              {activeTab === 'approvals' && (
+                 </motion.div>
+               )}
+
+     {activeTab === 'approvals' && (
                 <motion.div key="approvals" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity:0, y: 10}}>
                    <div className="flex flex-col gap-1 mb-6">
                       <h2 className="text-xl font-bold text-primary">Decision Protocols</h2>
@@ -1265,7 +1278,7 @@ function ManagerDashboard() {
                     type="submit"
                     className="btn-enterprise-primary flex-1 py-2 text-xs"
                   >
-                    Apply Changes
+                    Apply Sync Changes
                   </button>
                 </div>
               </form>
@@ -1273,7 +1286,6 @@ function ManagerDashboard() {
           </div>
         )}
       </AnimatePresence>
-
 </div>
   );
 }

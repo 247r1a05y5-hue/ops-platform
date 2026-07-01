@@ -892,7 +892,6 @@ function EmployeeDashboard() {
 
            </AnimatePresence>
          </div>
-
          {/* Persistence Sidebar */}
          <div className="space-y-6">
              <Card className="relative group overflow-hidden border-border/80 bg-surface p-0">
@@ -957,6 +956,7 @@ function EmployeeDashboard() {
                            className="w-full bg-base border border-border rounded-xl pl-8 pr-3 py-1.5 text-[10px] focus:outline-none focus:border-accent text-primary font-medium"
                          />
                       </div>
+
 
                       <div className="space-y-3">
                          {(() => {

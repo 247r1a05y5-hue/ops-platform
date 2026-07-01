@@ -4,7 +4,7 @@ import { useUI } from '@/context/UIContext';
 import { useAuth } from '@/context/AuthContext';
 import { downloadCSV } from '@/utils/export';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, TrendingUp, TrendingDown, CheckCircle, Calendar, Users, ExternalLink, MoreHorizontal, FileText, AlertCircle, ChevronDown, Sparkles } from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, CheckCircle, Calendar, Users, ExternalLink, MoreHorizontal, FileText, AlertCircle, ChevronDown, Sparkles, X, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 interface TaskItem extends Record<string, unknown> {
@@ -55,6 +55,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [workspaceUsers, setWorkspaceUsers] = useState<{ _id: string; name: string; role: string; email?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInitialMount, setIsInitialMount] = useState(true);
 
@@ -62,6 +63,24 @@ export default function Dashboard() {
   const [isTeamCollapsed, setIsTeamCollapsed] = useState(false);
   const [isApprovalsCollapsed, setIsApprovalsCollapsed] = useState(false);
   const [isDeadlinesCollapsed, setIsDeadlinesCollapsed] = useState(false);
+
+  // Task creation modal states
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskPriority, setTaskPriority] = useState('Medium');
+  const [taskDueDate, setTaskDueDate] = useState('');
+  const [taskAssignee, setTaskAssignee] = useState('');
+
+  // Lead creation modal states
+  const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadCompany, setLeadCompany] = useState('');
+  const [leadValue, setLeadValue] = useState('5000');
+
+  // Task detail modal
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
 
   const fetchStats = async () => {
     try {
@@ -106,7 +125,7 @@ export default function Dashboard() {
     }
   };
 
-  const [workspaceUsers, setWorkspaceUsers] = useState<{ _id: string; name: string; role: string; email?: string }[]>([]);
+  // Load live team members with task counts and workspace users
   const fetchTeam = async () => {
     try {
       const res = await fetch('/api/dashboard/team');
@@ -133,6 +152,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (!isInitialMount) fetchStats();
   }, [activeTab, isInitialMount]);
+
+  // Pre-fill task assignee with logged-in user when modal opens
+  useEffect(() => {
+    if (isTaskModalOpen && user?.name) {
+      setTaskAssignee(prev => prev || user.name);
+    }
+  }, [isTaskModalOpen, user?.name]);
 
   const handleExport = () => {
     setIsExporting(true);
@@ -167,6 +193,87 @@ export default function Dashboard() {
     }
   };
 
+  // Create task POST action
+  const handleSaveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) {
+      showToast('Task title is required.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: taskTitle.trim(),
+          description: taskDescription.trim(),
+          priority: taskPriority,
+          stage: 'Backlog',
+          assignee: taskAssignee,
+          dueDate: taskDueDate ? new Date(taskDueDate) : undefined
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('New task created successfully!', 'success');
+        setIsTaskModalOpen(false);
+        setTaskTitle('');
+        setTaskDescription('');
+        setTaskPriority('Medium');
+        setTaskDueDate('');
+        fetchTasks();
+        fetchStats();
+      } else {
+        showToast(data.error || 'Failed to create task', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Server connection error', 'error');
+    }
+  };
+
+  // Add Lead POST action
+  const handleImportLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadName || !leadEmail) {
+      showToast('Lead name and email are required.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: leadName.trim(),
+          email: leadEmail.trim(),
+          company: leadCompany.trim() || 'Acme Corp',
+          value: `$${parseFloat(leadValue).toLocaleString()}`,
+          stage: 'Discovery',
+          status: 'Warm',
+          assignedToName: user?.name || 'Unassigned'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Lead imported successfully to CRM pipeline!', 'success');
+        setIsLeadModalOpen(false);
+        setLeadName('');
+        setLeadEmail('');
+        setLeadCompany('');
+        setLeadValue('5000');
+        fetchStats();
+      } else {
+        showToast(data.error || 'Failed to import lead', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Server connection error', 'error');
+    }
+  };
+
+  // Approve invoice PUT action
   const handleApproveInvoice = async (invoiceId: string, invoiceNum: string) => {
     try {
       const res = await fetch('/api/invoices', {
@@ -611,6 +718,121 @@ export default function Dashboard() {
 
         </div>
       </div>
+
+      {/* Quick Create Modals */}
+      <AnimatePresence>
+        {isTaskModalOpen && (
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{scale:0.95,y:20}} animate={{scale:1,y:0}} exit={{scale:0.95,y:20}} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden">
+              <form onSubmit={handleSaveTask}>
+                <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-base/50">
+                  <h2 className="text-base font-bold">Create New Task</h2>
+                  <button type="button" onClick={() => setIsTaskModalOpen(false)} className="p-1 hover:bg-surface rounded-md text-secondary hover:text-primary transition-colors"><X size={18}/></button>
+                </div>
+                <div className="p-6 flex flex-col gap-5">
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Task Title *</label>
+                    <input required type="text" value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} placeholder="e.g. Design homepage hero" className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary text-sm font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Description</label>
+                    <textarea rows={3} value={taskDescription} onChange={e=>setTaskDescription(e.target.value)} placeholder="Enter details about task..." className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary text-sm font-medium resize-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Priority</label>
+                      <select value={taskPriority} onChange={e=>setTaskPriority(e.target.value)} className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary font-bold text-sm">
+                        <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Due Date</label>
+                      <input type="date" value={taskDueDate} onChange={e=>setTaskDueDate(e.target.value)} className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary font-bold text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Assignee</label>
+                    <select value={taskAssignee} onChange={e=>setTaskAssignee(e.target.value)} className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-accent text-primary font-bold text-sm">
+                      {user?.name && <option value={user.name}>{user.name} (You)</option>}
+                      {workspaceUsers.filter(m => m.name !== user?.name).map(m => (
+                        <option key={m._id} value={m.name}>{m.name} ({m.role})</option>
+                      ))}
+                      {workspaceUsers.length === 0 && !user?.name && <option value="">Unassigned</option>}
+                    </select>
+                  </div>
+                </div>
+                <div className="px-6 py-4 border-t border-border flex justify-end gap-3 bg-base/50">
+                  <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-5 py-2 text-xs font-bold text-secondary hover:text-primary transition-colors">Cancel</button>
+                  <button type="submit" className="px-8 py-2.5 bg-accent text-white font-bold rounded-xl hover:bg-indigo-600 shadow-lg active:scale-95 transition-all text-xs">Save Task</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {isLeadModalOpen && (
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{scale:0.95,y:20}} animate={{scale:1,y:0}} exit={{scale:0.95,y:20}} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden">
+              <form onSubmit={handleImportLead}>
+                <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-base/50">
+                  <h2 className="text-base font-bold flex items-center gap-2 text-primary"><Users size={16} className="text-blue-500"/> Add New Lead</h2>
+                  <button type="button" onClick={() => setIsLeadModalOpen(false)} className="p-1 hover:bg-surface rounded-md text-secondary hover:text-primary transition-colors"><X size={18}/></button>
+                </div>
+                <div className="p-6 grid grid-cols-2 gap-5">
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Full Name *</label>
+                    <input required type="text" value={leadName} onChange={e=>setLeadName(e.target.value)} placeholder="e.g. Maya Thompson" className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-blue-500 text-primary text-sm font-medium" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Lead Email *</label>
+                    <input required type="email" value={leadEmail} onChange={e=>setLeadEmail(e.target.value)} placeholder="maya@acme.com" className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-blue-500 text-primary text-sm font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Company</label>
+                    <input type="text" value={leadCompany} onChange={e=>setLeadCompany(e.target.value)} placeholder="Company INC" className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-blue-500 text-primary text-sm font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Est. Value ($)</label>
+                    <input type="number" value={leadValue} onChange={e=>setLeadValue(e.target.value)} placeholder="24000" className="w-full px-4 py-2 border border-border bg-base rounded-lg focus:outline-none focus:border-blue-500 text-primary text-sm font-medium" />
+                  </div>
+                </div>
+                <div className="px-6 py-4 border-t border-border flex justify-end gap-3 bg-base/50">
+                  <button type="button" onClick={() => setIsLeadModalOpen(false)} className="px-5 py-2 text-xs font-bold text-secondary hover:text-primary transition-colors">Cancel</button>
+                  <button type="submit" className="px-8 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all text-xs">Import Lead</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {selectedTask && (
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{scale:0.95,y:20}} animate={{scale:1,y:0}} exit={{scale:0.95,y:20}} className="bg-surface w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-base/50">
+                <span className="text-[9px] font-mono bg-border px-2 py-1 rounded text-secondary uppercase tracking-wider">OPS-TASK</span>
+                <button onClick={() => setSelectedTask(null)} className="p-1 hover:bg-surface rounded-md text-secondary hover:text-primary transition-colors"><X size={18}/></button>
+              </div>
+              <div className="p-8 pb-4">
+                <h2 className="text-xl font-bold mb-4">{selectedTask.title}</h2>
+                <p className="text-xs text-secondary leading-relaxed mb-8">{selectedTask.description || 'No description provided.'}</p>
+                <div className="grid grid-cols-2 gap-y-6 text-xs border-t border-border pt-6">
+                  <div><h4 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Priority</h4>
+                    <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider border border-current text-${selectedTask.color}-600 dark:text-${selectedTask.color}-400 bg-current/10`}>{selectedTask.priority}</span></div>
+                  <div><h4 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Owner</h4>
+                    <div className="font-bold flex items-center gap-2"><div className="w-5 h-5 rounded-full bg-accent/20 border border-accent flex items-center justify-center text-[9px] text-accent">{selectedTask.assignee[0]}</div>{selectedTask.assignee}</div></div>
+                  <div><h4 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Due Date</h4>
+                    <div className="font-bold flex items-center gap-2"><Calendar size={12} className="text-secondary"/> {selectedTask.dueDate}</div></div>
+                  <div><h4 className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-2">Status</h4>
+                    <div className={`font-bold flex items-center gap-2 ${selectedTask.completed ? 'text-accent' : ''}`}>{selectedTask.completed ? <CheckCircle size={12}/> : <Clock size={12}/>}{selectedTask.completed ? 'Completed' : 'Pending'}</div></div>
+                </div>
+              </div>
+              <div className="px-8 py-5 border-t border-border flex justify-end bg-base/30 mt-4">
+                <button onClick={() => setSelectedTask(null)} className="px-8 py-2.5 bg-surface border border-border text-primary font-bold rounded-xl hover:bg-base hover:border-accent transition-all active:scale-95 text-xs">Close</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

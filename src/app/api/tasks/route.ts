@@ -7,6 +7,44 @@ import { logActivity } from '@/lib/activity';
 import { createNotification } from '@/lib/notifications';
 import mongoose from 'mongoose';
 
+// ── Workspace isolation helper ─────────────────────────────────────────────────
+// Resolves the workspaceId of the current session user from DB.
+// Tasks have no workspaceId field, so we scope them by restricting to assignees
+// who belong to the same workspace. When no workspace is found, no filter is applied
+// (single-tenant safe).
+const memberCache = new Map<string, { identifiers: string[] | null; expiresAt: number }>();
+const MEMBER_CACHE_TTL = 15000;
+
+async function getWorkspaceMemberNames(userId: string): Promise<string[] | null> {
+  const now = Date.now();
+  const cached = memberCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.identifiers;
+  }
+
+  try {
+    const currentUser = await User.findById(userId).select('workspaceId').lean() as any;
+    if (!currentUser?.workspaceId) {
+      memberCache.set(userId, { identifiers: null, expiresAt: now + MEMBER_CACHE_TTL });
+      return null;
+    }
+    const members = await User.find({ workspaceId: currentUser.workspaceId })
+      .select('name email').lean() as any[];
+    const identifiers = members.flatMap((m: any) => [m.name, m.email].filter(Boolean));
+    memberCache.set(userId, { identifiers, expiresAt: now + MEMBER_CACHE_TTL });
+    return identifiers;
+  } catch {
+    return null;
+  }
+}
+
+const STAGES = ['Backlog', 'In Progress', 'Review', 'Done'];
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
+
+function stagePrefix(stage: string) {
+  const map: Record<string, string> = { Backlog: 'B', 'In Progress': 'P', Review: 'R', Done: 'D' };
+  return map[stage] ?? 'T';
+}
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -22,6 +60,7 @@ async function _GET(req: NextRequest) {
     // Resolve current user workspace
     const currentUser = await User.findById(session.sub).select('workspaceId').lean() as any;
     const workspaceId = currentUser?.workspaceId;
+    const workspaceMemberNames = workspaceId ? await getWorkspaceMemberNames(session.sub) : null;
 
     const query: Record<string, any> = { isDeleted: { $ne: true } };
 
@@ -45,10 +84,15 @@ async function _GET(req: NextRequest) {
     // Role-based visibility enforcement
     // Employees and MRs can only retrieve tasks assigned specifically to them, or general role tasks if not assigned to someone else
     if (session.role === 'Staff' || session.role === 'Employee' || session.role === 'MR' || session.role === 'User') {
+      const assigneeMatches = [session.name, session.email].filter(Boolean) as string[];
+      if (workspaceMemberNames?.length) {
+        assigneeMatches.push(...workspaceMemberNames);
+      }
       query.$and = [
         {
           $or: [
             { assignedTo: new mongoose.Types.ObjectId(session.sub) },
+<<<<<<< HEAD
             { assignee: session.name },
             { assignee: session.email },
             {
@@ -58,6 +102,9 @@ async function _GET(req: NextRequest) {
                 { assignedTo: null }
               ]
             }
+=======
+            ...assigneeMatches.map((value) => ({ assignee: value }))
+>>>>>>> 40d5558 (Final client delivery)
           ]
         }
       ];
@@ -191,7 +238,7 @@ async function _POST(req: NextRequest) {
       : [];
     const mappedSubtasks = mappedChecklist.map((item: any) => ({ title: item.title, done: item.checked }));
 
-    const resolvedPriority = ['Low', 'Medium', 'High', 'Critical'].includes(priority) ? priority : 'Medium';
+    const resolvedPriority = PRIORITIES.includes(priority) ? priority : 'Medium';
     const resolvedStage = ['Backlog', 'To Do', 'In Progress', 'Review', 'Under Review', 'Done', 'Blocked'].includes(stage) ? stage : (resolvedAssignee ? 'To Do' : 'Backlog');
     const initialStatus = resolvedAssignee ? 'Assigned' : 'Draft';
 
