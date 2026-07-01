@@ -91,22 +91,17 @@ async function _GET(req: NextRequest) {
       query.$and = [
         {
           $or: [
-            { assignedTo: new mongoose.Types.ObjectId(session.sub) },
-<<<<<<< HEAD
-            { assignee: session.name },
-            { assignee: session.email },
-            {
-              assignedRole: session.role,
-              $or: [
-                { assignedTo: { $exists: false } },
-                { assignedTo: null }
-              ]
-            }
-=======
-            ...assigneeMatches.map((value) => ({ assignee: value }))
->>>>>>> 40d5558 (Final client delivery)
-          ]
-        }
+  { assignedTo: new mongoose.Types.ObjectId(session.sub) },
+  { assignee: session.name },
+  { assignee: session.email },
+  {
+    assignedRole: session.role,
+    $or: [
+      { assignedTo: { $exists: false } },
+      { assignedTo: null }
+    ]
+  }
+]        }
       ];
     }
 
