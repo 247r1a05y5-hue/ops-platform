@@ -21,14 +21,14 @@ export const dynamic  = 'force-dynamic';
  */
 async function _DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> | { id: string } },
 ) {
   const session = await getSessionFromRequest(req);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = params;
+  const { id } = await Promise.resolve(context.params);
   if (!id || id.length !== 24) {
     return NextResponse.json({ error: 'Invalid conversation id' }, { status: 400 });
   }

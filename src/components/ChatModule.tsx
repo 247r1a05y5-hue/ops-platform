@@ -1176,6 +1176,7 @@ export default function ChatModule() {
     try {
       const res = await fetch(`/api/chat/conversations/${convId}`, {
         method: 'DELETE',
+        headers: { 'x-csrf-token': 'client' },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
