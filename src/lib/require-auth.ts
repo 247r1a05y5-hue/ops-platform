@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, SessionPayload } from './auth';
+import { logger, setLogStep, getLogStore, incrementMetric } from './logger';
 
 // ─── requireAuth ─────────────────────────────────────────────────────────────
 // Call at the top of any API route handler.
@@ -17,9 +18,13 @@ export async function requireAuth(
   req: NextRequest,
   allowedRoles?: string[]
 ): Promise<RequireAuthResult> {
+  setLogStep('Authentication');
+  logger.debug('Validating session token from request cookies...');
   const session = await getSessionFromRequest(req);
 
   if (!session) {
+    incrementMetric('authFailures');
+    logger.warn('Authentication Failed: No valid session token found.', { statusCode: 401 });
     return {
       session: null,
       error: NextResponse.json(
@@ -27,6 +32,15 @@ export async function requireAuth(
         { status: 401 }
       ),
     };
+  }
+
+  logger.debug(`Session token valid for user: ${session.email}`);
+
+  // Populate active log store context
+  const store = getLogStore();
+  if (store) {
+    store.userEmail = session.email;
+    store.userRole = session.role;
   }
 
   // Instantly enforce account suspension by checking DB status with short-lived cache
@@ -38,17 +52,25 @@ export async function requireAuth(
     if (cachedEntry && cachedEntry.expiresAt > now) {
       isSuspended = cachedEntry.suspended;
     } else {
+      logger.debug(`Checking user suspension state in DB for: ${session.sub}`);
       const { connectDB, User } = await import('./db');
       await connectDB();
-      const user = await User.findById(session.sub).select('suspended').lean() as any;
+      const user = await User.findById(session.sub).select('suspended workspaceId').lean() as any;
       isSuspended = !user || !!user.suspended;
       suspensionCache.set(session.sub, {
         suspended: isSuspended,
         expiresAt: now + SUSPENSION_CACHE_TTL
       });
+      
+      // Update workspace in logger store if found
+      if (user?.workspaceId && store) {
+        store.workspace = user.workspaceId.toString();
+      }
     }
 
     if (isSuspended) {
+      incrementMetric('authFailures');
+      logger.warn(`Authentication Failed: Account suspended or deactivated for user ${session.email}`, { statusCode: 403 });
       return {
         session: null,
         error: NextResponse.json(
@@ -62,6 +84,8 @@ export async function requireAuth(
   }
 
   if (allowedRoles && !allowedRoles.includes(session.role)) {
+    incrementMetric('authFailures');
+    logger.warn(`Role validation failed: role ${session.role} not in allowed [${allowedRoles.join(', ')}]`, { statusCode: 403 });
     return {
       session: null,
       error: NextResponse.json(
@@ -71,6 +95,7 @@ export async function requireAuth(
     };
   }
 
+  logger.info(`Authentication successful. User: ${session.email}, Role: ${session.role}`);
   return { session, error: null };
 }
 

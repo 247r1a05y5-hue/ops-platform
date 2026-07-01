@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { registerSSEClient, unregisterSSEClient } from '@/lib/notifications';
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  *   const es = new EventSource('/api/notifications/stream');
  *   es.onmessage = (e) => { const n = JSON.parse(e.data); ... };
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -52,3 +53,7 @@ export async function GET(req: NextRequest) {
     },
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

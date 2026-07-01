@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { deleteFromCloudinary } from '@/lib/cloudinary';
 
-export async function DELETE(req: NextRequest) {
+async function _DELETE(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -69,3 +70,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const DELETE = withLogging(_DELETE);

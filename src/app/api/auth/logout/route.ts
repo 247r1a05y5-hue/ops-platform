@@ -1,10 +1,11 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 import { getSessionFromRequest, clearSessionCookie } from '@/lib/auth';
 import { csrfCheck } from '@/lib/require-auth';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   // CSRF check
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
@@ -51,3 +52,7 @@ export async function POST(req: NextRequest) {
     return res;
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

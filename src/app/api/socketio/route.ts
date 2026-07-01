@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 /**
  * app/api/socketio/route.ts
  *
@@ -15,7 +16,7 @@ import { getIO } from '@/lib/socket-server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest) {
+async function _GET(_req: NextRequest) {
   const io = getIO();
   return NextResponse.json({
     ok: true,
@@ -24,6 +25,11 @@ export async function GET(_req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   return GET(req);
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

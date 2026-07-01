@@ -1,10 +1,11 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice, User } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { logActivity } from '@/lib/activity';
 import crypto from 'crypto';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   // ── Step 1: Enforce secret is configured ──────────────────────────────────
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
   if (!webhookSecret || webhookSecret.trim() === '' || webhookSecret === 'your_razorpay_webhook_secret_here') {
@@ -183,3 +184,7 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

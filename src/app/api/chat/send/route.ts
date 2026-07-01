@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -10,7 +11,7 @@ import { getIO } from '@/lib/socket-server';
  * GET /api/chat/send
  * Retrieve current JWT session token (for explicit Socket.io auth)
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const token = req.cookies.get('ops_session')?.value;
   if (!token) return NextResponse.json({ error: 'No session' }, { status: 401 });
   return NextResponse.json({ token });
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
  * Broadcasts new messages via Socket.IO (pushes to conversation room +
  * individual user rooms).
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -140,3 +141,8 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

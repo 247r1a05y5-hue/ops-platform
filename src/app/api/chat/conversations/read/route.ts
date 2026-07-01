@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, MessageReadStatus, User, Conversation } from '@/lib/db';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  * Broadcasts read_receipt to other participants via Socket.IO so they can
  * show seen indicators in real time.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -117,3 +118,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Search, Sun, Moon, Star, Clock, FileText, CheckCircle, 
-  Users, Target, BookOpen, BarChart3, Plug, Shield, 
+  Users, Target, BarChart3, Plug, Shield, 
   MessageSquare, Settings, Sparkles, Folder, Plus, Trash2, Command
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -64,7 +64,6 @@ export default function CommandPalette() {
     { name: 'Tasks & Projects', description: 'Go to sprint boards and backlog lists', category: 'Navigation', icon: CheckCircle, href: '/tasks' },
     { name: 'CRM Pipeline', description: 'Go to lead stages and funnel tracker', category: 'Navigation', icon: Target, href: '/crm' },
     { name: 'Billing & Invoices', description: 'Go to client billing ledger', category: 'Navigation', icon: FileText, href: '/invoices' },
-    { name: 'Catalog', description: 'Go to services and packages database', category: 'Navigation', icon: BookOpen, href: '/catalog' },
     { name: 'Analytics', description: 'Go to system telemetry reports', category: 'Navigation', icon: Sparkles, href: '/analytics' },
     { name: 'Team Chat Hub', description: 'Go to online communication DMs', category: 'Navigation', icon: MessageSquare, href: '/employee?tab=chat' },
     { name: 'Integrations', description: 'Go to email and workspace integrations', category: 'Navigation', icon: Plug, href: '/integrations' },

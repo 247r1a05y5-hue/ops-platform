@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/require-auth';
 import { sendEmail, isValidEmail, TEMPLATES, checkBrevoHealth } from '@/lib/email';
 import { connectDB, EmailLog } from '@/lib/db';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin', 'Manager']);
   if (error) return error;
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req, ['Admin', 'Manager']);
   if (error) return error;
 
@@ -84,3 +85,8 @@ export async function GET(req: NextRequest) {
     note: 'POST to this endpoint to send a real test email.',
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);
+export const GET = withLogging(_GET);

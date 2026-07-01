@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 /**
  * GET /api/chat/stream  — DEPRECATED
  *
@@ -7,9 +8,13 @@
  */
 import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
-export async function GET() {
+async function _GET() {
   return NextResponse.json(
     { error: 'SSE endpoint removed. Connect via Socket.io at /api/socketio' },
     { status: 410 }
   );
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

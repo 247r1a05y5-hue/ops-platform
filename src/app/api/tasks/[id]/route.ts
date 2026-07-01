@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Task, User, Project } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -9,7 +10,7 @@ import mongoose from 'mongoose';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(req: NextRequest, ctx: Ctx) {
+async function _GET(req: NextRequest, ctx: Ctx) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   }
 }
 
-export async function PUT(req: NextRequest, ctx: Ctx) {
+async function _PUT(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -455,11 +456,11 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   }
 }
 
-export async function PATCH(req: NextRequest, ctx: Ctx) {
+async function _PATCH(req: NextRequest, ctx: Ctx) {
   return PUT(req, ctx);
 }
 
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+async function _DELETE(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -518,3 +519,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const PUT = withLogging(_PUT);
+export const PATCH = withLogging(_PATCH);
+export const DELETE = withLogging(_DELETE);

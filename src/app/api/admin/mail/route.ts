@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 // src/app/api/admin/mail/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { sendAdminMail } from '@/lib/mail';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   // Prevent cross-origin submissions
   const csrfError = csrfCheck(request);
   if (csrfError) return csrfError;
@@ -27,3 +28,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

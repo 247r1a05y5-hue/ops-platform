@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, clearSessionCookie, DB_TO_DISPLAY } from '@/lib/auth';
 
@@ -5,7 +6,7 @@ import { getSessionFromRequest, clearSessionCookie, DB_TO_DISPLAY } from '@/lib/
 // Used by the frontend to restore session on page refresh.
 // Returns current user from JWT cookie — no DB hit needed.
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
 
   if (!session) {
@@ -28,3 +29,7 @@ export async function GET(req: NextRequest) {
     },
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

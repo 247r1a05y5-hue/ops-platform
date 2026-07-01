@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, User, Workspace, UserSettings } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
@@ -25,7 +26,7 @@ async function getUserSessionTimeout(userId: string): Promise<number | undefined
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   // CSRF check
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
@@ -269,3 +270,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

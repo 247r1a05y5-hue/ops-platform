@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation } from '@/lib/db';
@@ -7,7 +8,7 @@ import { connectDB, Conversation } from '@/lib/db';
  * Body: { conversationId }
  * Creates a Daily.co video room, saves it on the conversation, and returns the room URL.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -74,3 +75,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, url: roomUrl });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

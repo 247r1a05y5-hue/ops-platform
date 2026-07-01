@@ -92,7 +92,16 @@ export function buildSessionCookie(token: string, maxAgeSeconds?: number): strin
 }
 
 export function buildClearCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`;
+  const isProd = process.env.NODE_ENV === 'production';
+  const parts = [
+    `${SESSION_COOKIE}=`,
+    `Path=/`,
+    `Max-Age=0`,
+    `HttpOnly`,
+    `SameSite=Lax`
+  ];
+  if (isProd) parts.push('Secure');
+  return parts.join('; ');
 }
 
 export function setSessionCookie(res: NextResponse, token: string, maxAgeSeconds?: number): void {

@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '@/lib/whatsapp';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { connectDB, WhatsAppMessage } from '@/lib/db';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
 
@@ -56,3 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/require-auth';
 import { connectDB, WebhookEvent, ActivityLog } from '@/lib/db';
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * schedules immediate nextRetryAt, and writes an audit log entry.
  * Existing attempt history is preserved.
  */
-export async function POST(
+async function _POST(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
@@ -121,3 +122,7 @@ export async function POST(
     scheduledAt:     now.toISOString(),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

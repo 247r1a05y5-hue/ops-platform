@@ -1,6 +1,7 @@
+import { withLogging } from '@/lib/logger';
 import { NextResponse } from "next/server";
 
-export async function GET() {
+async function _GET() {
   return NextResponse.json(
     {
       status: "ok",
@@ -10,3 +11,6 @@ export async function GET() {
     { status: 200 }
   );
 }
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

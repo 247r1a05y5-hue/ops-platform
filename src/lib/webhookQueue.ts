@@ -30,6 +30,7 @@
 import { connectDB, WebhookEvent, WebhookDeliveryLog } from '@/lib/db';
 import { setLastDeliveryStatus } from '@/lib/zapier';
 import { signOutboundWebhook, isAlreadyDelivered } from '@/lib/webhookSecurity';
+import { logStep, addExtTime, getLogStore, incrementMetric } from './logger';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const RETRY_DELAYS_MS = [
@@ -202,6 +203,13 @@ export async function enqueueWebhook(params: {
 
   const eventId = generateEventId();
   const now = new Date();
+
+  // Populate correlation ID if request trace exists
+  const store = getLogStore();
+  if (store?.requestId) {
+    if (!params.payload) params.payload = {};
+    params.payload._correlationId = store.requestId;
+  }
 
   console.log('[TRACE 9] Before MongoDB insert');
   await WebhookEvent.create({
@@ -447,11 +455,15 @@ export async function processNextWebhook(): Promise<boolean> {
   const startedAt   = Date.now();
   const attemptNum  = record.attempts + 1;
 
+  logStep('EXTERNAL', `Outbound Webhook Delivery Started\nEvent: ${record.event}\nURL: ${record.targetUrl}`);
+
   try {
+    const correlationId = (record.payload as any)?._correlationId || record.eventId;
     const response = await fetch(record.targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Request-ID': correlationId,
         ...securityHeaders,
       },
       body: rawBody,
@@ -460,6 +472,7 @@ export async function processNextWebhook(): Promise<boolean> {
 
     clearTimeout(timeoutId);
     const duration = Date.now() - startedAt;
+    addExtTime(duration);
 
     let responseBody = '';
     try { responseBody = (await response.text()).slice(0, 1000); } catch (_) { /* ignore */ }
@@ -496,8 +509,10 @@ export async function processNextWebhook(): Promise<boolean> {
         queueWait:    startedAt - new Date(record.enqueuedAt ?? record.createdAt).getTime(),
       });
       console.log(`[Zapier] Delivered`);
+      logStep('EXTERNAL', `SUCCESS\nOutbound Webhook Delivered\nEvent: ${record.event}\nStatus: ${response.status}\nDuration: ${duration} ms`);
 
     } else {
+      incrementMetric('webhookFailures');
       const errMsg = `HTTP ${response.status} ${response.statusText}`;
 
       await logDeliveryAttempt({
@@ -522,6 +537,7 @@ export async function processNextWebhook(): Promise<boolean> {
         responseCode: response.status,
         targetUrl:    record.targetUrl,
       });
+      logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: Outbound Webhook\nEvent: ${record.event}\nStatus: ${response.status}\nError: ${errMsg}\nDuration: ${duration} ms`);
 
       await markFailure({
         eventId:      record.eventId,
@@ -533,8 +549,10 @@ export async function processNextWebhook(): Promise<boolean> {
     }
 
   } catch (err: any) {
+    incrementMetric('webhookFailures');
     clearTimeout(timeoutId);
     const duration = Date.now() - startedAt;
+    addExtTime(duration);
     const isTimeout = err.name === 'AbortError';
     const errMsg    = isTimeout ? `Delivery timeout (${DELIVERY_TIMEOUT_MS}ms)` : (err.message ?? 'Unknown fetch error');
 
@@ -558,6 +576,7 @@ export async function processNextWebhook(): Promise<boolean> {
       duration,
       targetUrl: record.targetUrl,
     });
+    logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: Outbound Webhook\nEvent: ${record.event}\nError: ${errMsg}\nDuration: ${duration} ms`);
     if (isTimeout) console.error(`[Zapier] Request timed out`);
 
     await markFailure({

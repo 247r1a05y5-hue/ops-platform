@@ -1,4 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
+import { logStep, addExtTime, getLogStore, incrementMetric } from './logger';
+import { isAllowedFile, isValidFilename, scanFileForViruses } from './security-helpers';
 
 // ─── Configure once ──────────────────────────────────────────────────────────
 
@@ -47,6 +49,23 @@ export async function uploadToCloudinary(
     throw new Error(`File type "${mimeType}" is not allowed.`);
   }
 
+  // Path traversal check on filename
+  if (!isValidFilename(fileName)) {
+    throw new Error('Invalid filename: path traversal or illegal characters detected.');
+  }
+
+  // MIME and Extension checks
+  const ext = fileName.split('.').pop() || '';
+  if (!isAllowedFile(mimeType, ext)) {
+    throw new Error(`File upload rejected: file type or extension not allowed (mime=${mimeType}, ext=${ext}).`);
+  }
+
+  // Virus scan hook check
+  const isClean = await scanFileForViruses(base64Data);
+  if (!isClean) {
+    throw new Error('File upload rejected: potential malware detected.');
+  }
+
   // Validate size before upload
   const rawBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
   const sizeBytes = Math.ceil((rawBase64.length * 3) / 4);
@@ -58,22 +77,41 @@ export async function uploadToCloudinary(
   const isImage = mimeType.startsWith('image/');
   const resourceType = isImage ? 'image' : 'raw';
 
-  const result = await cloudinary.uploader.upload(base64Data, {
-    folder,
-    public_id:     sanitizeFileName(fileName),
-    resource_type: resourceType,
-    overwrite:     false,
-    use_filename:  true,
-    unique_filename: true,
-  });
+  logStep('EXTERNAL', `Cloudinary Upload Started\nFile: ${fileName}\nFolder: ${folder}\nResource Type: ${resourceType}`);
+  const startTime = Date.now();
+  const store = getLogStore();
+  const requestId = store?.requestId || 'none';
 
-  return {
-    publicId:     result.public_id,
-    secureUrl:    result.secure_url,
-    format:       result.format,
-    bytes:        result.bytes,
-    resourceType: result.resource_type,
-  };
+  try {
+    const result = await cloudinary.uploader.upload(base64Data, {
+      folder,
+      public_id:     sanitizeFileName(fileName),
+      resource_type: resourceType,
+      overwrite:     false,
+      use_filename:  true,
+      unique_filename: true,
+      context: { request_id: requestId },
+      tags: [requestId]
+    });
+    
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
+    logStep('EXTERNAL', `SUCCESS\nCloudinary Upload Completed\nPublic ID: ${result.public_id}\nFormat: ${result.format}\nBytes: ${result.bytes}\nDuration: ${duration} ms`);
+
+    return {
+      publicId:     result.public_id,
+      secureUrl:    result.secure_url,
+      format:       result.format,
+      bytes:        result.bytes,
+      resourceType: result.resource_type,
+    };
+  } catch (err: any) {
+    incrementMetric('cloudinaryFailures');
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
+    logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: Cloudinary Upload\nError: ${err.message || String(err)}\nDuration: ${duration} ms`);
+    throw err;
+  }
 }
 
 // ─── Delete ──────────────────────────────────────────────────────────────────
@@ -82,10 +120,26 @@ export async function deleteFromCloudinary(
   publicId:     string,
   resourceType: string = 'image'
 ): Promise<boolean> {
-  const result = await cloudinary.uploader.destroy(publicId, {
-    resource_type: resourceType as 'image' | 'video' | 'raw',
-  });
-  return result.result === 'ok';
+  logStep('EXTERNAL', `Cloudinary Delete Started\nPublic ID: ${publicId}\nResource Type: ${resourceType}`);
+  const startTime = Date.now();
+
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType as 'image' | 'video' | 'raw',
+    });
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
+    
+    const success = result.result === 'ok';
+    logStep('EXTERNAL', `${success ? 'SUCCESS' : 'FAILED'}\nCloudinary Delete Completed\nResult: ${result.result}\nDuration: ${duration} ms`);
+    return success;
+  } catch (err: any) {
+    incrementMetric('cloudinaryFailures');
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
+    logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: Cloudinary Delete\nError: ${err.message || String(err)}\nDuration: ${duration} ms`);
+    throw err;
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

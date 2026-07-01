@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "*.js",
     "scripts/**",
     "useUnreadCount.ts", // root-level duplicate; canonical version lives in src/hooks/
+    "ops final/**", // ignore backup folders
+    "**/ops final/**", // ignore backup folders at any level
   ]),
 
   // Project-wide rule overrides

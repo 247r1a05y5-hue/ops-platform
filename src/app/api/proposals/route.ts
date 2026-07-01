@@ -1,14 +1,15 @@
+import { withLogging } from '@/lib/logger';
 /**
  * GET  /api/proposals?leadId= — list all proposals for a lead
  * POST /api/proposals          — create a new draft proposal
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Proposal, Lead, CatalogItem } from '@/lib/db';
+import { connectDB, Proposal, Lead } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { generateSecureToken, computeProposalTotals } from '@/lib/proposalService';
 
 // ── GET — list proposals for a lead ──────────────────────────────────────────
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req);
   if (error) return error;
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST — create a draft proposal ───────────────────────────────────────────
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -50,23 +51,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Lead not found.' }, { status: 404 });
     }
 
-    // Pre-populate services from Catalog first, then fall back to lead value
-    const catalogItems = await CatalogItem.find({ status: 'Active' })
-      .select('name description price type unit')
-      .limit(10)
-      .lean() as any[];
-
     const cleanAmount = parseFloat(String(lead.value || '0').replace(/[^0-9.]/g, '')) || 0;
 
-    const defaultServices = catalogItems.length > 0
-      ? catalogItems.map((item: any) => ({
-          name:        item.name,
-          description: item.description || '',
-          price:       parseFloat(String(item.price || '0').replace(/[^0-9.]/g, '')) || 0,
-          quantity:    1,
-          unit:        item.unit || item.type || 'unit',
-        }))
-      : cleanAmount > 0
+    const defaultServices = cleanAmount > 0
       ? [{
           name:        'Enterprise Suite',
           description: 'Full suite implementation and onboarding',
@@ -113,3 +100,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

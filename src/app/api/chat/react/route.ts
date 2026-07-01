@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, Conversation } from '@/lib/db';
@@ -10,7 +11,7 @@ import mongoose from 'mongoose';
  * Toggles the emoji reaction for the current user on the message.
  * Pushes SSE reaction_update to all conversation participants.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -72,3 +73,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, reactions: updatedReactions });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

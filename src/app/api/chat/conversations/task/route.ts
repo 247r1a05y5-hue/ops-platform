@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Task, User, Workspace } from '@/lib/db';
@@ -8,7 +9,7 @@ import mongoose from 'mongoose';
  * Body: { taskId, name? }
  * Finds or creates a group conversation linked to a Task.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -69,3 +70,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, conversation: newConv });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

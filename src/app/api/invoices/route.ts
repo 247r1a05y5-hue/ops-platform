@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice, User } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
@@ -42,7 +43,7 @@ async function getWorkspaceMemberEmails(userId: string): Promise<string[] | null
 }
 
 // GET all invoices
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST new invoice
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -204,7 +205,7 @@ export async function POST(req: NextRequest) {
 }
 
 // PUT (approve, send reminder, update status)
-export async function PUT(req: NextRequest) {
+async function _PUT(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -343,12 +344,12 @@ export async function PUT(req: NextRequest) {
 }
 
 // PATCH invoice (aliased to PUT)
-export async function PATCH(req: NextRequest) {
+async function _PATCH(req: NextRequest) {
   return PUT(req);
 }
 
 // DELETE invoice
-export async function DELETE(req: NextRequest) {
+async function _DELETE(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -375,3 +376,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);
+export const PUT = withLogging(_PUT);
+export const PATCH = withLogging(_PATCH);
+export const DELETE = withLogging(_DELETE);

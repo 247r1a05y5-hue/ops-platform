@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCronAuth } from '@/lib/require-auth';
 import { processNextWebhook, recoverStuckWebhooks } from '@/lib/webhookQueue';
@@ -32,7 +33,7 @@ let _lifetimeProcessed = 0;
 let _lifetimeSuccess   = 0;
 let _lifetimeFailed    = 0;
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const authErr = requireCronAuth(req);
   if (authErr) return authErr;
 
@@ -121,3 +122,7 @@ export async function GET(req: NextRequest) {
     workerId: WORKER_ID,
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

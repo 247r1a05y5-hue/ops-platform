@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 /**
  * GET /api/proposals/[id]/track?token=
  *
@@ -13,7 +14,7 @@ import { connectDB, Proposal, Lead, Notification, User } from '@/lib/db';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(req: NextRequest, ctx: Ctx) {
+async function _GET(req: NextRequest, ctx: Ctx) {
   try {
     await connectDB();
     const { id } = await ctx.params;
@@ -111,3 +112,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Message, MessageReadStatus, Meeting, ActivityLog, User, Workspace, GmailToken } from '@/lib/db';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  * Starts a video meeting by integrating Google Calendar/Meet API.
  * Logs the creation activity, saves it to DB, auto-posts in chat, and broadcasts via Socket.IO.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -261,3 +262,7 @@ export async function POST(req: NextRequest) {
     messageId: String(msg._id),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

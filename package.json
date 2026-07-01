@@ -12,7 +12,11 @@
     "start": "node server.mjs",
     "lint": "eslint",
     "dev:next": "next dev",
-    "validate:prod": "node scripts/validate-production.mjs"
+    "validate:prod": "node scripts/validate-production.mjs",
+    "test": "jest",
+    "test:unit": "jest --testPathPattern=tests/unit",
+    "test:integration": "jest --runInBand --testPathPattern=tests/integration",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@jitsi/react-sdk": "^1.4.4",
@@ -41,12 +45,20 @@
     "tailwindcss": "^4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.42.0",
+    "@types/jest": "^29.5.12",
     "@types/json2csv": "^5.0.7",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/supertest": "^6.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^9.1.6",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

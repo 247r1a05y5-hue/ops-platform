@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, ApprovalRequest, ActivityLog, User } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -9,7 +10,7 @@ import { createNotification } from '@/lib/notifications';
  * List approval requests. Admin/Manager only.
  * Query: ?status=pending|approved|rejected
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
  * Submit approval request.
  * Body: { leadId, reason, dealValue }
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
   const { session, error } = await requireAuth(req);
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
  * Review a request. Admin/Manager only.
  * Body: { requestId, action: 'approve'|'reject', reviewNote }
  */
-export async function PATCH(req: NextRequest) {
+async function _PATCH(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
   const { session, error } = await requireAuth(req, ['Admin', 'Manager']);
@@ -207,3 +208,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);
+export const PATCH = withLogging(_PATCH);

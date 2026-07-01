@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * socket.emit('heartbeat') — this route is only hit by old clients
  * or environments where the socket isn't connected.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,3 +26,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

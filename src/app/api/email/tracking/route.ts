@@ -1,7 +1,8 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, Notification } from '@/lib/db';
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   let redirectUrl: string | null = null;
   try {
     await connectDB();
@@ -85,3 +86,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

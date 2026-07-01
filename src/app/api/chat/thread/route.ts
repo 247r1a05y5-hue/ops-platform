@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, Conversation } from '@/lib/db';
@@ -7,7 +8,7 @@ import mongoose from 'mongoose';
  * GET /api/chat/thread?parentMessageId=&limit=
  * Returns the parent message and all replies for a thread.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -61,3 +62,7 @@ export async function GET(req: NextRequest) {
     replies: replies.map(formatMsg),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

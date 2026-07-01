@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 /**
  * /api/leads/workflow — Stage-specific workflow action endpoint
  *
@@ -21,7 +22,7 @@ import {
 import Razorpay from 'razorpay';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '@/lib/whatsapp';
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -300,3 +301,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

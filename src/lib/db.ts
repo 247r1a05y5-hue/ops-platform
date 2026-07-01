@@ -4,6 +4,108 @@ import dns from 'dns';
 import mongoose from 'mongoose';
 const { Schema, model, models } = mongoose;
 
+import { logger, sanitizeData, addDbTime, getLogStore, incrementMetric } from './logger';
+
+mongoose.plugin((schema) => {
+  // Query hook
+  schema.pre(['find', 'findOne', 'countDocuments', 'findOneAndUpdate', 'findOneAndDelete', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany'], function(this: any) {
+    this._dbQueryStartTime = Date.now();
+    const modelName = this.model?.modelName || 'Unknown';
+    const filter = this.getFilter();
+    const op = this.op;
+    logger.debug(`DB Query Start: ${modelName}.${op}`, {
+      model: modelName,
+      operation: op,
+      filters: sanitizeData(filter)
+    });
+  });
+
+  schema.post(['find', 'findOne', 'countDocuments', 'findOneAndUpdate', 'findOneAndDelete', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany'], function(this: any, res: any) {
+    const duration = Date.now() - (this._dbQueryStartTime || Date.now());
+    addDbTime(duration);
+    const modelName = this.model?.modelName || 'Unknown';
+    const filter = this.getFilter();
+    const count = Array.isArray(res) ? res.length : (res ? 1 : 0);
+
+    logger.debug(`DB Query Success: ${modelName}`, {
+      model: modelName,
+      duration,
+      documentsCount: count
+    });
+
+    // Slow query threshold check (> 200ms)
+    if (duration > 200) {
+      logger.warn('SLOW DATABASE QUERY', {
+        model: modelName,
+        duration,
+        filter: sanitizeData(filter),
+        requestId: getLogStore()?.requestId || 'none'
+      });
+    }
+  });
+
+  schema.post(['find', 'findOne', 'countDocuments', 'findOneAndUpdate', 'findOneAndDelete', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany'], function(this: any, error: any, res: any, next: any) {
+    const duration = Date.now() - (this._dbQueryStartTime || Date.now());
+    addDbTime(duration);
+    incrementMetric('mongoFailures');
+    const modelName = this.model?.modelName || 'Unknown';
+
+    logger.error('DB Query Failed', {
+      model: modelName,
+      errorName: error.name || 'MongoError',
+      errorMessage: error.message,
+      duration
+    });
+    next(error);
+  });
+
+  // Document hook (save)
+  schema.pre('save', function(this: any) {
+    this._dbSaveStartTime = Date.now();
+    const modelName = this.constructor.modelName || 'Unknown';
+    logger.debug(`DB Save Start: ${modelName}`, {
+      model: modelName
+    });
+  });
+
+  schema.post('save', function(this: any, doc: any) {
+    const duration = Date.now() - (this._dbSaveStartTime || Date.now());
+    addDbTime(duration);
+    const modelName = this.constructor.modelName || 'Unknown';
+
+    logger.debug(`DB Save Success: ${modelName}`, {
+      model: modelName,
+      duration,
+      documentId: doc._id
+    });
+
+    // Slow query threshold check (> 200ms)
+    if (duration > 200) {
+      logger.warn('SLOW DATABASE QUERY', {
+        model: modelName,
+        duration,
+        documentId: doc._id,
+        requestId: getLogStore()?.requestId || 'none'
+      });
+    }
+  });
+
+  schema.post('save', function(this: any, error: any, doc: any, next: any) {
+    const duration = Date.now() - (this._dbSaveStartTime || Date.now());
+    addDbTime(duration);
+    incrementMetric('mongoFailures');
+    const modelName = this.constructor.modelName || 'Unknown';
+
+    logger.error('DB Save Failed', {
+      model: modelName,
+      errorName: error.name || 'MongoError',
+      errorMessage: error.message,
+      duration
+    });
+    next(error);
+  });
+});
+
 // Fix Atlas SRV DNS resolution properly for Node.js process on local machines
 if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_STATIC_URL) {
   try {
@@ -416,21 +518,7 @@ const ProjectSchema = new Schema({
 ProjectSchema.index({ owner: 1 });
 ProjectSchema.index({ createdAt: -1 });
 
-// 12. Catalog Items
-const CatalogItemSchema = new Schema({
-  name:        { type: String, required: true },
-  category:    { type: String, default: 'General' },
-  type:        { type: String, enum: ['Product', 'Service', 'Document', 'Template'], default: 'Product' },
-  price:       { type: String, default: '' },
-  status:      { type: String, enum: ['Active', 'Draft', 'Archived'], default: 'Active' },
-  description: { type: String, default: '' },
-  tags:        [String],
-  rating:      Number,
-  createdAt:   { type: Date, default: Date.now },
-});
-CatalogItemSchema.index({ type: 1 });
-CatalogItemSchema.index({ status: 1 });
-CatalogItemSchema.index({ createdAt: -1 });
+
 
 // 13. User Settings
 const UserSettingsSchema = new Schema({
@@ -527,7 +615,6 @@ export const EmailTemplate       = (models.EmailTemplate       || model('EmailTe
 export const Sequence            = (models.Sequence            || model('Sequence',            SequenceSchema)) as any;
 export const Task                = (models.Task                || model('Task',                TaskSchema)) as any;
 export const Project             = (models.Project             || model('Project',             ProjectSchema)) as any;
-export const CatalogItem         = (models.CatalogItem         || model('CatalogItem',         CatalogItemSchema)) as any;
 export const UserSettings        = (models.UserSettings        || model('UserSettings',        UserSettingsSchema)) as any;
 export const Proposal            = (models.Proposal            || model('Proposal',            ProposalSchema)) as any;
 export const WhatsAppMessage     = (models.WhatsAppMessage     || model('WhatsAppMessage',     WhatsAppMessageSchema)) as any;

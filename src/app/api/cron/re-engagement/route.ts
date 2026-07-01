@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, User, ActivityLog } from '@/lib/db';
 import { sendEmail, isValidEmail } from '@/lib/email';
@@ -15,7 +16,7 @@ const STALE_DAYS = 30;
  * Finds leads that have NOT moved stage in 30+ days (excluding Closing & archived)
  * and emails the assigned user + notifies in-app.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const authErr = requireCronAuth(req);
   if (authErr) return authErr;
 
@@ -96,3 +97,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

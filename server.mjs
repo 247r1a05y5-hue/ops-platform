@@ -8,17 +8,126 @@
  * 4. Full debug logging
  * 5. Rejoin user/workspace rooms logged on reconnect
  */
-
 import { createServer } from 'node:http';
 import { parse } from 'node:url';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
 import { jwtVerify } from 'jose';
+import mongoose from 'mongoose';
+import { v2 as cloudinary } from 'cloudinary';
+import dotenv from 'dotenv';
+import path from 'node:path';
 
 const dev  = process.argv.includes('--dev');
 const port = parseInt(process.env.PORT ?? '3000', 10);
 
+// Load local environment config
+dotenv.config({ path: path.resolve('.env.local') });
+
+const CRITICAL_VARS = [
+  'MONGODB_URI',
+  'JWT_SECRET',
+  'CRON_SECRET',
+  'BREVO_API_KEY',
+  'SENDER_EMAIL',
+  'ADMIN_EMAIL'
+];
+
+async function runStartupChecks() {
+  console.log('[Startup Check] Validating environment variables...');
+  const missing = [];
+  for (const v of CRITICAL_VARS) {
+    if (!process.env[v] || process.env[v].trim() === '') {
+      missing.push(v);
+    }
+  }
+  if (missing.length > 0) {
+    console.error(`[Startup Check] ❌ FATAL — Missing required environment variables:\n  • ${missing.join('\n  • ')}`);
+    process.exit(1);
+  }
+
+  // Format checks
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const uri = process.env.MONGODB_URI || '';
+  if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
+    console.error(`[Startup Check] ❌ FATAL — MONGODB_URI is invalid: must start with mongodb:// or mongodb+srv://`);
+    process.exit(1);
+  }
+  if ((process.env.JWT_SECRET || '').length < 32) {
+    console.error(`[Startup Check] ❌ FATAL — JWT_SECRET is invalid: must be at least 32 characters long`);
+    process.exit(1);
+  }
+  if (!emailRegex.test(process.env.ADMIN_EMAIL || '')) {
+    console.error(`[Startup Check] ❌ FATAL — ADMIN_EMAIL is invalid: incorrect email format`);
+    process.exit(1);
+  }
+  if (!emailRegex.test(process.env.SENDER_EMAIL || '')) {
+    console.error(`[Startup Check] ❌ FATAL — SENDER_EMAIL is invalid: incorrect email format`);
+    process.exit(1);
+  }
+
+  console.log('[Startup Check] Testing MongoDB connection...');
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000
+    });
+    console.log('[Startup Check] ✓ MongoDB connected successfully');
+    await mongoose.disconnect();
+  } catch (err) {
+    console.error(`[Startup Check] ❌ FATAL — MongoDB connection test failed:`, err.message || err);
+    process.exit(1);
+  }
+
+  console.log('[Startup Check] Testing Cloudinary credentials...');
+  try {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key:    process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure:     true,
+    });
+    const result = await cloudinary.api.ping();
+    if (result.status !== 'ok') {
+      throw new Error(`Cloudinary ping returned status: ${result.status}`);
+    }
+    console.log('[Startup Check] ✓ Cloudinary credentials verified');
+  } catch (err) {
+    if (dev || process.env.NODE_ENV === 'test') {
+      console.warn(`[Startup Check] ⚠️ WARNING — Cloudinary credentials test failed: ${err.message || err}. Continuing in dev/test mode.`);
+    } else {
+      console.error(`[Startup Check] ❌ FATAL — Cloudinary authentication failed:`, err.message || err);
+      process.exit(1);
+    }
+  }
+
+  console.log('[Startup Check] Testing Brevo REST API token...');
+  try {
+    const res = await fetch('https://api.brevo.com/v3/account', {
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY || ''
+      }
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
+    console.log('[Startup Check] ✓ Brevo API credentials verified');
+  } catch (err) {
+    if (dev || process.env.NODE_ENV === 'test') {
+      console.warn(`[Startup Check] ⚠️ WARNING — Brevo email client connection failed: ${err.message || err}. Continuing in dev/test mode.`);
+    } else {
+      console.error(`[Startup Check] ❌ FATAL — Brevo email client connection failed:`, err.message || err);
+      process.exit(1);
+    }
+  }
+
+  console.log('[Startup Check] ✓ All startup systems operational.');
+}
+
 // ── Next.js app ───────────────────────────────────────────────────────────────
+
+await runStartupChecks();
 
 const app    = next({ dev, turbopack: dev });
 const handle = app.getRequestHandler();
@@ -284,7 +393,7 @@ io.on('connection', (socket) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-httpServer.listen(port, '0.0.0.0', () => {
+const serverInstance = httpServer.listen(port, '0.0.0.0', () => {
   console.log(`> OPS Platform ready on http://0.0.0.0:${port}`);
   console.log(`> Socket.IO attached at /api/socketio`);
   console.log(`> Environment: ${dev ? 'development' : 'production'}`);
@@ -317,4 +426,45 @@ httpServer.listen(port, '0.0.0.0', () => {
     console.warn('[Scheduler] CRON_SECRET is not set. In-process cron scheduler is inactive.');
   }
 });
+
+// ── Graceful Shutdown ──────────────────────────────────────────────────────────
+
+async function gracefulShutdown(signal) {
+  console.log(`\n[Graceful Shutdown] Received ${signal}. Starting shutdown sequence...`);
+
+  // Close active Socket.IO listener and client connections
+  try {
+    io.close(() => {
+      console.log('[Graceful Shutdown] Socket.IO server closed.');
+    });
+  } catch (err) {
+    console.error('[Graceful Shutdown] Socket.IO close error:', err);
+  }
+
+  // Close HTTP server to refuse new traffic
+  try {
+    serverInstance.close(() => {
+      console.log('[Graceful Shutdown] HTTP server closed.');
+    });
+  } catch (err) {
+    console.error('[Graceful Shutdown] HTTP server close error:', err);
+  }
+
+  // Close active Mongoose connections
+  try {
+    await mongoose.disconnect();
+    console.log('[Graceful Shutdown] MongoDB connection closed.');
+  } catch (err) {
+    console.error('[Graceful Shutdown] MongoDB disconnect error:', err);
+  }
+
+  console.log('[Graceful Shutdown] Flushing logs and buffers...');
+  await new Promise(resolve => setTimeout(resolve, 800));
+
+  console.log('[Graceful Shutdown] Process exiting cleanly.\n');
+  process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 

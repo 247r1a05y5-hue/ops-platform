@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, User, EmailLog } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
@@ -12,7 +13,7 @@ import { sendEmail } from '@/lib/email';
  * The webhook will trigger email notifications based on configured Zapier rules
  */
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   try {
     console.log('[Zapier] Incoming webhook');
 
@@ -353,7 +354,7 @@ async function handleNewLead(payload: any) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     message: 'Zapier webhook endpoint is active',
@@ -366,3 +367,8 @@ export async function GET(req: NextRequest) {
     ]
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);
+export const GET = withLogging(_GET);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { getIO, storePendingSignal } from '@/lib/socket-server';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  * Valid signal types: ring, answer, reject, hangup
  * (ICE candidates are always sent via socket, not this route)
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -67,3 +68,7 @@ export async function POST(req: NextRequest) {
   console.error('[video/signal] Socket.IO not initialized — signal lost');
   return NextResponse.json({ error: 'Realtime server unavailable' }, { status: 503 });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

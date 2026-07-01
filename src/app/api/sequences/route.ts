@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Sequence, EmailTemplate } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -6,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // GET /api/sequences — list all sequences
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'MR']);
   if (error) return error;
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/sequences — create a sequence
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE /api/sequences?id= — delete a sequence
-export async function DELETE(req: NextRequest) {
+async function _DELETE(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -84,3 +85,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);
+export const DELETE = withLogging(_DELETE);

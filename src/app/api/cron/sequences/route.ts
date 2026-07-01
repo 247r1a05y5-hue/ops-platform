@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, Sequence } from '@/lib/db';
 import { isValidEmail } from '@/lib/email';
@@ -8,7 +9,7 @@ import { requireCronAuth } from '@/lib/require-auth';
 // Sends the next due email step to every lead enrolled in a sequence.
 // Vercel Cron hits this with the Authorization header set to CRON_SECRET.
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   // ── Auth check ─────────────────────────────────────────────────────────────
   const cronAuthError = requireCronAuth(req);
   if (cronAuthError) return cronAuthError;
@@ -145,3 +146,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

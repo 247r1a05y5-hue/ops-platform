@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, User } from '@/lib/db';
@@ -6,7 +7,7 @@ import { connectDB, Message, User } from '@/lib/db';
  * GET /api/chat/admin/flagged
  * Admin only. Returns all flagged messages in the current user's workspace.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (session.role !== 'Admin')
@@ -39,3 +40,7 @@ export async function GET(req: NextRequest) {
     })),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, User, Workspace } from '@/lib/db';
@@ -8,7 +9,7 @@ import { isUserOnline } from '@/lib/chat-sse';
  * Returns all users in the ops-main workspace (excluding self), enriched with online status.
  * Bulk-assigns ALL users to ops-main before querying so no one is missed.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -44,3 +45,7 @@ export async function GET(req: NextRequest) {
     })),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

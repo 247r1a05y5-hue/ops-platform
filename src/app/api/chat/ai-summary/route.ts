@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Message } from '@/lib/db';
@@ -43,7 +44,7 @@ function buildFallbackSummary(messages: any[]): string {
  * Returns a Gemini-powered (or fallback) summary of the last 50 messages.
  * Results are cached on the Conversation document for 10 minutes.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -117,3 +118,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ success: true, summary, cached: false });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

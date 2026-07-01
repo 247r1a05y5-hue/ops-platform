@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Message, ChatAuditLog, User } from '@/lib/db';
@@ -6,7 +7,7 @@ import { connectDB, Conversation, Message, ChatAuditLog, User } from '@/lib/db';
  * GET /api/chat/export?conversationId=&format=json|csv
  * Admin-only. Exports full conversation message history and writes a ChatAuditLog entry.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (session.role !== 'Admin')
@@ -79,3 +80,7 @@ export async function GET(req: NextRequest) {
     exportedBy: session.name,
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

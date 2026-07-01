@@ -167,7 +167,6 @@ export default function Topbar() {
     employee: 'Workspace',
     invoices: 'Invoices',
     tasks: 'Tasks',
-    catalog: 'Catalog',
     analytics: 'Analytics',
     integrations: 'Integrations',
     settings: 'Settings',

@@ -1,10 +1,11 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Project, Task } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function PUT(req: NextRequest, ctx: Ctx) {
+async function _PUT(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -30,7 +31,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   }
 }
 
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+async function _DELETE(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -51,3 +52,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const PUT = withLogging(_PUT);
+export const DELETE = withLogging(_DELETE);

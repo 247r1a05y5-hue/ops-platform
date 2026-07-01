@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, Project, Task, ActivityLog } from '@/lib/db';
 import { sendEmail, isValidEmail } from '@/lib/email';
@@ -23,7 +24,7 @@ const STARTER_TASKS = [
  *   → create 5 starter Tasks
  *   → stamp lead.onboardingDoneAt
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const authErr = requireCronAuth(req);
   if (authErr) return authErr;
 
@@ -104,3 +105,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Notification } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -6,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // GET /api/notifications — return only the current user's notifications
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PUT /api/notifications — mark one or all as read, scoped to the current user only
-export async function PUT(req: NextRequest) {
+async function _PUT(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -78,3 +79,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const PUT = withLogging(_PUT);

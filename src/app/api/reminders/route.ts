@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Reminder } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
 /** GET /api/reminders — list reminders for current user (or all for Admin/Manager) */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
   try {
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 /** POST /api/reminders — create reminder. Body: { title, dueAt, description?, leadId?, assignedTo? } */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
   const { session, error } = await requireAuth(req);
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 }
 
 /** PATCH /api/reminders — update. Body: { id, completed?, dueAt?, title?, description? } */
-export async function PATCH(req: NextRequest) {
+async function _PATCH(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
   const { session, error } = await requireAuth(req);
@@ -73,7 +74,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 /** DELETE /api/reminders?id=... */
-export async function DELETE(req: NextRequest) {
+async function _DELETE(req: NextRequest) {
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
   const { session, error } = await requireAuth(req);
@@ -93,3 +94,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);
+export const PATCH = withLogging(_PATCH);
+export const DELETE = withLogging(_DELETE);

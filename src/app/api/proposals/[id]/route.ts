@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 /**
  * GET    /api/proposals/[id] — get single proposal
  * PUT    /api/proposals/[id] — update draft proposal content
@@ -11,7 +12,7 @@ import { computeProposalTotals } from '@/lib/proposalService';
 type Ctx = { params: Promise<{ id: string }> };
 
 // ── GET ───────────────────────────────────────────────────────────────────────
-export async function GET(req: NextRequest, ctx: Ctx) {
+async function _GET(req: NextRequest, ctx: Ctx) {
   const { error } = await requireAuth(req);
   if (error) return error;
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 }
 
 // ── PUT — update draft fields ─────────────────────────────────────────────────
-export async function PUT(req: NextRequest, ctx: Ctx) {
+async function _PUT(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -83,7 +84,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 }
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+async function _DELETE(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -102,3 +103,9 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const PUT = withLogging(_PUT);
+export const DELETE = withLogging(_DELETE);

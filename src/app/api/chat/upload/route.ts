@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { uploadToCloudinary, MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES } from '@/lib/cloudinary';
@@ -7,7 +8,7 @@ import { uploadToCloudinary, MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES } from '@/l
  * Accepts: multipart/form-data with field `file`
  * Returns: { success, attachment: { url, publicId, name, size, mimeType, resourceType } }
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -45,3 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message ?? 'Upload failed' }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

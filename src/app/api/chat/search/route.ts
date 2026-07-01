@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Conversation, Message, User, Workspace } from '@/lib/db';
@@ -6,7 +7,7 @@ import { connectDB, Conversation, Message, User, Workspace } from '@/lib/db';
  * GET /api/chat/search?q=&conversationId?=&limit=
  * MongoDB $text search across all messages the user can access in their workspace.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -52,3 +53,7 @@ export async function GET(req: NextRequest) {
     })),
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

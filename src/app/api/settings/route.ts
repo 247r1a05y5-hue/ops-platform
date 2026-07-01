@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // GET /api/settings — return profile + notif prefs for the current user
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
 
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PUT /api/settings — update profile, password, or notif prefs
-export async function PUT(req: NextRequest) {
+async function _PUT(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -167,3 +168,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const PUT = withLogging(_PUT);

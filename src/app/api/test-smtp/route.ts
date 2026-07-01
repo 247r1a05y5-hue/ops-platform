@@ -1,10 +1,11 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkBrevoHealth } from '@/lib/email';
 import { requireAuth } from '@/lib/require-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req, ['Admin', 'Manager']);
   if (error) return error;
 
@@ -14,3 +15,7 @@ export async function GET(req: NextRequest) {
     brevoHealth: health,
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

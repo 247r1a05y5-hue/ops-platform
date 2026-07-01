@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
@@ -8,7 +9,7 @@ import crypto from 'crypto';
 
 const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
   try {
@@ -186,3 +187,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

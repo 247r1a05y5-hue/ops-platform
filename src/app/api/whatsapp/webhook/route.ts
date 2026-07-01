@@ -1,10 +1,11 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, WhatsAppMessage } from '@/lib/db';
 
 // ── GET: Meta Webhook Verification Handshake ─────────────────────────────────
 // Meta sends a GET with hub.mode=subscribe + hub.challenge when you set up
 // or update the webhook URL in the Meta Developer Console.
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
   const mode      = searchParams.get('hub.mode');
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 // Handles two event types:
 //   1. Delivery status updates (statuses array): delivered | read | failed
 //   2. Inbound messages (messages array): text replies from clients
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   try {
     const body = await req.json();
 
@@ -137,3 +138,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, User, Task } from '@/lib/db';
 import { requireAuth } from '@/lib/require-auth';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * Uses aggregation (single query) instead of N+1 countDocuments.
  * Also returns raw users list so the dashboard doesn't need /api/users separately.
  */
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req);
   if (error) return error;
 
@@ -72,3 +73,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

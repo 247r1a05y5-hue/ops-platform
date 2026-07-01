@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Task, Lead, Invoice, User, StageWorkflowLog } from '@/lib/db';
 import { requireAuth } from '@/lib/require-auth';
@@ -32,7 +33,7 @@ function parseAmount(raw: string | number | undefined | null): number {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'Staff', 'User', 'MR']);
   if (error) return error;
 
@@ -201,3 +202,7 @@ export async function GET(req: NextRequest) {
     });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

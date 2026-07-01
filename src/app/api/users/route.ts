@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 // src/app/api/users/route.ts
 // Returns all workspace users for use in dropdowns (Assign To, Project Owner, etc.)
 // Requires authentication — never exposes passwords or sensitive fields.
@@ -7,7 +8,7 @@ import { requireAuth } from '@/lib/require-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
 
@@ -33,3 +34,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

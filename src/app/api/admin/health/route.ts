@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/require-auth';
 import mongoose from 'mongoose';
@@ -5,7 +6,7 @@ import { checkBrevoHealth } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req, ['Admin']);
   if (error) return error;
 
@@ -30,3 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

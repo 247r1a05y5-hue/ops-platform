@@ -1,0 +1,131 @@
+name: Continuous Delivery
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/ops-crm
+
+jobs:
+  build-and-push:
+    name: Build, Smoke Test, & Publish Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run CI Validation Check
+        run: |
+          npx tsc --noEmit
+          npm run lint
+          npm run test:unit
+          npm run test:integration
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Lowercase the image name to comply with GHCR naming requirements
+      - name: Lowercase Image Name
+        id: string
+        run: |
+          echo "IMAGE_ID=$(echo '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}' | tr '[A-Z]' '[a-z]')" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Extract metadata (tags, labels) for Docker
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.string.outputs.IMAGE_ID }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{isActiveBranch}}
+
+      - name: Build Docker Image (Local Build for Smoke Test)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true # Load image into local Docker daemon for testing
+          tags: ops-crm:smoke-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Run the built Docker container and test its health status
+      - name: Run Container Smoke Test
+        run: |
+          echo "Starting Docker container for smoke testing..."
+          docker run -d \
+            -p 3000:3000 \
+            --name ops-crm-smoke \
+            -e MONGODB_URI="mongodb://localhost:27017/test" \
+            -e JWT_SECRET="supersecretsupersecretsupersecret123" \
+            -e ADMIN_EMAIL="admin@ops.com" \
+            -e SENDER_EMAIL="admin@ops.com" \
+            ops-crm:smoke-test
+
+          echo "Waiting for container startup and health check to pass..."
+          # Poll the health endpoint for up to 30 seconds
+          TIMEOUT=30
+          INTERVAL=3
+          ELAPSED=0
+          HEALTHY=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' ops-crm-smoke 2>/dev/null || echo "\"starting\"")
+            echo "Current health status: $STATUS"
+            
+            if [ "$STATUS" = "\"healthy\"" ]; then
+              echo "✓ Smoke test passed: Container is healthy!"
+              HEALTHY=1
+              break
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          # Cleanup container
+          docker logs ops-crm-smoke
+          docker kill ops-crm-smoke
+          docker rm ops-crm-smoke
+
+          if [ $HEALTHY -ne 1 ]; then
+            echo "❌ ERROR: Container failed smoke test / health check!"
+            exit 1
+          fi
+
+      - name: Push Production Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

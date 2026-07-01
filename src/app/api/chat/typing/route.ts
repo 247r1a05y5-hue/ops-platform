@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -13,7 +14,7 @@ import { getIO } from '@/lib/socket-server';
  * typing events directly via socket.emit('typing', ...) — this route only
  * handles cases where the socket connection is temporarily unavailable.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -44,3 +45,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

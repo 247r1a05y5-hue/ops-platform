@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, User } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -7,7 +8,7 @@ import { logActivity } from '@/lib/activity';
 export const dynamic = 'force-dynamic';
 
 // GET twoFactor status or generate secret
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req);
   if (error) return error;
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST verify and enable twoFactor
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE disable twoFactor
-export async function DELETE(req: NextRequest) {
+async function _DELETE(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -145,3 +146,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);
+export const DELETE = withLogging(_DELETE);

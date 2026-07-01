@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: ops-crm-app
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: starter # Render hosting tier (adjust to micro/pro if required)
+    region: oregon # Render server location
+    healthCheckPath: /api/auth/me # API endpoint that responds with 401 (healthy but unauthenticated)
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: MONGODB_URI
+        sync: false # Must be set in Render Dashboard
+      - key: JWT_SECRET
+        sync: false # Must be set in Render Dashboard
+      - key: ADMIN_EMAIL
+        sync: false # Must be set in Render Dashboard
+      - key: SENDER_EMAIL
+        sync: false # Must be set in Render Dashboard
+      - key: CRON_SECRET
+        sync: false # Must be set in Render Dashboard
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false

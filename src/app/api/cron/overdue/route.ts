@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice } from '@/lib/db';
 import { requireCronAuth } from '@/lib/require-auth';
@@ -6,7 +7,7 @@ import { requireCronAuth } from '@/lib/require-auth';
 // Keeps each operation within serverless memory limits (~512MB in Vercel hobby).
 const BATCH_SIZE = 500;
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   // ── Auth check ─────────────────────────────────────────────────────────────
   const cronAuthError = requireCronAuth(req);
   if (cronAuthError) return cronAuthError;
@@ -105,3 +106,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

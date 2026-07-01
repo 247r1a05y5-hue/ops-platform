@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, EmailTemplate } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -5,7 +6,7 @@ import { requireAuth, csrfCheck } from '@/lib/require-auth';
 type Ctx = { params: Promise<{ id: string }> };
 
 // PUT /api/email/templates/[id] — update a template
-export async function PUT(req: NextRequest, ctx: Ctx) {
+async function _PUT(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -40,7 +41,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 }
 
 // DELETE /api/email/templates/[id] — delete a template
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+async function _DELETE(req: NextRequest, ctx: Ctx) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -62,3 +63,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const PUT = withLogging(_PUT);
+export const DELETE = withLogging(_DELETE);

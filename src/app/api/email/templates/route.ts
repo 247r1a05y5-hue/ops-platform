@@ -1,9 +1,10 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, EmailTemplate } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 
 // GET all templates, auto-seeding if empty
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req);
   if (error) return error;
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST create a template
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -81,3 +82,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

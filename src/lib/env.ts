@@ -66,6 +66,39 @@ export function validateEnv() {
   const criticalErrors = CRITICAL.filter(isMissing).map(v => `CRITICAL — ${v.key}: ${v.label}`);
   const optionalWarns  = OPTIONAL.filter(isMissing).map(v => `OPTIONAL — ${v.key}: ${v.label}`);
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!criticalErrors.some(e => e.includes('MONGODB_URI'))) {
+    const uri = process.env.MONGODB_URI || '';
+    if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
+      criticalErrors.push('INVALID — MONGODB_URI: Connection string must start with mongodb:// or mongodb+srv://');
+    }
+  }
+
+  if (!criticalErrors.some(e => e.includes('JWT_SECRET'))) {
+    const jwt = process.env.JWT_SECRET || '';
+    if (jwt.length < 32) {
+      criticalErrors.push('INVALID — JWT_SECRET: Secret must be at least 32 characters long for production security');
+    }
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+  if (appUrl && !appUrl.startsWith('http://') && !appUrl.startsWith('https://')) {
+    criticalErrors.push('INVALID — NEXT_PUBLIC_APP_URL: Must be a valid URL starting with http:// or https://');
+  }
+
+  if (!criticalErrors.some(e => e.includes('ADMIN_EMAIL'))) {
+    if (!emailRegex.test(process.env.ADMIN_EMAIL || '')) {
+      criticalErrors.push('INVALID — ADMIN_EMAIL: Must be a valid email format');
+    }
+  }
+
+  if (!criticalErrors.some(e => e.includes('SENDER_EMAIL'))) {
+    if (!emailRegex.test(process.env.SENDER_EMAIL || '')) {
+      criticalErrors.push('INVALID — SENDER_EMAIL: Must be a valid email format');
+    }
+  }
+
   return {
     valid:             criticalErrors.length === 0,
     errors:            criticalErrors,

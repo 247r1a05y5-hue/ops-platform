@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
 import { connectDB, SystemConfig } from '@/lib/db';
@@ -6,7 +7,7 @@ import { logActivity } from '@/lib/activity';
 export const dynamic = 'force-dynamic';
 
 // GET maintenance mode status (publicly queryable)
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   try {
     await connectDB();
     const config = await SystemConfig.findOne({ key: 'maintenance_mode' });
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST toggle maintenance mode status (admin only)
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
@@ -56,3 +57,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);
+export const POST = withLogging(_POST);

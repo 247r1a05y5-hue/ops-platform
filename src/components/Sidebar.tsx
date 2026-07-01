@@ -29,7 +29,6 @@ export default function Sidebar() {
     { name: 'Tasks',        href: '/tasks',        icon: CheckSquare },
     { name: 'CRM',          href: '/crm',          icon: Target },
     { name: 'Invoices',     href: '/invoices',     icon: FileText },
-    { name: 'Catalog',      href: '/catalog',      icon: BookOpen },
     { name: 'Analytics',    href: '/analytics',    icon: BarChart3 },
     { name: 'Team Chat',    href: '/employee?tab=chat', icon: MessageSquare, badge: unread },
     { name: 'Integrations', href: '/integrations', icon: Plug },

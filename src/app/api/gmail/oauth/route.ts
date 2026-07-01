@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, GmailToken } from '@/lib/db';
 import { requireAuth } from '@/lib/require-auth';
@@ -95,7 +96,7 @@ async function refreshAccessToken(
 
 // ─── GET /api/gmail/oauth?action=connect|callback|status|disconnect ──────────
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin', 'Manager', 'User', 'Employee', 'Staff', 'MR']);
   if (error) return error;
 
@@ -236,3 +237,7 @@ export async function getGmailAccessToken(userId: string): Promise<string | null
     return null;
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

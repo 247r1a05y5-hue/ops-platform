@@ -1,4 +1,5 @@
 import axios from "axios";
+import { logStep, addExtTime, getLogStore, incrementMetric } from "./logger";
 
 // ── Configuration helpers ──────────────────────────────────────────────────────
 
@@ -34,6 +35,9 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     return { success: false, code: null, error: "WhatsApp not configured" };
   }
 
+  logStep('EXTERNAL', `WhatsApp Outbound Message Started\nTo: ${to}\nBody: ${message}`);
+  const startTime = Date.now();
+
   const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`;
   const payload = {
     messaging_product: "whatsapp",
@@ -44,15 +48,24 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
   };
 
   try {
+    const store = getLogStore();
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    if (store?.requestId) {
+      headers["X-Request-ID"] = store.requestId;
+    }
+
     const response = await axios.post(url, payload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       timeout: 10000,
     });
 
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
     console.log(`[WhatsApp] Message sent successfully.`);
+    logStep('EXTERNAL', `SUCCESS\nWhatsApp Outbound Message Completed\nDuration: ${duration} ms`);
 
     // Persist outbound log in MongoDB for delivery tracking
     try {
@@ -76,6 +89,10 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     return { success: true, data: response.data };
 
   } catch (error: any) {
+    incrementMetric('whatsappFailures');
+    const duration = Date.now() - startTime;
+    addExtTime(duration);
+    
     const apiError = error.response?.data?.error;
     const httpStatus: number | null = error.response?.status ?? null;
 
@@ -83,7 +100,8 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
       const code: number = apiError.code ?? 0;
       const msg: string = apiError.message ?? "Unknown Meta API error";
 
-      // Auth errors (code 190) are persistent — log once at warn level, not error
+      logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: WhatsApp API\nError: ${msg} (Meta Code: ${code})\nDuration: ${duration} ms`);
+
       if (code === 190) {
         console.warn(
           `[WhatsApp] Authentication error (190): ${msg}. ` +
@@ -100,8 +118,8 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
       };
     }
 
-    // Network / timeout errors
     const netMsg: string = error.message ?? "Network error";
+    logStep('EXTERNAL', `[EXTERNAL SERVICE FAILED]\nService: WhatsApp API\nError: ${netMsg}\nDuration: ${duration} ms`);
     console.error(`[WhatsApp] Network error: ${netMsg}`);
     return { success: false, code: null, error: netMsg };
   }

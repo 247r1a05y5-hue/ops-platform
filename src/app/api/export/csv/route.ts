@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Lead, Invoice } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
@@ -56,7 +57,7 @@ function buildCSV(fields: { key: string; label: string }[], rows: Record<string,
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   // Leads: any authenticated user. Invoices: Admin/Manager only.
   const { session, error } = await requireAuth(req);
   if (error) return error;
@@ -135,3 +136,7 @@ export async function GET(req: NextRequest) {
 function dateSuffix(): string {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

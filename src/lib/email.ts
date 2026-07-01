@@ -1,4 +1,5 @@
 import { connectDB, EmailLog } from './db';
+import { logStep, addExtTime, getLogStore, incrementMetric } from './logger';
 
 type TemplateVars = Record<string, string>;
 
@@ -239,6 +240,7 @@ Variables: ${JSON.stringify(vars, null, 2)}
   }
 
   const startTime = Date.now();
+  logStep('NOTIFICATION', `Sending notification...\nService: Brevo Email\nTo: ${targetTo}\nEvent: ${event}\nSubject: ${template.subject}`);
 
   try {
     console.log(`[email] [timing] connectDB() start`);
@@ -258,13 +260,19 @@ Variables: ${JSON.stringify(vars, null, 2)}
     console.log(`[email] [timing] Brevo API POST start`);
     const t2 = Date.now();
 
+    const store = getLogStore();
+    const fetchHeaders: Record<string, string> = {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'api-key': apiKey,
+    };
+    if (store?.requestId) {
+      fetchHeaders['X-Request-ID'] = store.requestId;
+    }
+
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'content-type': 'application/json',
-        'api-key': apiKey,
-      },
+      headers: fetchHeaders,
       body: JSON.stringify({
         sender: {
           name: 'Antigravity OPS Admin',
@@ -280,6 +288,9 @@ Variables: ${JSON.stringify(vars, null, 2)}
       }),
     });
 
+    const apiDuration = Date.now() - t2;
+    addExtTime(apiDuration);
+
     if (!response.ok) {
       const errText = await response.text();
       throw new Error(`Brevo API Error (${response.status}): ${errText}`);
@@ -289,7 +300,8 @@ Variables: ${JSON.stringify(vars, null, 2)}
     const messageId = resData.messageId || `brevo-${Date.now()}`;
     const info = { messageId };
 
-    console.log(`[email] [timing] Brevo API POST completed (success) in ${Date.now() - t2}ms. messageId=${messageId}`);
+    console.log(`[email] [timing] Brevo API POST completed (success) in ${apiDuration}ms. messageId=${messageId}`);
+    logStep('NOTIFICATION', `SUCCESS\nEmail sent to: ${targetTo}\nMessage ID: ${messageId}\nAPI Duration: ${apiDuration} ms`);
 
     console.log(`[email] [timing] EmailLog.create() start`);
     const t3 = Date.now();
@@ -312,8 +324,10 @@ Variables: ${JSON.stringify(vars, null, 2)}
     console.log(`[email] [timing] sendEmail() completed successfully in ${Date.now() - startTime}ms`);
     return info;
   } catch (error: any) {
+    incrementMetric('emailFailures');
     const totalTime = Date.now() - startTime;
     const message = sanitizeBrevoError(error);
+    logStep('NOTIFICATION', `FAILED\nEmail failed to: ${targetTo}\nError: ${message}\nTotal Duration: ${totalTime} ms`);
 
     console.error(`❌ Email failed to ${targetTo} [${event}] after ${totalTime}ms: ${message}`);
 

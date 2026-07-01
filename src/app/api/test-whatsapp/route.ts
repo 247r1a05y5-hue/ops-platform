@@ -1,8 +1,9 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '@/lib/whatsapp';
 import { requireAuth } from '@/lib/require-auth';
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { error } = await requireAuth(req, ['Admin']);
   if (error) return error;
 
@@ -46,3 +47,7 @@ export async function GET(req: NextRequest) {
     details: { recipient: sanitizedTo, messageContent: message, metaResponse: result.data },
   });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

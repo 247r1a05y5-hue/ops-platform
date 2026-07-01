@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, AuditLog } from '@/lib/db';
 import { requireAuth, csrfCheck } from '@/lib/require-auth';
@@ -45,7 +46,7 @@ function convertToCSV(data: any[]) {
   return csvContent;
 }
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   const { session, error } = await requireAuth(req, ['Admin']);
   if (error) return error;
 
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '25', 10);
     const action = searchParams.get('action') || '';
-    const module = searchParams.get('module') || '';
+    const auditModule = searchParams.get('module') || '';
     const search = searchParams.get('search') || '';
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
     const query: any = {};
 
     if (action) query.action = action;
-    if (module) query.module = module;
+    if (auditModule) query.module = auditModule;
 
     if (startDate || endDate) {
       query.timestamp = {};
@@ -129,3 +130,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message || err }, { status: 500 });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Invoice } from '@/lib/db';
 import mongoose from 'mongoose';
@@ -5,7 +6,7 @@ import mongoose from 'mongoose';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(req: NextRequest) {
+async function _GET(req: NextRequest) {
   try {
     await connectDB();
     const { searchParams } = new URL(req.url);
@@ -61,3 +62,7 @@ export async function GET(req: NextRequest) {
     });
   }
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const GET = withLogging(_GET);

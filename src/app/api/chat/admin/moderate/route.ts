@@ -1,3 +1,4 @@
+import { withLogging } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { connectDB, Message, Conversation } from '@/lib/db';
@@ -8,7 +9,7 @@ import { pushChatSSE } from '@/lib/chat-sse';
  * Body: { messageId, action: 'flag'|'unflag'|'delete', reason? }
  * Admin only. Flag, unflag, or hard-delete a message and notify participants via SSE.
  */
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (session.role !== 'Admin')
@@ -53,3 +54,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, action, messageId: String(messageId) });
 }
+
+
+// ── Request Tracing & Structured Logging Wrap ──────────────────
+export const POST = withLogging(_POST);

@@ -1,0 +1,95 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Lint, Test, & Build
+    runs-on: ubuntu-latest
+
+    services:
+      # Start MongoDB service container for integration tests if needed
+      # (Though we use mongodb-memory-server, having MongoDB services ready is an enterprise best practice)
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Compilation Check (Type Check)
+        run: npx tsc --noEmit
+
+      - name: Run ESLint Checks
+        run: npm run lint
+
+      - name: Security Vulnerability Scan (npm audit)
+        run: npm audit --audit-level=high
+
+      - name: Scan for Secret Leaks
+        run: |
+          echo "Scanning codebase for hardcoded secrets, private keys, and API tokens..."
+          # Scan src and lib directories for potential secrets (e.g. key=value patterns where value is long/random)
+          # Exclude test files to avoid false positives on mock credentials.
+          LEAK_FOUND=0
+          
+          # Check for potential private keys
+          if grep -rni "BEGIN PRIVATE KEY" src/ lib/ --exclude-dir=node_modules; then
+            echo "❌ ERROR: Found potential hardcoded private key in source files!"
+            LEAK_FOUND=1
+          fi
+          
+          # Check for hardcoded API keys/secrets patterns
+          if grep -rnEi "(jwt_secret|brevo_api_key|cloudinary_api_secret|upstash_redis_rest_token)\s*=\s*['\"][a-zA-Z0-9_-]{16,}['\"]" src/ lib/ --exclude-dir=node_modules; then
+            echo "❌ ERROR: Found potential hardcoded secrets in source files!"
+            LEAK_FOUND=1
+          fi
+
+          if [ $LEAK_FOUND -eq 1 ]; then
+            exit 1
+          else
+            echo "✓ Secrets check passed successfully."
+          fi
+
+      - name: Execute Unit Tests
+        run: npm run test:unit
+
+      - name: Execute Integration Tests
+        run: npm run test:integration
+
+      - name: Verify Production Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+          MONGODB_URI: "mongodb://localhost:27017/test"
+          JWT_SECRET: "supersecretsupersecretsupersecret123"
+          ADMIN_EMAIL: "admin@ops.com"
+          SENDER_EMAIL: "admin@ops.com"
+
+      - name: Upload Build Artifacts (Logs / Build Reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: |
+            logs/
+            test-results/
+            .next/**/*.log
+          if-no-files-found: ignore
