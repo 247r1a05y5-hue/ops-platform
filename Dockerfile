@@ -46,13 +46,11 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/server.mjs ./server.mjs
 COPY --from=builder /app/seed-admin.js ./seed-admin.js
-COPY --from=builder /app/seed-manager.js ./seed-manager.js
 COPY --from=builder /app/deployment ./deployment
 
 # Copy built Next.js pages and bundles
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/src ./src
-COPY --from=builder --chown=nextjs:nodejs /app/lib ./lib
 
 # Install only production dependencies to minimize size and vulnerabilities
 RUN npm ci --omit=dev && npm cache clean --force
