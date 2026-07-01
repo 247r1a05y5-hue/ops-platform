@@ -91,13 +91,12 @@ async function runStartupChecks() {
       throw new Error(`Cloudinary ping returned status: ${result.status}`);
     }
     console.log('[Startup Check] ✓ Cloudinary credentials verified');
+    process.env.CLOUDINARY_AVAILABLE = 'true';
+    globalThis.cloudinaryAvailable = true;
   } catch (err) {
-    if (dev || process.env.NODE_ENV === 'test') {
-      console.warn(`[Startup Check] ⚠️ WARNING — Cloudinary credentials test failed: ${err.message || err}. Continuing in dev/test mode.`);
-    } else {
-      console.error(`[Startup Check] ❌ FATAL — Cloudinary authentication failed:`, err.message || err);
-      process.exit(1);
-    }
+    console.warn(`[Startup Check] ⚠️ WARNING — Cloudinary credentials test failed: ${err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err))}. Cloudinary marked as unavailable.`);
+    process.env.CLOUDINARY_AVAILABLE = 'false';
+    globalThis.cloudinaryAvailable = false;
   }
 
   console.log('[Startup Check] Testing Brevo REST API token...');
